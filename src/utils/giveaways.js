@@ -1,0 +1,208 @@
+// giveaways.js
+
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
+import { logger } from './logger.js';
+import { ZentixBotError, ErrorTypes } from './errorHandler.js';
+import { unwrapReplitData } from './database.js';
+import {isPostgresGiveawayBackend,createPostgresGiveaway} from '../services/storage/postgresGiveawayTransactions.js';
+import {isSQLiteGiveawayBackend,readSQLiteGiveaways,saveSQLiteGiveaway,deleteSQLiteGiveaway} from '../services/storage/sqliteGiveaways.js';
+import {transferGiveawaySnapshot} from '../services/storage/giveawaySnapshots.js';
+export {transferGiveawaySnapshot};
+import { 
+    createGiveawayEmbed as createGiveawayEmbedService,
+    createGiveawayButtons as createGiveawayButtonsService,
+    selectWinners as selectWinnersService
+} from '../services/giveawayService.js';
+
+export function giveawayKey(guildId) {
+    return `guild:${guildId}:giveaways`;
+}
+
+function arrayToGiveawayMap(giveaways) {
+    const map = {};
+    if (Array.isArray(giveaways)) {
+        for (const giveaway of giveaways) {
+            if (giveaway && giveaway.messageId) {
+                map[giveaway.messageId] = giveaway;
+            }
+        }
+    }
+    return map;
+}
+
+export async function getGuildGiveaways(client, guildId) {
+    try {
+        if (!client.db) {
+            logger.warn('Database not available for getGuildGiveaways');
+            return [];
+        }
+
+        if(isSQLiteGiveawayBackend(client))return readSQLiteGiveaways(client,guildId);
+        const key = giveawayKey(guildId);
+        const giveaways = await client.db.get(key, {});
+        const unwrappedGiveaways = unwrapReplitData(giveaways);
+
+        if (typeof unwrappedGiveaways === 'object' && !Array.isArray(unwrappedGiveaways)) {
+            return Object.values(unwrappedGiveaways || {});
+        }
+        return Array.isArray(unwrappedGiveaways) ? unwrappedGiveaways : [];
+    } catch (error) {
+        logger.error(`Error getting giveaways for guild ${guildId}:`, error);
+        if(isSQLiteGiveawayBackend(client))throw error instanceof ZentixBotError?error:new ZentixBotError('SQLite giveaway read failed',ErrorTypes.DATABASE,'Could not read giveaway data.');
+        return [];
+    }
+}
+
+export async function saveGiveaway(client, guildId, giveawayData) {
+    try {
+        if (!client.db) {
+            logger.warn('Database not available for saveGiveaway');
+            return false;
+        }
+
+        if (!giveawayData || !giveawayData.messageId) {
+            throw new ZentixBotError(
+                'Invalid giveaway data: missing messageId',
+                ErrorTypes.VALIDATION,
+                'Cannot save giveaway without a message ID.',
+                { giveawayData }
+            );
+        }
+
+        // The claim/acknowledge protocol first: it runs on PostgreSQL and on SQLite opened at startup.
+        if(isPostgresGiveawayBackend(client))return await createPostgresGiveaway(client,guildId,giveawayData);
+        if(isSQLiteGiveawayBackend(client)){saveSQLiteGiveaway(client,guildId,giveawayData);return true;}
+        const key = giveawayKey(guildId);
+        const giveaways = await getGuildGiveaways(client, guildId);
+
+        const giveawayMap = arrayToGiveawayMap(giveaways);
+        giveawayMap[giveawayData.messageId] = giveawayData;
+        
+        await client.db.set(key, giveawayMap);
+        
+        logger.debug(`Saved giveaway ${giveawayData.messageId} in guild ${guildId}`);
+        return true;
+    } catch (error) {
+        logger.error(`Error saving giveaway in guild ${guildId}:`, error);
+        if (error instanceof ZentixBotError) {
+            throw error;
+        }
+        if(isSQLiteGiveawayBackend(client)||isPostgresGiveawayBackend(client))throw new ZentixBotError('Persistent giveaway write failed',ErrorTypes.DATABASE,'Could not save giveaway data.');
+        return false;
+    }
+}
+
+export async function deleteGiveaway(client, guildId, messageId) {
+    try {
+        if (!client.db) {
+            logger.warn('Database not available for deleteGiveaway');
+            return false;
+        }
+
+        if (!messageId) {
+            throw new ZentixBotError(
+                'Missing messageId parameter',
+                ErrorTypes.VALIDATION,
+                'Cannot delete giveaway without a message ID.',
+                { messageId }
+            );
+        }
+
+        if(isPostgresGiveawayBackend(client))throw new ZentixBotError('Giveaway deletion must use the deletion protocol',ErrorTypes.DATABASE,'Giveaway deletion is temporarily unavailable; no message or data was deleted.');
+        if(isSQLiteGiveawayBackend(client))return deleteSQLiteGiveaway(client,guildId,messageId);
+        const key = giveawayKey(guildId);
+        const giveaways = await getGuildGiveaways(client, guildId);
+
+        const giveawayMap = arrayToGiveawayMap(giveaways);
+        
+        if (!giveawayMap[messageId]) {
+            logger.debug(`Giveaway not found for deletion: ${messageId} in guild ${guildId}`);
+            return false;
+        }
+        
+        delete giveawayMap[messageId];
+        await client.db.set(key, giveawayMap);
+        
+        logger.debug(`Deleted giveaway ${messageId} from guild ${guildId}`);
+        return true;
+    } catch (error) {
+        logger.error(`Error deleting giveaway ${messageId} in guild ${guildId}:`, error);
+        if (error instanceof ZentixBotError) {
+            throw error;
+        }
+        if(isSQLiteGiveawayBackend(client)||isPostgresGiveawayBackend(client))throw new ZentixBotError('Persistent giveaway write failed',ErrorTypes.DATABASE,'Could not save giveaway data.');
+        return false;
+    }
+}
+
+export function createGiveawayEmbed(giveaway, status, winners = []) {
+    try {
+        return createGiveawayEmbedService(giveaway, status, winners);
+    } catch (error) {
+        logger.error('Error creating giveaway embed:', error);
+        throw error;
+    }
+}
+
+export function isGiveawayEnded(giveaway) {
+    if (!giveaway) return true;
+    const endTime = giveaway.endsAt ?? giveaway.endTime;
+    const time=typeof endTime==='number'?endTime:(typeof endTime==='string'&&endTime.trim()?(Number.isFinite(Number(endTime))?Number(endTime):Date.parse(endTime)):NaN);
+    // An invalid timestamp must not allow new entries indefinitely.
+    return !Number.isFinite(time) || Date.now() >= time;
+}
+
+export function pickWinners(entrants, count) {
+    try {
+        return selectWinnersService(entrants, count);
+    } catch (error) {
+        logger.error('Error picking winners:', error);
+        
+        if (!entrants || entrants.length === 0) return [];
+        const requested = Math.min(count, entrants.length);
+        const shuffled = [...entrants];
+        for (let i = shuffled.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+        }
+        return shuffled.slice(0, requested);
+    }
+}
+
+export function giveawayEmbed(giveaway, status, winners = []) {
+    return createGiveawayEmbed(giveaway, status, winners);
+}
+
+export function giveawayButtons(ended = false) {
+    try {
+        return createGiveawayButtonsService(ended);
+    } catch (error) {
+        logger.error('Error creating giveaway buttons:', error);
+        
+        const row = new ActionRowBuilder();
+        if (ended) {
+            row.addComponents(
+                new ButtonBuilder()
+                    .setCustomId('giveaway_reroll')
+                    .setLabel('🎲 Reroll')
+                    .setStyle(ButtonStyle.Secondary),
+                new ButtonBuilder()
+                    .setCustomId('giveaway_view')
+                    .setLabel('👁️ View')
+                    .setStyle(ButtonStyle.Primary)
+            );
+        } else {
+            row.addComponents(
+                new ButtonBuilder()
+                    .setCustomId('giveaway_join')
+                    .setLabel('🎉 Join')
+                    .setStyle(ButtonStyle.Primary),
+                new ButtonBuilder()
+                    .setCustomId('giveaway_end')
+                    .setLabel('🛑 End')
+                    .setStyle(ButtonStyle.Danger)
+            );
+        }
+        return row;
+    }
+}

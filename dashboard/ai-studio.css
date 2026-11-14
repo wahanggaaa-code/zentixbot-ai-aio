@@ -1,0 +1,96 @@
+/* Tahap 4: AI Studio preview. */
+.ai-index-head h1 span{color:#d4ff51}.ai-index-intro{background:#1b1c18;color:#efefe2;min-height:214px;padding:22px 25px;position:relative;display:flex;flex-direction:column;justify-content:space-between;overflow:hidden;margin-top:24px}.ai-index-intro>div:first-child{position:relative;z-index:1}.ai-index-intro>div:first-child>span{font:700 9px var(--mono);letter-spacing:.1em;color:var(--lime)}.ai-index-intro strong{display:block;font-size:clamp(29px,3.2vw,43px);line-height:1;letter-spacing:-.05em;margin:13px 0 9px}.ai-index-intro p{font:10px/1.6 var(--mono);color:#b6b8aa;margin:0;max-width:410px}.ai-intro-mark{position:absolute;right:12%;top:-65px;color:#ffffff0d;font-size:260px}.ai-intro-foot{border-top:1px solid #64675b;padding-top:12px;display:flex;justify-content:space-between;font:700 9px var(--mono);color:#bdc0b0}.ai-side-art{height:175px;margin-top:17px;background:#1b1c18;color:var(--lime);padding:18px;font-size:70px;display:flex;justify-content:space-between;align-items:center;overflow:hidden}.ai-side-art span{font:800 34px/.95 Arial,sans-serif;letter-spacing:-.05em;color:#e9eadd}.ai-privacy{padding:16px;border:1px solid var(--ink);background:#bfc1b5;margin-top:14px}.ai-privacy>span{font:700 9px var(--mono)}.ai-privacy p{font:10px/1.7 var(--mono);margin:8px 0 0}.ai-consent{margin-top:17px;border:1px solid var(--ink);padding:17px}.ai-consent strong{font-size:16px;letter-spacing:-.04em}.ai-consent p{font:10px/1.6 var(--mono)}.ai-consent>div{display:flex;gap:7px;flex-wrap:wrap}.ai-quiz{margin-top:17px;padding:20px;background:#1b1c18;color:#edeee2}.ai-quiz>span{font:700 9px var(--mono);color:var(--lime)}.ai-quiz h3{font-size:24px;line-height:1.08;letter-spacing:-.04em;max-width:350px}.ai-options{display:grid;grid-template-columns:1fr 1fr;gap:7px}.ai-options button{background:transparent;border:1px solid #8f9185;color:white;text-align:left;padding:11px;font:11px var(--mono);cursor:pointer}.ai-options button:hover{border-color:var(--lime);color:var(--lime)}.ai-quiz p{font:9px var(--mono);color:#b6b8aa;margin:20px 0 0}.ai-upload{border:1px dashed var(--ink);padding:23px;margin-top:17px;display:flex;flex-direction:column;align-items:flex-start;gap:8px}.ai-upload>span{font-size:30px}.ai-upload strong{font-size:15px}.ai-upload p,.ai-upload small{font:10px/1.6 var(--mono);margin:0}.ai-upload input{width:100%;font:10px var(--mono)}.ai-doc{display:flex;gap:12px;align-items:center;border-bottom:1px solid var(--softline);padding:14px 0}.ai-doc>span{border:1px solid var(--ink);width:33px;height:33px;display:grid;place-items:center}.ai-doc strong{display:block;font-size:12px}.ai-doc small{display:block;font:9px var(--mono);margin-top:5px}.ai-image-placeholder{display:flex;flex-direction:column;align-items:center;justify-content:center;background:#babcb1;border:1px solid var(--ink);min-height:255px;margin-top:17px;text-align:center;gap:10px}.ai-image-placeholder span{font-size:40px}.ai-image-placeholder strong{font-size:25px;letter-spacing:-.05em;line-height:1}.ai-image-placeholder small{font:9px var(--mono)}.ai-tree{font:11px/1.7 var(--mono);margin-top:17px;border:1px solid var(--ink)}.ai-tree>div{padding:9px 12px;border-bottom:1px solid var(--softline)}.ai-tree>div:last-child{border:0}.ai-tree span{float:right;font-size:8px;color:#55574b}.ai-key-box{display:flex;gap:12px;align-items:flex-start;padding:16px 0}.ai-key-box>span{font-size:28px}.ai-key-box strong{font-size:13px}.ai-key-box p{font:10px/1.6 var(--mono);margin:6px 0 0}.ai-fallback-chain{margin-top:17px}.ai-fallback-chain>div:not(.chain-arrow){display:flex;align-items:center;gap:12px;border:1px solid var(--ink);padding:14px}.ai-fallback-chain>div.selected{background:var(--lime)}.ai-fallback-chain>div>span{font:10px var(--mono)}.ai-fallback-chain>div>strong{font-size:13px}.ai-fallback-chain>div>small{margin-left:auto;font:700 9px var(--mono)}.chain-arrow{text-align:center;padding:5px;font:16px var(--mono)}@media(max-width:650px){.ai-index-intro{min-height:200px;padding:20px}.ai-intro-mark{font-size:190px;right:-25px;top:-15px}.ai-side-art{height:140px}.ai-side-art span{font-size:26px}.ai-quiz h3{font-size:21px}.ai-tree span{float:none;display:block;font-size:8px}.ai-fallback-chain>div>small{font-size:8px}}
+
+/* AI interaktif: channel tick boxes and the hours row */
+fieldset.f-field{border:0;border-bottom:1px solid var(--softline);margin:0;min-width:0}
+.f-picker{max-height:190px;overflow:auto;border:1px solid var(--ink);background:#c4c4bd;color:#111;padding:8px 11px;font:11px/2 var(--mono)}
+.f-picker label{display:block;cursor:pointer;overflow-wrap:anywhere}
+.f-picker input{margin-right:7px}
+.f-inline{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.f-field .f-inline input:not([type=checkbox]),.f-field .f-inline select{width:auto;flex:1 1 90px}
+/* A word between two controls of one row ("setiap", "sampai"), in the size of the help texts. */
+.f-inline .f-word{font-size:11px;color:#333}
+
+/* Server Builder (ai-builder-live.js). Controls outside a .f-field get the same look as the fields, and every
+   group of buttons sits in one .b-actions row: side by side on a wide screen, one full-width button per line on
+   a phone. */
+.b-actions{display:flex;flex-wrap:wrap;align-items:stretch;gap:10px;margin-top:16px}
+.b-actions>button{flex:0 1 auto;min-height:38px;margin:0;text-align:center;line-height:1.35}
+.b-actions>button:disabled{opacity:.45;cursor:not-allowed}
+.b-actions>button:disabled:hover{background:transparent;color:var(--ink)}
+.b-actions>.f-primary:disabled:hover{background:var(--lime)}
+.b-danger:not(:disabled){border-color:#7a1f14;color:#7a1f14}
+.b-danger:not(:disabled):hover{background:#7a1f14;color:#f3e9e6}
+.b-status{min-height:16px;margin-top:12px;white-space:pre-wrap;overflow-wrap:anywhere}
+.b-code{display:block;width:100%;min-height:190px;margin-top:10px;border:1px solid var(--ink);background:#c4c4bd;color:#111;padding:10px 11px;border-radius:0;outline:none;resize:vertical;font:11px/1.5 var(--mono);tab-size:2}
+.b-code:focus{outline:2px solid #536f12;outline-offset:1px}
+.b-code:disabled{opacity:.6}
+.b-pre{margin:16px 0 0;border:1px solid var(--softline);background:#bfc1b5;padding:12px 13px;font:10px/1.6 var(--mono);white-space:pre-wrap;overflow-wrap:anywhere;max-height:340px;overflow:auto}
+.b-details{margin-top:16px;border:1px solid var(--softline);padding:0 13px}
+.b-details>summary{cursor:pointer;padding:12px 0;font:700 9px var(--mono);letter-spacing:.04em}
+.b-details[open]{padding-bottom:13px}
+.b-details .f-muted{margin-top:0}
+.b-perms{border:1px solid var(--softline);margin:16px 0 0;padding:12px 13px 14px;min-width:0}
+.b-perms legend{padding:0 6px;font:700 12px var(--sans)}
+.b-perms .f-muted{margin-top:0}
+.b-perm-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 14px;margin-top:12px}
+.b-perm-grid label{display:flex;align-items:center;gap:8px;min-width:0;font:10px/1.4 var(--mono);cursor:pointer}
+.b-perm-grid label span{min-width:0;overflow-wrap:anywhere}
+.b-perm-grid input{flex:none;width:16px;height:16px;margin:0;accent-color:#536f12}
+.b-tree{margin-top:16px}
+.b-tree:empty{display:none}
+.b-tree>.f-muted{margin:0}
+.b-counts{font:700 9px/1.5 var(--mono);letter-spacing:.04em;padding-bottom:10px;border-bottom:1px solid var(--ink)}
+.b-group{padding:12px 0;border-bottom:1px solid var(--softline)}
+.b-group-name{font:700 12px/1.4 var(--sans);overflow-wrap:anywhere}
+.b-group ul,.b-build ul{list-style:none;margin:8px 0 0;padding:0;display:grid;gap:6px}
+.b-group li,.b-build li{display:grid;grid-template-columns:86px minmax(0,1fr);align-items:baseline;gap:2px 10px;font:11px/1.45 var(--mono)}
+.b-group li small,.b-build li small{grid-column:2;font:10px/1.5 var(--mono);color:#51534a;overflow-wrap:anywhere}
+.b-name{min-width:0;overflow-wrap:anywhere}
+.b-tag{display:inline-block;justify-self:start;border:1px solid var(--ink);padding:2px 5px;font:700 8px/1.3 var(--mono);letter-spacing:.04em;white-space:nowrap}
+.b-swatch{justify-self:start;width:16px;height:16px;border:1px solid var(--ink);background:repeating-linear-gradient(45deg,transparent 0 3px,var(--softline) 3px 6px)}
+.b-state-gone{opacity:.6}
+.b-state-blocked .b-tag{background:var(--ink);color:var(--lime)}
+.b-builds{margin-top:6px}
+.b-build{border-bottom:1px solid var(--softline);padding:12px 0}
+.b-build>summary{cursor:pointer;display:grid;gap:5px;list-style-position:outside}
+.b-build-title{font:700 12px/1.4 var(--sans);overflow-wrap:anywhere}
+.b-build-meta{font:10px/1.5 var(--mono);color:#484a41}
+.b-build-flags{display:flex;flex-wrap:wrap;gap:5px}
+@media(max-width:650px){
+.b-actions>button{flex:1 1 100%}
+.b-form .f-form-actions>button{flex:1 1 100%;text-align:center}
+.b-group li,.b-build li{grid-template-columns:76px minmax(0,1fr)}
+}
+@media(max-width:360px){.b-perm-grid{grid-template-columns:minmax(0,1fr)}}
+
+/* Fitur pintar (ai-smart.js): FAQ list, report bars. Everything shrinks instead of pushing the page sideways. */
+.s-head{font:700 13px/1.4 var(--sans);margin:26px 0 10px;display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.s-head small{font:10px var(--mono);color:#484a41}
+.s-list{display:grid;gap:0;margin-bottom:6px}
+.s-item{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;border-bottom:1px solid var(--softline);padding:11px 0}
+.s-item>div{min-width:0}
+.s-item b{font:700 12px/1.45 var(--sans);overflow-wrap:anywhere}
+.s-item p{font:12px/1.55 var(--sans);margin:4px 0 0;white-space:pre-wrap;overflow-wrap:anywhere}
+.s-item button{flex:0 0 auto}
+.s-report-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-top:8px}
+.s-report-bar .f-outline.active{background:var(--ink);color:var(--lime)}
+.s-report h4{font:700 10px var(--mono);letter-spacing:.05em;text-transform:uppercase;margin:22px 0 8px}
+.s-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px}
+.s-stats>div{border:1px solid var(--ink);padding:11px;min-width:0}
+.s-stats b{display:block;font:700 22px/1.1 var(--sans);overflow-wrap:anywhere}
+.s-stats span{display:block;font:10px/1.5 var(--mono);color:#484a41;margin-top:5px;overflow-wrap:anywhere}
+.s-bars{display:grid;gap:5px}
+.s-bar{display:grid;grid-template-columns:minmax(64px,34%) minmax(0,1fr) auto;align-items:center;gap:8px;font:11px/1.4 var(--mono)}
+.s-bar>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.s-bar>i{display:block;height:9px;border:1px solid var(--ink);min-width:0}
+.s-bar>i>em{display:block;height:100%;background:var(--lime)}
+.s-bar>b{min-width:2ch;text-align:right}
+@media(max-width:650px){
+.s-item{flex-direction:column}
+.f-form-actions .f-inline{flex:1 1 100%}
+.f-form-actions .f-inline>button{flex:1 1 auto;text-align:center}
+/* A feature name or a member ID is not readable when cut short: on a phone the label gets a line of its own. */
+.s-long .s-bar{grid-template-columns:minmax(0,1fr) auto;row-gap:2px}
+.s-long .s-bar>span{grid-column:1/-1;white-space:normal;overflow-wrap:anywhere}
+}
