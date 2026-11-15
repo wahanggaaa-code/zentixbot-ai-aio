@@ -12,8 +12,8 @@ export function mayDispatchEvent(client, eventName, args) {
   if (eventName === 'interactionCreate' && !args[0]?.guildId && !args[0]?.guild) {
     const interaction = args[0];
     const parts = String(interaction?.customId || '').split(':');
-    if (parts.length === 3 && ['ai_dm_compose','ai_dm_form','ai_dm_memory','ai_dm_clear'].includes(parts[0]) && isHomeGuild(client,parts[1]) && /^\d{17,20}$/.test(parts[2]||'') && interaction.user?.id===parts[2]) {
-      return Boolean((['ai_dm_compose','ai_dm_memory','ai_dm_clear'].includes(parts[0]) && interaction.isButton?.() && client.user?.id && interaction.message?.author?.id===client.user.id) || (parts[0]==='ai_dm_form' && interaction.isModalSubmit?.()));
+    if (parts.length === 3 && ['ai_dm_start','ai_dm_memory','ai_dm_clear'].includes(parts[0]) && isHomeGuild(client,parts[1]) && /^\d{17,20}$/.test(parts[2]||'') && interaction.user?.id===parts[2]) {
+      return Boolean(interaction.isButton?.() && client.user?.id && interaction.message?.author?.id===client.user.id);
     }
     const allowed = (parts[0] === 'ticket_feedback' && (interaction.isButton?.() || interaction.isStringSelectMenu?.())) ||
       (['ticket_feedback_comment','ticket_feedback_decline'].includes(parts[0]) && interaction.isButton?.()) ||
@@ -21,6 +21,10 @@ export function mayDispatchEvent(client, eventName, args) {
     const validTail = parts[0] === 'ticket_feedback' && interaction.isButton?.() ? parts.length === 4 && /^[1-5]$/.test(parts[3]) : parts.length === 3;
     const botMessage = interaction.isModalSubmit?.() || (client.user?.id && interaction.message?.author?.id === client.user.id);
     return Boolean(allowed && validTail && botMessage && isHomeGuild(client, parts[1]) && /^\d{17,20}$/.test(parts[2] || ''));
+  }
+  if (eventName === 'messageReactionAdd' || eventName === 'messageReactionRemove') {
+    const message = args[0]?.message;
+    return isHomeGuild(client, message?.guildId ?? message?.guild?.id);
   }
   if (eventName === 'clientReady' || eventName === 'ready' || eventName === 'userUpdate') return Boolean(client?.homeGuildId);
   if (eventName === 'guildCreate' || eventName === 'guildDelete' || eventName === 'guildUpdate') {

@@ -23,7 +23,7 @@ export const DEFAULT_SMART = Object.freeze({
     // Additions to AI Welcome and AI Goodbye, written by the bot itself.
     greeting: Object.freeze({ multilingual: false, tenure: false }),
     // Translates what members write in the chosen channels.
-    translate: Object.freeze({ enabled: false, channelIds: Object.freeze([]), target: 'id', hourlyLimit: 30 }),
+    translate: Object.freeze({ enabled: false, channelIds: Object.freeze([]), target: 'id', hourlyLimit: 30, reactionEnabled: false }),
 });
 export const SMART_SECTIONS = Object.freeze(Object.keys(DEFAULT_SMART));
 
@@ -86,11 +86,11 @@ const VALIDATORS = {
     },
     greeting(v) { booleans(v, ['multilingual', 'tenure']); return { ...v }; },
     translate(v, guild) {
-        booleans(v, ['enabled']);
+        booleans(v, ['enabled', 'reactionEnabled']);
         const channelIds = channelList(v.channelIds, guild, 'Channel terjemahan');
         if (!Object.hasOwn(LANGUAGES, v.target)) throw err('Bahasa tujuan tidak valid.');
         if (!Number.isInteger(v.hourlyLimit) || v.hourlyLimit < 1 || v.hourlyLimit > 120) throw err('Batas per jam harus 1–120.');
-        if (v.enabled && channelIds.length === 0) throw err('Terjemahan otomatis memerlukan minimal satu channel.');
+        if ((v.enabled || v.reactionEnabled) && channelIds.length === 0) throw err('Terjemahan otomatis dan reaksi bendera memerlukan minimal satu channel.');
         return { ...v, channelIds };
     },
 };

@@ -1,4 +1,4 @@
-import { Events } from 'discord.js';
+import { Events, ChannelType } from 'discord.js';
 import { logger } from '../utils/logger.js';
 import { getLevelingConfig } from '../services/leveling/leveling.js';
 import { addXp } from '../services/leveling/xpSystem.js';
@@ -12,6 +12,7 @@ import { getCommandPrefix, getBotMessage, isBotOwner, isCommandCategoryEnabled, 
 import { enforceAbuseProtection, formatCooldownDuration } from '../utils/abuseProtection.js';
 import { createV2Container, v2Message } from '../utils/componentsV2.js';
 import { isCommandEnabled } from '../services/commandAccessService.js';
+import { handleDMChatMessage } from '../services/ai/dmChat.js';
 
 const MESSAGE_XP_RATE_LIMIT_ATTEMPTS = 12;
 const MESSAGE_XP_RATE_LIMIT_WINDOW_MS = 10000;
@@ -22,7 +23,12 @@ export default {
   name: Events.MessageCreate,
   async execute(message, client) {
     try {
-      if (message.author.bot || !message.guild) return;
+      if (message.author?.bot) return;
+      // Direct messages to the bot are the AI DM chat: answer them like a person once the member agreed.
+      if (!message.guild) {
+        if (message.channel?.type === ChannelType.DM) await handleDMChatMessage(message, client).catch((error) => logger.error('Error in DM chat handler:', error));
+        return;
+      }
 
       logger.debug(`Message received from ${message.author.tag}: ${message.content}`);
 

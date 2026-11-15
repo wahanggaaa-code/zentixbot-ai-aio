@@ -4,7 +4,7 @@ import { pgConfig } from '../../config/database/postgres.js';
 import { sqliteBackend } from '../storage/sqlite.js';
 import { createSqliteActivityStore } from './sqliteActivities.js';
 import { logger } from '../../utils/logger.js';
-import { createV2Container, v2Message } from '../../utils/componentsV2.js';
+import { createV2Container, v2Message, v2Separator } from '../../utils/componentsV2.js';
 const error=(message,status=400)=>Object.assign(new Error(message),{status});
 const roundActive=()=>Object.assign(error('Masih ada ronde yang berjalan.',409),{code:'ROUND_ACTIVE'});
 // What is stored may be anything; the schedules only ever work with a plain object.
@@ -45,24 +45,35 @@ export function createActivityStore(client){
   async status(id,now=Date.now()){const r=await dbPool(client).query(`SELECT value FROM ${table} WHERE key=$1`,[roundKey(id)]);const v=r.rows[0]?.value;if(!v||!['pending','open','expired','solved','closed'].includes(v.state))return {state:'none'};const state=v.state==='open'&&v.expiresAt<=now?'expired':v.state;const quiz=validateQuiz(v.question);return {state,expiresAt:Number.isFinite(v.expiresAt)?v.expiresAt:null,...(quiz?{question:quiz.question,options:quiz.options,...(state!=='open'&&state!=='pending'?{answer:quiz.answer}:{})}:{})};},
   async points(id,userId){if(!/^\d{17,20}$/.test(userId||''))throw error('Anggota tidak valid.');const r=await dbPool(client).query(`SELECT value FROM ${table} WHERE key=$1`,[`ai:activity:points:${id}:${userId}`]);const n=r.rows[0]?.value?.points??0;if(!Number.isSafeInteger(n)||n<0)throw error('Saldo poin tidak valid.',503);return n;},
   reserve(id,roundId,now){return locked(id,v=>{if(['pending','open'].includes(v.state)&&v.expiresAt>now)throw roundActive();return {write:{state:'pending',id:roundId,expiresAt:now+150000},result:true};});},
-  open(id,roundId,question,duration,now,rewardPoints=0,kind='trivia'){return locked(id,v=>{if(v.state!=='pending'||v.id!==roundId||v.expiresAt<=now)throw error('Reservasi ronde kedaluwarsa.',409);return {write:{state:'open',id:roundId,expiresAt:now+duration*1000,question,answered:[],messageId:null,rewardPoints,kind:kind==='emoji'?'emoji':'trivia'},result:true}});},
+  open(id,roundId,question,duration,now,rewardPoints=0,kind='trivia'){return locked(id,v=>{if(v.state!=='pending'||v.id!==roundId||v.expiresAt<=now)throw error('Reservasi ronde kedaluwarsa.',409);return {write:{state:'open',id:roundId,expiresAt:now+duration*1000,question,answered:[],winners:[],messageId:null,rewardPoints,kind:kind==='emoji'?'emoji':'trivia'},result:true}});},
   attach(id,roundId,messageId){return locked(id,v=>{if(v.state!=='open'||v.id!==roundId)throw error('Ronde sudah berubah.',409);return {write:{...v,messageId},result:true}});},
   cancel(id,roundId){return locked(id,v=>v.id===roundId?{write:{state:'closed'},result:true}:{result:false});},
   answer(id,roundId,messageId,userId,choice,now){return locked(id,async(v,conn)=>{
    if(v.id!==roundId||v.messageId!==messageId||v.state!=='open')return {result:{status:'closed'}};
-   if(v.expiresAt<=now)return {write:{...v,state:'expired'},result:{status:'expired',question:{...v.question,kind:v.kind??'trivia'}}};
+   if(v.expiresAt<=now){const ended=expireRound(v,now,roundId);return ended.result?{write:ended.write,result:{status:'expired',...ended.result}}:{result:{status:'expired',question:{...v.question,kind:v.kind??'trivia'}}};}
    if(!Array.isArray(v.answered)||v.answered.length>=1000)return {result:{status:'full'}};
    if(v.answered.includes(userId))return {result:{status:'answered'}};
    const answered=[...v.answered,userId];if(choice===v.question.answer){
     const reward=v.rewardPoints??0;if(!Number.isInteger(reward)||reward<0||reward>1000||!/^\d{17,20}$/.test(userId||''))throw error('Data hadiah tidak valid.',503);let points=null;
     if(reward){const k=`ai:activity:points:${id}:${userId}`;await conn.query(`INSERT INTO ${table} (key,value) VALUES ($1,'{}'::jsonb) ON CONFLICT (key) DO NOTHING`,[k]);const row=await conn.query(`SELECT value FROM ${table} WHERE key=$1 FOR UPDATE`,[k]);const before=row.rows[0].value.points??0;points=before+reward;if(!Number.isSafeInteger(before)||before<0||!Number.isSafeInteger(points))throw error('Saldo poin tidak valid.',503);await conn.query(`UPDATE ${table} SET value=$2::jsonb WHERE key=$1`,[k,JSON.stringify({points})]);}
-    return {write:{...v,state:'solved',answered},result:{status:'correct',question:{...v.question,kind:v.kind??'trivia'},reward,points}};}
+    const winners=[...(Array.isArray(v.winners)?v.winners:[]),userId];
+    // The round stays open until its timer ends: everyone who answers in time wins, not only the first.
+    return {write:{...v,answered,winners},result:{status:'correct',question:{...v.question,kind:v.kind??'trivia'},reward,points}};}
 
    return {write:{...v,answered},result:{status:'wrong'}};
   });},
-  expire(id,roundId,now){return locked(id,v=>v.id===roundId&&v.state==='open'&&v.expiresAt<=now?{write:{...v,state:'expired'},result:{...v.question,kind:v.kind??'trivia'}}:{result:null});}
+  expire(id,roundId,now){return locked(id,v=>expireRound(v,now,roundId));},
+  /** Ends the guild's open round when its time has passed, whoever won. Winners come along in the result. */
+  expireActive(id,now){return locked(id,v=>expireRound(v,now,null));}
  };
 }
+// The end of a round: red with nobody right, green with at least one. Keep the winners so the ended message can say who.
+const expireRound=(v,now,roundId)=>{
+ if(v.state!=='open'||v.expiresAt>now||(roundId!==null&&v.id!==roundId))return {result:null};
+ const winners=(Array.isArray(v.winners)?v.winners:[]).filter(x=>/^\d{17,20}$/.test(x)).slice(0,1000);
+ const question={...v.question,kind:v.kind??'trivia'};
+ return {write:{...v,state:winners.length?'solved':'expired'},result:{...question,winners,reward:v.rewardPoints??0,messageId:v.messageId??null,roundId:v.id}};
+};
 const FALLBACK={question:'Planet mana yang dikenal sebagai planet merah?',options:['Venus','Mars','Jupiter','Merkurius'],answer:1,explanation:'Mars dikenal sebagai planet merah karena permukaannya berkarat.'};
 export function validateQuiz(raw){
  const KEYS=new Set(['answer','options','question','explanation','clue']);
@@ -81,32 +92,40 @@ export function shuffleQuiz(quiz,random=Math.random){
  for(let i=order.length-1;i>0;i--){const j=Math.floor(random()*(i+1));[order[i],order[j]]=[order[j],order[i]];}
  return {...quiz,options:order.map(i=>quiz.options[i]),answer:order.indexOf(quiz.answer)};
 }
-export const ACTIVITY_TITLES=Object.freeze({trivia:'🧩 Tebak-Tebakan',emoji:'abc Tebak Emoji'});
-export function quizPayload(quiz,roundId,{state='open',minutes=null,winner=null}={}){
+export const ACTIVITY_TITLES=Object.freeze({trivia:'Kuis Trivia',emoji:'Tebak Emoji'});
+// Mentions cap: ping at most this many winners in the ended message; the rest are named without pinging.
+const WINNERS_MENTION_CAP=8,WINNERS_LIST_CAP=10;
+export function quizPayload(quiz,roundId,{state='open',minutes=null,winners=null,reward=null}={}){
  const kind=quiz?.kind==='emoji'?'emoji':'trivia',ended=state!=='open';
  const correctLabel=`${String.fromCharCode(65+quiz.answer)}. ${quiz.options[quiz.answer]}`;
  const choices=quiz.options.map((o,i)=>`**${String.fromCharCode(65+i)}.** ${o}`).join('\n');
  const segments=[quiz.question];
  if(quiz.clue)segments.push(`**Clue:** ${quiz.clue}`);
  segments.push(choices);
+ // One answer per user; everyone who got it right while the round was open shares the reward.
+ const list=Array.isArray(winners)?winners.filter(id=>/^\d{17,20}$/.test(id)):[];
+ const rewardPoints=Number.isSafeInteger(reward)?reward:Number.isSafeInteger(quiz?.rewardPoints)?quiz.rewardPoints:0;
+ const winnerText=list.slice(0,WINNERS_LIST_CAP).map(id=>`<@${id}>`).join(' ');
  if(ended){
   // Reference behaviour: the round turns green with a winner, red when nobody answered.
-  if(state==='solved')segments.push(winner?`🎉 Ronde selesai! <@${winner.id}> menjawab dengan benar${winner.reward>0?` dan mendapatkan **${winner.reward} Activity Points**`:''}!\nJawaban yang benar adalah **${correctLabel}**.`:`🎉 Ronde selesai! Jawaban yang benar adalah **${correctLabel}**.`);
+  if(state==='solved')segments.push(list.length?`🎉 Ronde selesai! ${winnerText} menjawab dengan benar${winners.length>WINNERS_LIST_CAP?` dan ${winners.length-WINNERS_LIST_CAP} lainnya`:''}${rewardPoints>0?` dan masing-masing mendapatkan **${rewardPoints} Activity Points**`:''}!\nJawaban yang benar adalah **${correctLabel}**.`:`🎉 Ronde selesai! Jawaban yang benar adalah **${correctLabel}**.`);
   else segments.push(`⏰ Waktu habis! Tidak ada yang berhasil menjawab.\nJawaban yang benar adalah **${correctLabel}**.`);
   if(quiz.explanation)segments.push(`💡 Penjelasan: ${quiz.explanation}`);
  }else if(Number.isFinite(minutes)){
   segments.push(`⏳ Berakhir dalam ${minutes} menit`);
  }
  const container=createV2Container({title:ACTIVITY_TITLES[kind],description:segments.join('\n\n'),color:ended?(state==='solved'?'#2ecc71':'#e74c3c'):'#336699',raw:true});
- // The choices stay visible (disabled) once the round ends, the correct one in green, like the reference.
+ // The choices stay visible (disabled) once the round ends, the correct one in green, like the reference. Buttons live inside the container, not next to it.
  const choiceRow=new ActionRowBuilder().addComponents(quiz.options.map((_,i)=>{
   const button=new ButtonBuilder().setCustomId(`ai_quiz:${roundId}:${i}`).setLabel(String.fromCharCode(65+i)).setStyle(ended&&i===quiz.answer?ButtonStyle.Success:ButtonStyle.Secondary);
   if(ended)button.setDisabled(true);
   return button;
  }));
- const rows=[choiceRow,new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('ai_quiz_points:view').setLabel('Poin saya').setStyle(ButtonStyle.Secondary))];
- const mentions=state==='solved'&&winner?{parse:[],users:[winner.id]}:{parse:[]};
- return {...v2Message([container,...rows]),allowedMentions:mentions};
+ container.addSeparatorComponents(v2Separator({divider:true,spacing:1}));
+ container.addActionRowComponents(choiceRow);
+ container.addActionRowComponents(new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('ai_quiz_points:view').setLabel('Poin saya').setStyle(ButtonStyle.Secondary)));
+ const mentions=state==='solved'&&list.length?{parse:[],users:list.slice(0,WINNERS_MENTION_CAP)}:{parse:[]};
+ return {...v2Message([container]),allowedMentions:mentions};
 }
 // Asking for "one easy question" again and again gets the same few questions back, so every request names a topic
 // and lists what was asked lately.
@@ -159,7 +178,7 @@ export async function startActivity({client,guild,actorId,store=createActivitySt
   try{message=await channel.send(quizPayload({...question,kind:game},roundId,{minutes:Math.max(1,Math.round(cfg.duration/60))}));}catch{throw error('Hasil pengiriman ronde tidak pasti; periksa channel sebelum mencoba lagi.',409)}
   try{await store.attach(guild.id,roundId,message.id);}catch{throw error('Ronde terkirim tetapi status gagal disimpan; periksa channel sebelum mencoba lagi.',409)}
   if(source==='ai')await rememberQuestion(store,guild.id,game,question.question);
-  const timer=setTimeout(async()=>{try{const expired=await store.expire(guild.id,roundId,Date.now());if(expired)await message.edit(quizPayload(expired,roundId,{state:'expired'}));}catch{}},cfg.duration*1000+100);timer.unref?.();
+  const timer=setTimeout(async()=>{try{const ended=await store.expire(guild.id,roundId,Date.now());if(ended)await message.edit(quizPayload(ended,roundId,{state:ended.winners?.length?'solved':'expired',winners:ended.winners??[],reward:ended.reward??0}));}catch{}},cfg.duration*1000+100);timer.unref?.();
   return {messageId:message.id,source,kind:game};
  }catch(e){if(!sendAttempted)await store.cancel(guild.id,roundId).catch(()=>{});throw e;}
 }
@@ -318,8 +337,27 @@ export async function runRepeatActivity(client,{store=createActivityStore(client
  return false;
 }
 /** The every-minute task: the daily schedule, then the repeating rounds. One failing does not stop the other. */
+/**
+ * Ends the guild's open round once its timer has passed and edits the round message into the ended one, listing the
+ * winners. The in-memory timer in `startActivity` normally does this within a second; this sweep is the backstop for
+ * a restart (the timer is lost) and for a tick where Discord or the database hiccuped. Returns true when it ended a round.
+ */
+export async function closeExpiredActivity(client,{store=createActivityStore(client),now=Date.now(),cfg=null,log=logger}={}){
+ const guild=client.guilds?.cache.get(client.homeGuildId);if(!guild)return false;
+ cfg??=await store.read(guild.id).catch(()=>null);if(!cfg)return false;
+ const ended=await store.expireActive?.(guild.id,now);if(!ended)return false;
+ if(!ended.messageId)return true;
+ try{
+  const channel=guild.channels?.cache?.get(cfg.channelId)??client.channels?.cache?.get(cfg.channelId);
+  const message=await channel?.messages?.fetch(ended.messageId);
+  if(message)await message.edit(quizPayload(ended,ended.roundId,{state:ended.winners?.length?'solved':'expired',winners:ended.winners??[],reward:ended.reward??0}));
+ }catch(e){log?.warn?.('Activity round ended but its message could not be edited:',e?.message??e);}
+ return true;
+}
 export async function runActivitySchedules(client,{store=createActivityStore(client),now=new Date(),start=startActivity,log=logger}={}){
  const guild=client.guilds?.cache.get(client.homeGuildId);if(!guild)return false;const cfg=await store.read(guild.id);let ran=false,failure=null;
+ // Backstop first so a round from before a restart ends promptly instead of blocking the next one.
+ try{ran=await closeExpiredActivity(client,{store,now:now.getTime?.()??Date.now(),cfg,log})||ran;}catch{/* the timer stays the primary path */}
  for(const run of [runScheduledActivity,runRepeatActivity]){try{ran=await run(client,{store,now,start,cfg,log})||ran;}catch(e){failure??=e;}}
  if(failure)throw failure;return ran;
 }

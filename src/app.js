@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import { Client, Collection, GatewayIntentBits } from 'discord.js';
+import { Client, Collection, GatewayIntentBits, Partials } from 'discord.js';
 import { REST } from '@discordjs/rest';
 import express from 'express';
 import { mountDashboard } from './dashboard/router.js';
@@ -54,6 +54,8 @@ class ZentixBot extends Client {
 
         GatewayIntentBits.GuildBans,                    
       ],
+      // Reactions on messages the bot did not see cached (e.g. from before a restart) still arrive.
+      partials: [Partials.Message, Partials.Reaction],
     });
 
     this.config = config;

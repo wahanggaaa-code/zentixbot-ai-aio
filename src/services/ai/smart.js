@@ -18,6 +18,7 @@ import { createRecap } from './recap.js';
 import { createMenus } from './menus.js';
 import { createDigest } from './digest.js';
 import { createAutoTranslate } from './autoTranslate.js';
+import { createPersonalLanguageStore } from './personalLanguage.js';
 import { decorateGreeting } from './greetings.js';
 import { logger as defaultLogger } from '../../utils/logger.js';
 
@@ -63,7 +64,8 @@ export function createSmart({
     const usage = createUsage({ kv, now, enabled: async () => (await settings()).usage.enabled });
     const replyCache = createReplyCache({ now });
     const recap = createRecap({ client, foundation, now });
-    const menus = createMenus({ client, settings, recap, interactiveSettings, foundation, searchService });
+    const personalLanguage = createPersonalLanguageStore(kv);
+    const menus = createMenus({ client, settings, recap, interactiveSettings, foundation, searchService, personalLanguage });
     const digest = createDigest({ client, settings, kv, foundation, searchService, now, logger });
     const translate = createAutoTranslate({ client, settings, foundation, now, logger });
 
@@ -120,7 +122,7 @@ export function createSmart({
     }
 
     return {
-        store, settings, saveSection, usage, recap, menus, digest,
+        store, settings, saveSection, usage, recap, menus, digest, translate,
         faqFor, faqWouldAnswer, handleMessage,
         /** Reply cache for the interactive AI: null when the cache is off or has nothing. */
         async cachedReply(text) {

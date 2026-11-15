@@ -26,7 +26,7 @@ export function menuPayloads(menu) {
 
 const oneLine = (text) => String(text ?? '').replace(/\s+/g, ' ').trim();
 
-export function createMenus({ client, settings, recap, interactiveSettings = async () => null, foundation = () => client.aiFoundation, searchService = () => client.aiSearchService } = {}) {
+export function createMenus({ client, settings, recap, interactiveSettings = async () => null, foundation = () => client.aiFoundation, searchService = () => client.aiSearchService, personalLanguage = null } = {}) {
     const get = (value) => (typeof value === 'function' ? value() : value);
 
     async function translate(ai, ids, text, language) {
@@ -91,10 +91,13 @@ export function createMenus({ client, settings, recap, interactiveSettings = asy
                 const text = String(message?.cleanContent ?? message?.content ?? '').trim().slice(0, TEXT_CHARS);
                 if (!text) { await say('Pesan ini tidak berisi teks yang bisa diproses.'); return true; }
                 await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-                const raw = menu.key === 'translate' ? await translate(ai, ids, text, cfg.language)
+                // "Terjemahkan" goes to the member's own language when they set one with /personal, otherwise to the server default.
+                const personal = menu.key === 'translate' && personalLanguage ? await personalLanguage.get(interaction.guildId, interaction.user.id) : null;
+                const target = personal ?? cfg.language;
+                const raw = menu.key === 'translate' ? await translate(ai, ids, text, target)
                     : menu.key === 'explain' ? await explain(ai, ids, text)
                         : await factCheck(ai, ids, text);
-                const title = menu.key === 'translate' ? `**Terjemahan (${LANGUAGES[cfg.language]})**` : menu.key === 'explain' ? '**Penjelasan**' : '**Cek fakta**';
+                const title = menu.key === 'translate' ? `**Terjemahan (${LANGUAGES[target]})**` : menu.key === 'explain' ? '**Penjelasan**' : '**Cek fakta**';
                 await say(`${title}\n${cleanReply(raw, client.user?.username) ?? 'AI tidak memberi jawaban.'}`);
                 return true;
             } catch (error) {
