@@ -1,8 +1,22 @@
+<p align="center">
+  <img src="assets/zentix-banner.gif" alt="Zentix — robot sketsa dengan headset, mengambang di antara garis gerak dan ikon chat, musik serta kode" width="800">
+</p>
+
+<p align="center">
+  <a href="https://github.com/discordjs/discord.js"><img alt="discord.js v14" src="https://img.shields.io/badge/discord.js-v14-5865F2?logo=discord&logoColor=white"></a>
+  <a href="https://nodejs.org/"><img alt="Node.js 22.13 atau lebih baru" src="https://img.shields.io/badge/Node.js-%E2%89%A5%2022.13-339933?logo=node.js&logoColor=white"></a>
+  <a href="https://github.com/wahanggaaa-code/zentixbot-ai-discord"><img alt="Single server, self-hosted" src="https://img.shields.io/badge/single%20server-self--hosted-1f6feb?logo=server&logoColor=white"></a>
+</p>
+
 # ZentixBot
+
+> Menggabungkan komunitas dan AI menjadi satu bot yang nyaman digunakan.
 
 Bot Discord untuk satu server, dengan dashboard web di proses yang sama. Ditulis dengan discord.js dan Express. Data disimpan di SQLite (berkas yang dibuat bot sendiri, tanpa pemasangan apa pun) atau di PostgreSQL.
 
-**Status pengujian:** bot ini diuji secara lokal dengan Discord tiruan, provider AI tiruan dan database sementara. Di hosting sungguhan, dari log dan tangkapan layar pemilik bot (13–14 November 2026), yang terlihat berjalan adalah startup, pendaftaran perintah slash, dashboard setelah login, dan `/aichat`. Fitur lain belum diperiksa di sana.
+> **Status pengujian:** bot ini diuji secara lokal dengan Discord tiruan, provider AI tiruan dan database sementara. Di hosting sungguhan, dari log dan tangkapan layar pemilik bot (13–14 November 2026), yang terlihat berjalan adalah startup, pendaftaran perintah slash, dashboard setelah login, dan `/aichat`. Fitur lain belum diperiksa di sana.
+
+**Daftar isi:** [Fitur](#fitur) · [Kebutuhan](#kebutuhan) · [Menjalankan](#menjalankan) · [Variabel lingkungan](#variabel-lingkungan) · [Database](#database) · [Docker](#docker) · [Port](#port) · [Dashboard](#dashboard) · [Fitur AI](#fitur-ai) · [Musik](#musik) · [Bila ada masalah](#bila-ada-masalah) · [Susunan folder](#susunan-folder) · [Berkontribusi](#berkontribusi) · [Lisensi](#lisensi)
 
 ## Fitur
 
@@ -94,9 +108,15 @@ Memulihkan:
 
 Simpan cadangan di luar server bot. Berkas cadangan berisi seluruh data bot tanpa enkripsi.
 
-### Docker
+## Docker
 
-`docker-compose.yml` menjalankan bot bersama PostgreSQL. Bila image dijalankan sendiri tanpa PostgreSQL, data ada di `/usr/src/app/data` di dalam container dan hilang saat container dibuat ulang, kecuali folder itu dipasang sebagai volume: `docker run -v zentix-data:/usr/src/app/data ...`. Image ini belum pernah dibangun atau dijalankan dalam pengujian.
+`docker-compose.yml` menjalankan bot bersama PostgreSQL. Bila image dijalankan sendiri tanpa PostgreSQL, data ada di `/usr/src/app/data` di dalam container dan hilang saat container dibuat ulang, kecuali folder itu dipasang sebagai volume:
+
+```bash
+docker run -v zentix-data:/usr/src/app/data ...
+```
+
+Image ini belum pernah dibangun atau dijalankan dalam pengujian.
 
 ## Port
 
