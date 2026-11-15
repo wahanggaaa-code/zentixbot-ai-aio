@@ -24,7 +24,7 @@ Perintah slash dikelompokkan per kategori di `src/commands/`:
 
 AI · Birthday · Community · Core · Economy · Fun · Giveaway · Join to Create · Leveling · Logging · Moderation · Music · Reaction Roles · Search · Server Stats · Ticket · Tools · Utility · Verification · Welcome
 
-Dashboard web dibuka di `/dashboard/`. Sebagian besar kategori dan seluruh fitur AI (AI Studio) diatur dari sana. Kategori yang belum punya halaman berlabel "BELUM ADA HALAMAN" dan tetap tersedia lewat perintahnya di Discord.
+Dashboard web dibuka di `/dashboard/`. Seluruh kategori diatur dari sana — AI lewat AI Studio. Search, Utility dan Tools sengaja tidak punya halaman sendiri karena tidak menyimpan pengaturan server; ketiganya tetap tersedia sebagai perintah di Discord.
 
 ## Kebutuhan
 
@@ -108,6 +108,16 @@ Memulihkan:
 
 Simpan cadangan di luar server bot. Berkas cadangan berisi seluruh data bot tanpa enkripsi.
 
+### Latihan pemulihan
+
+Backup belum bisa dipercaya sebelum pernah dicoba. Perintah berikut menyalin berkas backup ke folder sementara, memeriksanya (benar-benar database Zentix, `integrity_check` ok, tabel dan isinya terhitung), lalu menghapus salinannya. Berkas backup tidak diubah dan bot tidak perlu menyala:
+
+```bash
+npm run restore:drill:sqlite -- --input backups/zentix-TANGGAL-HEX.db
+```
+
+Bila perintah ini gagal, jangan pakai berkas itu untuk pemulihan.
+
 ## Docker
 
 `docker-compose.yml` menjalankan bot bersama PostgreSQL. Bila image dijalankan sendiri tanpa PostgreSQL, data ada di `/usr/src/app/data` di dalam container dan hilang saat container dibuat ulang, kecuali folder itu dipasang sebagai volume:
@@ -116,7 +126,7 @@ Simpan cadangan di luar server bot. Berkas cadangan berisi seluruh data bot tanp
 docker run -v zentix-data:/usr/src/app/data ...
 ```
 
-Image ini belum pernah dibangun atau dijalankan dalam pengujian.
+Image ini belum pernah dibangun atau dijalankan dalam pengujian. Image memakai user non-root (`node`) dan `HEALTHCHECK` ke `/health`; untuk monitoring dengan cek database, pakai `/ready`.
 
 ## Port
 

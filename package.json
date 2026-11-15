@@ -26,7 +26,8 @@
     "backup:db": "node scripts/backup.js",
     "restore:db": "node scripts/restore.js",
     "backup:drill": "node scripts/restore-drill.js",
-    "test": "node --test --test-concurrency=1 tests/*.test.js"
+    "test": "node --test --test-concurrency=1 tests/*.test.js",
+    "restore:drill:sqlite": "node scripts/restore-drill-sqlite.js"
   },
   "dependencies": {
     "@discordjs/rest": "^2.6.1",
