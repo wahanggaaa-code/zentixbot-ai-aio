@@ -1,5 +1,5 @@
 import { ChannelType } from 'discord.js';
-import { successEmbed } from '../../../utils/embeds.js';
+import { v2Success, v2Message } from '../../../utils/componentsV2.js';
 import { getCounterTypeLabel } from '../../../services/serverstatsService.js';
 import { createCounter } from '../../../services/serverStats/manage.js';
 import { logger } from '../../../utils/logger.js';
@@ -36,7 +36,7 @@ export async function handleCreate(interaction, client) {
                 : 'The name follows the member count. Discord limits how often a channel can be renamed, so a change can take a few minutes to show.',
             'The channel uses the permissions of its category: lock the category if members should not join or write there.',
         ];
-        await InteractionHelper.safeEditReply(interaction, { embeds: [successEmbed(lines.join('\n'))] }).catch(logger.error);
+        await InteractionHelper.safeEditReply(interaction, { ...v2Message([v2Success(lines.join('\n'))]), allowedMentions: { parse: [] } }).catch(logger.error);
     } catch (error) {
         const where = error?.code === 'SERVERSTATS_DUPLICATE' && guild.channels.cache.get(error.channelId)
             ? ` It is in ${guild.channels.cache.get(error.channelId)}.` : '';

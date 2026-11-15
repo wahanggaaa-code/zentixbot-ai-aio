@@ -1,7 +1,8 @@
 import { ActionRowBuilder, MessageFlags, ModalBuilder, TextInputBuilder, TextInputStyle } from 'discord.js';
 import { replyUserError, ErrorTypes } from '../utils/errorHandler.js';
 import { evaluateMathExpression } from '../utils/safeMathParser.js';
-import { OPERATIONS, formatResult, mathFailureMessage, resultButtons, resultEmbed } from '../commands/Tools/calculate.js';
+import { OPERATIONS, formatResult, mathFailureMessage, resultButtons, resultContainer } from '../commands/Tools/calculate.js';
+import { v2Message } from '../utils/componentsV2.js';
 
 const PRIVATE = MessageFlags.Ephemeral;
 const GONE = 'This calculator is no longer valid. Use `/calculate` again.';
@@ -64,7 +65,7 @@ export async function calculatorModal(interaction, client, args) {
     }
 
     const expression = `${formatResult(left)} ${OPERATIONS[operation].sign} (${typed})`;
-    const payload = { embeds: [resultEmbed(expression, value)], components: [resultButtons(interaction.user.id, value)] };
+    const payload = { ...v2Message([resultContainer(expression, value), resultButtons(interaction.user.id, value)]) };
     // Opened from the buttons under a result: that message shows the new result.
     if (interaction.isFromMessage?.()) return interaction.update(payload);
     return interaction.reply({ ...payload, flags: PRIVATE });

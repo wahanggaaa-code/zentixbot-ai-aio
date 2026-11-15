@@ -1,5 +1,5 @@
 import { SlashCommandBuilder, escapeMarkdown } from 'discord.js';
-import { successEmbed, warningEmbed } from '../../utils/embeds.js';
+import { v2Message, createV2Container } from '../../utils/componentsV2.js';
 import { logger } from '../../utils/logger.js';
 
 import { InteractionHelper } from '../../utils/interactionHelper.js';
@@ -33,19 +33,23 @@ export default {
     const opponent = interaction.options.getUser("opponent");
 
     if (challenger.id === opponent.id) {
-      const embed = warningEmbed(
-        "⚔️ Invalid Challenge",
-        `**${nameOf(challenger)}**, you can't fight yourself! That's a draw before it even starts.`
-      );
-      return await InteractionHelper.safeEditReply(interaction, { embeds: [embed] });
+      const container = createV2Container({
+        title: '⚔️ Invalid Challenge',
+        description: `**${nameOf(challenger)}**, you can't fight yourself! That's a draw before it even starts.`,
+        color: 'warning',
+        raw: true,
+      });
+      return await InteractionHelper.safeEditReply(interaction, { ...v2Message([container]), allowedMentions: { parse: [] } });
     }
 
     if (opponent.bot) {
-      const embed = warningEmbed(
-        "⚔️ Invalid Opponent",
-        "You can't fight bots! Challenge a real person instead."
-      );
-      return await InteractionHelper.safeEditReply(interaction, { embeds: [embed] });
+      const container = createV2Container({
+        title: '⚔️ Invalid Opponent',
+        description: "You can't fight bots! Challenge a real person instead.",
+        color: 'warning',
+        raw: true,
+      });
+      return await InteractionHelper.safeEditReply(interaction, { ...v2Message([container]), allowedMentions: { parse: [] } });
     }
 
     const rounds = rand(3, 7);
@@ -84,12 +88,14 @@ export default {
       ? fullDescription
       : `${fullDescription.slice(0, EMBED_DESCRIPTION_LIMIT - 15)}\n\n...`;
 
-    const embed = successEmbed(
-      "🏆 Duel Complete!",
-      description
-    );
+    const container = createV2Container({
+      title: '🏆 Duel Complete!',
+      description,
+      color: 'success',
+      raw: true,
+    });
 
-    await InteractionHelper.safeEditReply(interaction, { embeds: [embed] });
+    await InteractionHelper.safeEditReply(interaction, { ...v2Message([container]), allowedMentions: { parse: [] } });
     logger.debug(`Fight command executed between ${challenger.id} and ${opponent.id} in guild ${interaction.guildId}`);
   },
 };

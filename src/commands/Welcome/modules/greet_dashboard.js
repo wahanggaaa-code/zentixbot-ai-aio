@@ -1,4 +1,3 @@
-import { getColor } from '../../../config/bot.js';
 import {
     ActionRowBuilder,
     StringSelectMenuBuilder,
@@ -12,14 +11,13 @@ import {
     ChannelType,
     MessageFlags,
     ComponentType,
-    EmbedBuilder,
     LabelBuilder,
     FileUploadBuilder,
     TextDisplayBuilder,
 } from 'discord.js';
 import { InteractionHelper } from '../../../utils/interactionHelper.js';
 import { wrapDashboardHandler } from '../../../utils/dashboardSession.js';
-import { successEmbed } from '../../../utils/embeds.js';
+import { createV2Container, v2Success, v2Message } from '../../../utils/componentsV2.js';
 import { logger } from '../../../utils/logger.js';
 import { ZentixBotError, ErrorTypes, replyUserError } from '../../../utils/errorHandler.js';
 import { getWelcomeConfigForEditing, saveWelcomeConfig } from '../../../utils/database.js';
@@ -39,18 +37,20 @@ async function deferComponent(interaction) {
     }
 }
 
+const dashboardPayload = (container, components = []) => ({
+    ...v2Message([container, ...components], { ephemeral: true }),
+    allowedMentions: { parse: [] },
+});
+
 async function sendEphemeralFollowUp(interaction, payload) {
     try {
-        await interaction.followUp({
-            ...payload,
-            flags: MessageFlags.Ephemeral,
-        });
+        await interaction.followUp(payload);
     } catch (error) {
         logger.debug('Failed to send ephemeral follow-up:', error.message);
     }
 }
 
-function buildDashboardEmbed(cfg, guild) {
+function buildDashboardContainer(cfg, guild) {
     const welcomeChannel = cfg.channelId ? `<#${cfg.channelId}>` : '`Not set`';
     const goodbyeChannel = cfg.goodbyeChannelId ? `<#${cfg.goodbyeChannelId}>` : '`Not set`';
 
@@ -59,24 +59,23 @@ function buildDashboardEmbed(cfg, guild) {
     const welcomePreview = `\`${rawWelcome.length > 55 ? rawWelcome.substring(0, 55) + '…' : rawWelcome}\``;
     const goodbyePreview = `\`${rawGoodbye.length > 55 ? rawGoodbye.substring(0, 55) + '…' : rawGoodbye}\``;
 
-    return new EmbedBuilder()
-        .setTitle('👋 Greet System Dashboard')
-        .setDescription(
-            `Manage welcome & goodbye settings for **${guild.name}**.\nUse the toggles to enable/disable each side, then select an option to edit.`,
-        )
-        .setColor(getColor('info'))
-        .addFields(
-            { name: 'Welcome Channel', value: welcomeChannel, inline: true },
-            { name: 'Welcome Status', value: cfg.enabled ? 'Enabled' : 'Disabled', inline: true },
-            { name: 'Welcome Ping', value: cfg.welcomePing ? 'On' : 'Off', inline: true },
-            { name: 'Goodbye Channel', value: goodbyeChannel, inline: true },
-            { name: 'Goodbye Status', value: cfg.goodbyeEnabled ? 'Enabled' : 'Disabled', inline: true },
-            { name: 'Goodbye Ping', value: cfg.goodbyePing ? 'On' : 'Off', inline: true },
-            { name: 'Welcome Message', value: welcomePreview, inline: false },
-            { name: 'Goodbye Message', value: goodbyePreview, inline: false },
-        )
-        .setFooter({ text: 'Dashboard closes after 10 minutes of inactivity' })
-        .setTimestamp();
+    return createV2Container({
+        title: '👋 Greet System Dashboard',
+        description: `Manage welcome & goodbye settings for **${guild.name}**.\nUse the toggles to enable/disable each side, then select an option to edit.`,
+        color: 'info',
+        raw: true,
+        fields: [
+            { name: 'Welcome Channel', value: welcomeChannel },
+            { name: 'Welcome Status', value: cfg.enabled ? 'Enabled' : 'Disabled' },
+            { name: 'Welcome Ping', value: cfg.welcomePing ? 'On' : 'Off' },
+            { name: 'Goodbye Channel', value: goodbyeChannel },
+            { name: 'Goodbye Status', value: cfg.goodbyeEnabled ? 'Enabled' : 'Disabled' },
+            { name: 'Goodbye Ping', value: cfg.goodbyePing ? 'On' : 'Off' },
+            { name: 'Welcome Message', value: welcomePreview },
+            { name: 'Goodbye Message', value: goodbyePreview },
+        ],
+        footer: 'Dashboard closes after 10 minutes of inactivity',
+    });
 }
 
 function buildSelectMenu(guildId) {
@@ -158,13 +157,11 @@ function buildButtonRow(cfg, guildId, disabled = false) {
 async function refreshDashboard(rootInteraction, cfg, guildId) {
     try {
         const selectMenu = buildSelectMenu(guildId);
-        await InteractionHelper.safeEditReply(rootInteraction, {
-            embeds: [buildDashboardEmbed(cfg, rootInteraction.guild)],
-            components: [
+        await InteractionHelper.safeEditReply(rootInteraction,
+            dashboardPayload(buildDashboardContainer(cfg, rootInteraction.guild), [
                 ...buildButtonRow(cfg, guildId),
                 new ActionRowBuilder().addComponents(selectMenu),
-            ],
-        });
+            ]));
     } catch (error) {
         logger.debug('Could not refresh greet dashboard (interaction may have expired):', error.message);
     }
@@ -192,13 +189,11 @@ export default {
 
             const selectMenu = buildSelectMenu(guildId);
 
-            await InteractionHelper.safeEditReply(interaction, {
-                embeds: [buildDashboardEmbed(cfg, interaction.guild)],
-                components: [
+            await InteractionHelper.safeEditReply(interaction,
+                dashboardPayload(buildDashboardContainer(cfg, interaction.guild), [
                     ...buildButtonRow(cfg, guildId),
                     new ActionRowBuilder().addComponents(selectMenu),
-                ],
-            });
+                ]));
 
             const collector = interaction.channel.createMessageComponentCollector({
                 componentType: ComponentType.StringSelect,
@@ -275,47 +270,27 @@ export default {
                     if (customId === `greet_cfg_toggle_welcome_${guildId}`) {
                         cfg.enabled = !cfg.enabled;
                         await saveWelcomeConfig(client, guildId, cfg);
-                        await sendEphemeralFollowUp(btnInteraction, {
-                            embeds: [
-                                successEmbed(
-                                    '✅ Welcome Updated',
+                        await sendEphemeralFollowUp(btnInteraction, dashboardPayload(v2Success('✅ Welcome Updated',
                                     `Welcome messages are now **${cfg.enabled ? 'enabled' : 'disabled'}**.`,
-                                ),
-                            ],
-                        });
+                                )));
                     } else if (customId === `greet_cfg_toggle_goodbye_${guildId}`) {
                         cfg.goodbyeEnabled = !cfg.goodbyeEnabled;
                         await saveWelcomeConfig(client, guildId, cfg);
-                        await sendEphemeralFollowUp(btnInteraction, {
-                            embeds: [
-                                successEmbed(
-                                    '✅ Goodbye Updated',
+                        await sendEphemeralFollowUp(btnInteraction, dashboardPayload(v2Success('✅ Goodbye Updated',
                                     `Goodbye messages are now **${cfg.goodbyeEnabled ? 'enabled' : 'disabled'}**.`,
-                                ),
-                            ],
-                        });
+                                )));
                     } else if (customId === `greet_cfg_ping_welcome_${guildId}`) {
                         cfg.welcomePing = !cfg.welcomePing;
                         await saveWelcomeConfig(client, guildId, cfg);
-                        await sendEphemeralFollowUp(btnInteraction, {
-                            embeds: [
-                                successEmbed(
-                                    '✅ Welcome Ping Updated',
+                        await sendEphemeralFollowUp(btnInteraction, dashboardPayload(v2Success('✅ Welcome Ping Updated',
                                     `Joining users will${cfg.welcomePing ? '' : ' **not**'} be pinged in the welcome message.`,
-                                ),
-                            ],
-                        });
+                                )));
                     } else if (customId === `greet_cfg_ping_goodbye_${guildId}`) {
                         cfg.goodbyePing = !cfg.goodbyePing;
                         await saveWelcomeConfig(client, guildId, cfg);
-                        await sendEphemeralFollowUp(btnInteraction, {
-                            embeds: [
-                                successEmbed(
-                                    '✅ Goodbye Ping Updated',
+                        await sendEphemeralFollowUp(btnInteraction, dashboardPayload(v2Success('✅ Goodbye Ping Updated',
                                     `Leaving users will${cfg.goodbyePing ? '' : ' **not**'} be pinged in the goodbye message.`,
-                                ),
-                            ],
-                        });
+                                )));
                     }
 
                     await refreshDashboard(interaction, cfg, guildId);
@@ -332,15 +307,12 @@ export default {
                 if (reason === 'time') {
                     btnCollector.stop();
                     try {
-                        await InteractionHelper.safeEditReply(interaction, {
-                            embeds: [
-                                new EmbedBuilder()
-                                    .setTitle('Dashboard Timed Out')
-                                    .setDescription('This dashboard has been closed due to inactivity. Please run the command again to continue.')
-                                    .setColor(getColor('error'))
-                            ],
-                            components: [],
-                        });
+                        await InteractionHelper.safeEditReply(interaction,
+                            v2Message([createV2Container({
+                                title: 'Dashboard Timed Out',
+                                description: 'This dashboard has been closed due to inactivity. Please run the command again to continue.',
+                                color: 'error',
+                            })], { ephemeral: true }));
                     } catch (error) {
                         logger.debug('Could not update dashboard on timeout:', error.message);
                     }
@@ -369,17 +341,15 @@ async function handleWelcomeChannel(selectInteraction, rootInteraction, cfg, gui
         .addChannelTypes(ChannelType.GuildText)
         .setMaxValues(1);
 
-    await sendEphemeralFollowUp(selectInteraction, {
-        embeds: [
-            new EmbedBuilder()
-                .setTitle('🟢 Welcome Channel')
-                .setDescription(
-                    `**Current:** ${cfg.channelId ?`<#${cfg.channelId}>`: '`Not set`'}\n\nSelect the channel where welcome messages will be sent.`,
-                )
-                .setColor(getColor('info')),
-        ],
-        components: [new ActionRowBuilder().addComponents(channelSelect)],
-    });
+    await sendEphemeralFollowUp(selectInteraction, dashboardPayload(
+        createV2Container({
+            title: '🟢 Welcome Channel',
+            description: `**Current:** ${cfg.channelId ?`<#${cfg.channelId}>`: '`Not set`'}\n\nSelect the channel where welcome messages will be sent.`,
+            color: 'info',
+            raw: true,
+        }),
+        [new ActionRowBuilder().addComponents(channelSelect)],
+    ));
 
     const chanCollector = rootInteraction.channel.createMessageComponentCollector({
         componentType: ComponentType.ChannelSelect,
@@ -406,9 +376,7 @@ async function handleWelcomeChannel(selectInteraction, rootInteraction, cfg, gui
         cfg.channelId = channel.id;
         await saveWelcomeConfig(client, guildId, cfg);
 
-        await sendEphemeralFollowUp(chanInteraction, {
-            embeds: [successEmbed('Channel Updated', `Welcome messages will now be sent in ${channel}.`)],
-        });
+        await sendEphemeralFollowUp(chanInteraction, dashboardPayload(v2Success('Channel Updated', `Welcome messages will now be sent in ${channel}.`)));
 
         await refreshDashboard(rootInteraction, cfg, guildId);
     }, 'nested greet dashboard selection'));
@@ -459,10 +427,7 @@ async function handleWelcomeMessage(selectInteraction, rootInteraction, cfg, gui
     cfg.welcomeMessage = submitted.fields.getTextInputValue('message_input').trim();
     await saveWelcomeConfig(client, guildId, cfg);
 
-    await submitted.reply({
-        embeds: [successEmbed('Welcome Message Updated', 'The welcome message has been saved.')],
-        flags: MessageFlags.Ephemeral,
-    });
+    await submitted.reply(v2Message([v2Success('Welcome Message Updated', 'The welcome message has been saved.')], { ephemeral: true }));
 
     await refreshDashboard(rootInteraction, cfg, guildId);
 }
@@ -533,10 +498,7 @@ async function handleWelcomeImage(selectInteraction, rootInteraction, cfg, guild
     cfg.welcomeImage = imageUrl || null;
     await saveWelcomeConfig(client, guildId, cfg);
 
-    await submitted.reply({
-        embeds: [successEmbed('Welcome Image Updated', `Image ${imageUrl ? 'updated' : 'removed'} successfully.`)],
-        flags: MessageFlags.Ephemeral,
-    });
+    await submitted.reply(v2Message([v2Success('Welcome Image Updated', `Image ${imageUrl ? 'updated' : 'removed'} successfully.`)], { ephemeral: true }));
 
     await refreshDashboard(rootInteraction, cfg, guildId);
 }
@@ -549,14 +511,9 @@ async function handleWelcomePing(selectInteraction, rootInteraction, cfg, guildI
     cfg.welcomePing = !cfg.welcomePing;
     await saveWelcomeConfig(client, guildId, cfg);
 
-    await sendEphemeralFollowUp(selectInteraction, {
-        embeds: [
-            successEmbed(
-                '✅ Welcome Ping Updated',
+    await sendEphemeralFollowUp(selectInteraction, dashboardPayload(v2Success('✅ Welcome Ping Updated',
                 `Joining users will${cfg.welcomePing ? '' : ' **not**'} be pinged in the welcome message.`,
-            ),
-        ],
-    });
+            )));
 
     await refreshDashboard(rootInteraction, cfg, guildId);
 }
@@ -572,17 +529,15 @@ async function handleGoodbyeChannel(selectInteraction, rootInteraction, cfg, gui
         .addChannelTypes(ChannelType.GuildText)
         .setMaxValues(1);
 
-    await sendEphemeralFollowUp(selectInteraction, {
-        embeds: [
-            new EmbedBuilder()
-                .setTitle('🔴 Goodbye Channel')
-                .setDescription(
-                    `**Current:** ${cfg.goodbyeChannelId ?`<#${cfg.goodbyeChannelId}>`: '`Not set`'}\n\nSelect the channel where goodbye messages will be sent.`,
-                )
-                .setColor(getColor('info')),
-        ],
-        components: [new ActionRowBuilder().addComponents(channelSelect)],
-    });
+    await sendEphemeralFollowUp(selectInteraction, dashboardPayload(
+        createV2Container({
+            title: '🔴 Goodbye Channel',
+            description: `**Current:** ${cfg.goodbyeChannelId ?`<#${cfg.goodbyeChannelId}>`: '`Not set`'}\n\nSelect the channel where goodbye messages will be sent.`,
+            color: 'info',
+            raw: true,
+        }),
+        [new ActionRowBuilder().addComponents(channelSelect)],
+    ));
 
     const chanCollector = rootInteraction.channel.createMessageComponentCollector({
         componentType: ComponentType.ChannelSelect,
@@ -609,9 +564,7 @@ async function handleGoodbyeChannel(selectInteraction, rootInteraction, cfg, gui
         cfg.goodbyeChannelId = channel.id;
         await saveWelcomeConfig(client, guildId, cfg);
 
-        await sendEphemeralFollowUp(chanInteraction, {
-            embeds: [successEmbed('Channel Updated', `Goodbye messages will now be sent in ${channel}.`)],
-        });
+        await sendEphemeralFollowUp(chanInteraction, dashboardPayload(v2Success('Channel Updated', `Goodbye messages will now be sent in ${channel}.`)));
 
         await refreshDashboard(rootInteraction, cfg, guildId);
     }, 'nested greet dashboard selection'));
@@ -662,10 +615,7 @@ async function handleGoodbyeMessage(selectInteraction, rootInteraction, cfg, gui
     cfg.leaveMessage = submitted.fields.getTextInputValue('message_input').trim();
     await saveWelcomeConfig(client, guildId, cfg);
 
-    await submitted.reply({
-        embeds: [successEmbed('Goodbye Message Updated', 'The goodbye message has been saved.')],
-        flags: MessageFlags.Ephemeral,
-    });
+    await submitted.reply(v2Message([v2Success('Goodbye Message Updated', 'The goodbye message has been saved.')], { ephemeral: true }));
 
     await refreshDashboard(rootInteraction, cfg, guildId);
 }
@@ -747,10 +697,7 @@ async function handleGoodbyeImage(selectInteraction, rootInteraction, cfg, guild
     cfg.leaveEmbed = nextLeaveEmbed;
     await saveWelcomeConfig(client, guildId, cfg);
 
-    await submitted.reply({
-        embeds: [successEmbed('Goodbye Image Updated', `Image ${imageUrl ? 'updated' : 'removed'} successfully.`)],
-        flags: MessageFlags.Ephemeral,
-    });
+    await submitted.reply(v2Message([v2Success('Goodbye Image Updated', `Image ${imageUrl ? 'updated' : 'removed'} successfully.`)], { ephemeral: true }));
 
     await refreshDashboard(rootInteraction, cfg, guildId);
 }
@@ -763,14 +710,9 @@ async function handleGoodbyePing(selectInteraction, rootInteraction, cfg, guildI
     cfg.goodbyePing = !cfg.goodbyePing;
     await saveWelcomeConfig(client, guildId, cfg);
 
-    await sendEphemeralFollowUp(selectInteraction, {
-        embeds: [
-            successEmbed(
-                '✅ Goodbye Ping Updated',
+    await sendEphemeralFollowUp(selectInteraction, dashboardPayload(v2Success('✅ Goodbye Ping Updated',
                 `Leaving users will${cfg.goodbyePing ? '' : ' **not**'} be pinged in the goodbye message.`,
-            ),
-        ],
-    });
+            )));
 
     await refreshDashboard(rootInteraction, cfg, guildId);
 }

@@ -1,6 +1,6 @@
 import express from 'express';
 import { createHash } from 'node:crypto';
-import { ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelType, EmbedBuilder, PermissionFlagsBits } from 'discord.js';
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelType, PermissionFlagsBits } from 'discord.js';
 import { pgConfig } from '../config/database/postgres.js';
 import { sqliteBackend } from '../services/storage/sqlite.js';
 import { unwrapReplitData } from '../utils/database/guildConfigStorage.js';
@@ -8,6 +8,7 @@ import { normalizeGuildConfig } from '../utils/schemas.js';
 import { GUILD_CONFIG_DEFAULTS } from '../config/guild/guildConfigDefaults.js';
 import { EVENT_TYPES } from '../services/loggingService.js';
 import { messageHasPanelMarker } from '../utils/panelStatus.js';
+import { createV2Container, v2Message } from '../utils/componentsV2.js';
 import { Mutex } from '../utils/mutex.js';
 import { assertOnboardingCompatible, assertOnboardingShape } from '../services/config/onboardingConflict.js';
 import { checkRewardRole, listRewardEntries } from '../services/leveling/rewardRoles.js';
@@ -228,7 +229,7 @@ export function createModulesApi(client,{auth,csrf}) {
     if(msg && (msg.author?.id!==client.user.id || !messageHasPanelMarker(msg,{buttonCustomId:marker})))throw bad('Pesan lama bukan panel bot yang sesuai.',409);
    }
    if (!msg) {const recent=await channel.messages.fetch({limit:50});msg=[...recent.values()].find(m=>m.author?.id===client.user.id && messageHasPanelMarker(m,{buttonCustomId:marker}))||null;}
-   const body=kind==='verification'?{embeds:[new EmbedBuilder().setTitle('Server Verification').setDescription(v.message||'Click the button below to verify.').setColor(0x57f287)],components:[new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(marker).setLabel(v.buttonText||'Verify').setStyle(ButtonStyle.Success).setEmoji('✅'))],allowedMentions:{parse:[]}}:{embeds:[new EmbedBuilder().setTitle('Support Tickets').setDescription(v.ticketPanelMessage||'Click to create a ticket.').setColor(0x5865f2)],components:[new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(marker).setLabel(v.ticketButtonLabel||'Create Ticket').setStyle(ButtonStyle.Primary).setEmoji('📩'))],allowedMentions:{parse:[]}};
+   const body=kind==='verification'?{...v2Message([createV2Container({title:'Server Verification',description:v.message||'Click the button below to verify.',color:'success'}),new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(marker).setLabel(v.buttonText||'Verify').setStyle(ButtonStyle.Success).setEmoji('✅'))]),allowedMentions:{parse:[]}}:{...v2Message([createV2Container({title:'Support Tickets',description:v.ticketPanelMessage||'Click to create a ticket.',color:'blurple'}),new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(marker).setLabel(v.ticketButtonLabel||'Create Ticket').setStyle(ButtonStyle.Primary).setEmoji('📩'))]),allowedMentions:{parse:[]}};
    if(msg){await msg.edit(body);}else{msg=await channel.send(body);}
    try{await transaction(client,req.guild.id,c=>{if(kind==='verification'){if(c.verification?.channelId!==cid)throw bad('Konfigurasi berubah; periksa panel Discord.',409);c.verification={...c.verification,messageId:msg.id};}else{if(c.ticketPanelChannelId!==cid)throw bad('Konfigurasi berubah; periksa panel Discord.',409);c.ticketPanelMessageId=msg.id;}});}catch(e){throw bad('Panel dikirim/diperbarui tetapi ID tidak dapat disimpan. Periksa Discord sebelum mencoba lagi.',409);}
    return {messageId:msg.id};

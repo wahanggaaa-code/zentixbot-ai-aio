@@ -1,5 +1,4 @@
 import { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } from 'discord.js';
-import { successEmbed } from '../../utils/embeds.js';
 import { logger } from '../../utils/logger.js';
 import { replyUserError, ErrorTypes } from '../../utils/errorHandler.js';
 import { InteractionHelper } from '../../utils/interactionHelper.js';
@@ -10,6 +9,7 @@ import {
     addSharedMember, removeSharedMember, leaveShared, deleteShared,
 } from '../../services/todo/lists.js';
 import { personalEmbed, refusalMessage, sharedIndexEmbed, sharedPayload, shown, storageFailureMessage } from '../../services/todo/view.js';
+import { v2Message, v2Success } from '../../utils/componentsV2.js';
 
 const listId = (option) => option.setName('list_id').setDescription('ID of the shared list (see /todo share lists)').setRequired(true).setMinLength(1).setMaxLength(64);
 const taskText = (option) => option.setName('task').setDescription('The task to add').setRequired(true).setMinLength(1).setMaxLength(MAX_TASK_LENGTH);
@@ -61,7 +61,7 @@ export default {
             return;
         }
 
-        const done = (title, body) => InteractionHelper.safeEditReply(interaction, { embeds: [successEmbed(title, body)] });
+        const done = (title, body) => InteractionHelper.safeEditReply(interaction, v2Message([v2Success(title, body)]));
         const refuse = (reason) => replyUserError(interaction, { type: ErrorTypes.VALIDATION, message: refusalMessage(reason) });
 
         try {
@@ -74,7 +74,7 @@ export default {
                         return await done('Shared List Created', `Created the shared list **${shown(out.list.name, 120)}** with ID \`${out.list.id}\`.\nAdd members with \`/todo share add\`; find the ID again with \`/todo share lists\`.`);
                     }
                     case 'lists':
-                        return await InteractionHelper.safeEditReply(interaction, { embeds: [sharedIndexEmbed(await listShared(client, userId), userId)] });
+                        return await InteractionHelper.safeEditReply(interaction, v2Message([sharedIndexEmbed(await listShared(client, userId), userId)]));
                     case 'view': {
                         const out = await readShared(client, id, userId);
                         if (!out.ok) return await refuse(out.reason);
@@ -131,7 +131,7 @@ export default {
                 }
                 case 'list': {
                     const list = await readPersonal(client, userId);
-                    return await InteractionHelper.safeEditReply(interaction, { embeds: [personalEmbed(list, options.getInteger('page') ?? 1)] });
+                    return await InteractionHelper.safeEditReply(interaction, v2Message([personalEmbed(list, options.getInteger('page') ?? 1)]));
                 }
                 case 'complete': {
                     const out = await completePersonalTask(client, userId, options.getInteger('number'));

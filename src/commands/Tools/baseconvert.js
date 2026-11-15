@@ -1,5 +1,5 @@
 import { SlashCommandBuilder } from 'discord.js';
-import { createEmbed } from '../../utils/embeds.js';
+import { createV2Container, v2Message } from '../../utils/componentsV2.js';
 import { logger } from '../../utils/logger.js';
 import { replyUserError, ErrorTypes } from '../../utils/errorHandler.js';
 import { InteractionHelper } from '../../utils/interactionHelper.js';
@@ -116,7 +116,7 @@ export default {
             }
         }
 
-        const embed = createEmbed({ title: toKey ? 'Base Conversion Result' : 'Base Conversion Results', description: lines.join('\n'), color: 'success' });
-        await InteractionHelper.safeEditReply(interaction, { embeds: [embed] });
+        const container = createV2Container({ title: toKey ? 'Base Conversion Result' : 'Base Conversion Results', description: lines.join('\n'), color: 'success' });
+        await InteractionHelper.safeEditReply(interaction, v2Message([container]));
     },
 };

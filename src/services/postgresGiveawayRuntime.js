@@ -1,8 +1,8 @@
 import {MessageFlags} from 'discord.js';
 import {ZentixBotError,ErrorTypes} from '../utils/errorHandler.js';
-import {successEmbed} from '../utils/embeds.js';
 import {InteractionHelper} from '../utils/interactionHelper.js';
-import {createGiveawayEmbed,createGiveawayButtons} from './giveawayService.js';
+import {buildGiveawayComponents} from './giveawayService.js';
+import { v2Message, createV2Container } from '../utils/componentsV2.js';
 import {inspectPostgresGiveaway,claimPostgresGiveaway,completePostgresGiveawayDelivery,duePostgresGiveaways} from './storage/postgresGiveawayTransactions.js';
 import {logger} from '../utils/logger.js';
 
@@ -14,8 +14,7 @@ export async function performPostgresGiveawayDelivery(client,guildId,messageId,c
  const action=claim.action;
  const status=action==='reroll'?'reroll':'ended';
  const giveaway={...claim,participants:{length:claim.entries}};
- const embed=createGiveawayEmbed(giveaway,status,claim.winners);
- await message.edit({content:action==='reroll'?'🔄 **GIVEAWAY REROLLED** 🔄':'🎉 **GIVEAWAY ENDED** 🎉',embeds:[embed],components:[createGiveawayButtons(true)],allowedMentions:{parse:[]}});
+ await message.edit({content:null,...v2Message(buildGiveawayComponents(giveaway,status,claim.winners)),allowedMentions:{parse:[]}});
  const mention=claim.winners.length?claim.winners.map(x=>`<@${x}>`).join(', '):'No valid entries';
  const payload={content:action==='reroll'?`🔄 New winner(s): ${mention}. Prize: **${claim.prize}**.`:`🎉 Giveaway ended! Winner(s): ${mention}. Prize: **${claim.prize}**.`,allowedMentions:{parse:[],users:claim.winners}};
  const announcement=previousPing?await previousPing.edit(payload):await channel.send(payload);
@@ -51,7 +50,7 @@ export async function deliverPostgresGiveaway(client,guildId,messageId,action,ac
 export async function runPostgresGiveawayInteraction(interaction,client,action,messageId,expectedChannelId=null){
  if(!await InteractionHelper.safeDefer(interaction,{flags:MessageFlags.Ephemeral}))throw error('Could not acknowledge the Discord interaction. No action was started.');
  const result=await deliverPostgresGiveaway(client,interaction.guildId,messageId,action,interaction.user.id,expectedChannelId);
- return InteractionHelper.safeReply(interaction,{embeds:[successEmbed('Giveaway updated',`Result delivered: ${result.winners} winner(s) from ${result.entries} stored entries.`)],flags:MessageFlags.Ephemeral});
+ return InteractionHelper.safeReply(interaction,{...v2Message([createV2Container({ title: 'Giveaway updated', description: `Result delivered: ${result.winners} winner(s) from ${result.entries} stored entries.`, color: 'success' })], { ephemeral: true })});
 }
 export async function checkPostgresGiveaways(client){
  const guildId=client.homeGuildId;const ids=await duePostgresGiveaways(client,guildId);

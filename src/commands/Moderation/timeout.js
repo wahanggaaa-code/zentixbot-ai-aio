@@ -1,9 +1,11 @@
 import { SlashCommandBuilder, PermissionFlagsBits } from 'discord.js';
-import { successEmbed } from '../../utils/embeds.js';
+
 import { logger } from '../../utils/logger.js';
 import { ZentixBotError, ErrorTypes } from '../../utils/errorHandler.js';
 import { InteractionHelper } from '../../utils/interactionHelper.js';
 import { ModerationService } from '../../services/moderation/moderationService.js';
+import { createV2Container, v2Message } from '../../utils/componentsV2.js';
+
 
 const durationChoices = [
     { name: "5 minutes", value: 5 },
@@ -100,12 +102,7 @@ export default {
                 ?.name || `${durationMinutes} minutes`;
 
         await InteractionHelper.safeEditReply(interaction, {
-            embeds: [
-                successEmbed(
-                    `⏳ **Timed out** ${targetUser.tag} for ${durationDisplay}.`,
-                    `**Reason:** ${reason}\n**Case ID:** #${result.caseId}`,
-                ),
-            ],
+            ...v2Message([createV2Container({ title: `⏳ **Timed out** ${targetUser.tag} for ${durationDisplay}.`, description: `**Reason:** ${reason}\n**Case ID:** #${result.caseId}`, color: 'success' })]),
         });
     },
 };

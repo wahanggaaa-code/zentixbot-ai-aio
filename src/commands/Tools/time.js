@@ -1,5 +1,5 @@
 import { SlashCommandBuilder, MessageFlags } from 'discord.js';
-import { createEmbed } from '../../utils/embeds.js';
+import { createV2Container, v2Message } from '../../utils/componentsV2.js';
 import { logger } from '../../utils/logger.js';
 import { replyUserError, ErrorTypes } from '../../utils/errorHandler.js';
 import { InteractionHelper } from '../../utils/interactionHelper.js';
@@ -46,11 +46,11 @@ export default {
             hour: '2-digit', minute: '2-digit', second: '2-digit', timeZoneName: 'short',
         });
         const unix = Math.floor(now.getTime() / 1000);
-        const embed = createEmbed({
+        const container = createV2Container({
             title: 'Current Time',
             description: `**${timeZone}:** ${local}\n**Your own time:** <t:${unix}:F>\n**Unix Timestamp:** \`${unix}\`\n**ISO String:** \`${now.toISOString()}\``,
             color: 'success',
         });
-        await InteractionHelper.safeEditReply(interaction, { embeds: [embed] });
+        await InteractionHelper.safeEditReply(interaction, v2Message([container]));
     },
 };

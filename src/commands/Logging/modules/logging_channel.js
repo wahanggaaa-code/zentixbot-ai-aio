@@ -1,6 +1,6 @@
 import { PermissionsBitField, ChannelType } from 'discord.js';
 import { setLogChannel } from '../../../services/loggingService.js';
-import { successEmbed } from '../../../utils/embeds.js';
+import { v2Success, v2Message } from '../../../utils/componentsV2.js';
 import { InteractionHelper } from '../../../utils/interactionHelper.js';
 import { logger } from '../../../utils/logger.js';
 
@@ -27,12 +27,11 @@ export default {
 
       if (disable) {
         await setLogChannel(client, interaction.guildId, destination, null);
-        return InteractionHelper.safeEditReply(interaction, {
-          embeds: [successEmbed(
+        return InteractionHelper.safeEditReply(interaction,
+          v2Message([v2Success(
             'Channel Cleared',
             `The **${DESTINATION_LABELS[destination]}** channel has been removed.`,
-          )],
-        });
+          )]));
       }
 
       if (!channel || channel.type !== ChannelType.GuildText) {
@@ -47,10 +46,11 @@ export default {
       await setLogChannel(client, interaction.guildId, destination, channel.id);
 
       return InteractionHelper.safeEditReply(interaction, {
-        embeds: [successEmbed(
+        ...v2Message([v2Success(
           'Channel Updated',
           `**${DESTINATION_LABELS[destination]}** logs will be sent to ${channel}.\nUse \`/logging dashboard\` to toggle event categories.`,
-        )],
+        )]),
+        allowedMentions: { parse: [] },
       });
     } catch (error) {
       logger.error('logging_channel error:', error);

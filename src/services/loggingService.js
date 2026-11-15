@@ -3,10 +3,11 @@
 import { ChannelType } from 'discord.js';
 import { getGuildConfig, updateGuildConfig } from './config/guildConfig.js';
 import { logger } from '../utils/logger.js';
+import { v2Message } from '../utils/componentsV2.js';
 import {
   appendContentSection,
   buildLogDescription,
-  buildStandardLogEmbed,
+  buildStandardLogContainer,
   fieldsToLines,
   splitComparisonFields,
 } from '../utils/logging/logEmbeds.js';
@@ -250,17 +251,17 @@ export async function logEvent({
       return null;
     }
 
-    const embed = createLogEmbed(guild, eventType, data);
+    const container = createLogContainer(guild, eventType, data, content);
 
-    const messageOptions = { embeds: [embed] };
-    if (content) {
-      messageOptions.content = content;
-    }
+    // The report ping is the only caller that asks for a mention; allow exactly the ids it carries
+    // and nothing else (deleted/updated message content lands in these logs too).
+    const pingIds = content ? [...String(content).matchAll(/<@!?(\d+)>/g)].map((match) => match[1]) : [];
+    const messageOptions = {
+      ...v2Message([container, ...components]),
+      allowedMentions: pingIds.length > 0 ? { parse: [], users: pingIds } : { parse: [] },
+    };
     if (attachments.length > 0) {
       messageOptions.files = attachments;
-    }
-    if (components.length > 0) {
-      messageOptions.components = components;
     }
 
     const sent = await channel.send(messageOptions);
@@ -272,10 +273,9 @@ export async function logEvent({
   }
 }
 
-function createLogEmbed(guild, eventType, data) {
+function createLogContainer(guild, eventType, data, content = null) {
   const color = data.color ?? EVENT_COLORS[eventType] ?? 0x0099ff;
-  const icon = EVENT_ICONS[eventType] || '📌';
-  const title = data.title || `${icon} ${formatEventType(eventType)}`;
+  const title = data.title || formatEventType(eventType);
 
   const inlineFields = [];
   let description = data.description || '';
@@ -332,7 +332,11 @@ function createLogEmbed(guild, eventType, data) {
     inlineFields.push(...data.inlineFields);
   }
 
-  return buildStandardLogEmbed({
+  if (content) {
+    description = description ? `${content}\n\n${description}` : String(content);
+  }
+
+  return buildStandardLogContainer({
     color,
     title,
     description: description || undefined,
@@ -341,7 +345,7 @@ function createLogEmbed(guild, eventType, data) {
     fields: data.blockFields || [],
     author: data.author || null,
     timestamp: true,
-    footer: data.footer || { text: guild.name, iconURL: guild.iconURL({ dynamic: true }) || undefined },
+    footer: data.footer || { text: guild.name },
   });
 }
 

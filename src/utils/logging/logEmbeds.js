@@ -1,6 +1,13 @@
-// logEmbeds.js — shared helpers for clean, scannable log embeds
+// logEmbeds.js — shared helpers for clean, scannable log messages (Components v2)
 
-import { EmbedBuilder } from 'discord.js';
+import {
+  ContainerBuilder,
+  SectionBuilder,
+  ThumbnailBuilder,
+  MediaGalleryBuilder,
+  MediaGalleryItemBuilder,
+} from 'discord.js';
+import { resolveAccentColor, v2Text, v2Separator } from '../componentsV2.js';
 
 const EMOJI_PREFIX = /^[\p{Extended_Pictographic}\uFE0F\s]+/u;
 
@@ -63,30 +70,6 @@ export function splitComparisonFields(fields = []) {
   return comparison;
 }
 
-export function applyLogFooter(embed, { guild, executorId, executorTag, executorAvatar, footerText } = {}) {
-  if (footerText) {
-    embed.setFooter({ text: footerText.slice(0, 2048), iconURL: executorAvatar || undefined });
-    return embed;
-  }
-
-  if (executorId && executorTag) {
-    embed.setFooter({
-      text: `${executorTag} • `,
-      iconURL: executorAvatar || undefined,
-    });
-    return embed;
-  }
-
-  if (guild) {
-    embed.setFooter({
-      text: guild.name,
-      iconURL: guild.iconURL({ dynamic: true }) || undefined,
-    });
-  }
-
-  return embed;
-}
-
 export function appendContentSection(description = '', label, content) {
   if (!content) {
     return description;
@@ -125,7 +108,10 @@ export async function resolveUserAuthor(client, userId) {
   }
 }
 
-export function buildStandardLogEmbed({
+// v2 replacement of buildStandardLogEmbed: information density of a classic log embed rendered
+// in a single accent-colored container. Timestamp renders as a small `-#` line (v2 has no native
+// timestamp); icons have no v2 equivalent, so footers show text only.
+export function buildStandardLogContainer({
   color,
   title,
   description,
@@ -136,41 +122,56 @@ export function buildStandardLogEmbed({
   author = null,
   timestamp = true,
   footer,
-}) {
-  const embed = new EmbedBuilder().setColor(color);
+} = {}) {
+  const container = new ContainerBuilder().setAccentColor(resolveAccentColor(color));
 
-  if (title) embed.setTitle(title.slice(0, 256));
-  if (description) embed.setDescription(description);
-  if (thumbnail) embed.setThumbnail(thumbnail);
-  if (image) embed.setImage(image);
-  if (author?.name) {
-    embed.setAuthor({
-      name: author.name.slice(0, 256),
-      iconURL: author.iconURL || undefined,
-    });
+  const top = [];
+  if (title) top.push(v2Text(`## ${String(title).slice(0, 256)}`));
+  if (author?.name) top.push(v2Text(`-# ${String(author.name).slice(0, 256)}`));
+  if (description) top.push(v2Text(String(description).slice(0, 4000)));
+
+  if (thumbnail && top.length > 0) {
+    try {
+      const section = new SectionBuilder().addTextDisplayComponents(...top);
+      section.setThumbnailAccessory(new ThumbnailBuilder().setURL(String(thumbnail)));
+      container.addSectionComponents(section);
+    } catch {
+      container.addTextDisplayComponents(...top);
+    }
+  } else if (top.length > 0) {
+    container.addTextDisplayComponents(...top);
+  }
+
+  if (image) {
+    const url = String(image).trim();
+    if (/^https?:\/\//i.test(url)) {
+      try {
+        container.addMediaGalleryComponents(
+          new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(url)),
+        );
+      } catch {
+        // Skip invalid image URLs instead of failing the whole log line.
+      }
+    }
   }
 
   const combinedFields = [...inlineFields, ...fields];
   if (combinedFields.length > 0) {
-    embed.addFields(
-      combinedFields.map((field) => ({
-        name: field.name.slice(0, 256),
-        value: String(field.value).slice(0, 1024),
-        inline: field.inline === true,
-      }))
-    );
+    const lines = combinedFields
+      .slice(0, 25)
+      .map((field) => `**${stripFieldLabel(String(field.name)).slice(0, 256)}:** ${String(field.value).slice(0, 1024)}`);
+    container.addSeparatorComponents(v2Separator({ divider: true, spacing: 1 }));
+    container.addTextDisplayComponents(v2Text(lines.join('\n')));
   }
 
-  if (timestamp) embed.setTimestamp();
-
-  if (footer?.text) {
-    embed.setFooter({
-      text: footer.text.slice(0, 2048),
-      iconURL: footer.iconURL || undefined,
-    });
+  const footerParts = [];
+  if (footer?.text) footerParts.push(String(footer.text).slice(0, 2048));
+  if (timestamp) footerParts.push(`<t:${Math.floor(Date.now() / 1000)}:F>`);
+  if (footerParts.length > 0) {
+    container.addTextDisplayComponents(v2Text(`-# ${footerParts.join(' • ')}`));
   }
 
-  return embed;
+  return container;
 }
 
 const MAX_DISPLAYED_ROLE_PERMISSIONS = 5;

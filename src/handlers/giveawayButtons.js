@@ -1,5 +1,4 @@
 import { MessageFlags, PermissionFlagsBits } from 'discord.js';
-import { successEmbed } from '../utils/embeds.js';
 import { logger } from '../utils/logger.js';
 import { ZentixBotError, ErrorTypes, handleInteractionError, replyUserError } from '../utils/errorHandler.js';
 import { 
@@ -16,9 +15,9 @@ import {
     selectWinners,
     isUserRateLimited,
     recordUserInteraction,
-    createGiveawayEmbed,
-    createGiveawayButtons
+    buildGiveawayComponents
 } from '../services/giveawayService.js';
+import { v2Message, createV2Container } from '../utils/componentsV2.js';
 import { logEvent, EVENT_TYPES } from '../services/loggingService.js';
 
 export const giveawayJoinHandler = {
@@ -44,7 +43,7 @@ export const giveawayJoinHandler = {
                 if(joined.status==='already')return replyUserError(interaction,{type:ErrorTypes.VALIDATION,message:'You have already entered this giveaway!'});
                 // Do not refresh the public message: a delayed join edit could
                 // overwrite an end announcement made by another process.
-                return InteractionHelper.safeReply(interaction,{embeds:[successEmbed('Entry saved',`Your entry is recorded. There are ${joined.entries} stored entries; the public count may not update until the giveaway ends.`)],flags:MessageFlags.Ephemeral});
+                return InteractionHelper.safeReply(interaction,{...v2Message([createV2Container({ title: 'Entry saved', description: `Your entry is recorded. There are ${joined.entries} stored entries; the public count may not update until the giveaway ends.`, color: 'success' })], { ephemeral: true })});
             }
 
             const lockKey = `giveaway:${interaction.message.id}`;
@@ -66,20 +65,11 @@ export const giveawayJoinHandler = {
 
                 logger.debug(`User ${interaction.user.tag} joined giveaway ${interaction.message.id}`);
 
-                const updatedEmbed = createGiveawayEmbed(giveaway, 'active');
-                const updatedRow = createGiveawayButtons(false);
-
-                try { await interaction.message.edit({embeds:[updatedEmbed],components:[updatedRow]}); }
+                try { await interaction.message.edit({content: null, ...v2Message(buildGiveawayComponents(giveaway, 'active')), allowedMentions: { parse: [] }}); }
                 catch(error){if(!isSQLiteGiveawayBackend(client))throw error;logger.warn('Giveaway entry saved but Discord message could not be refreshed:',error.message);}
 
                 await interaction.reply({
-                    embeds: [
-                        successEmbed(
-                            'Success! You have entered the giveaway! 🎉',
-                            `Good luck! There are now ${participants.length} entry/entries.`
-                        )
-                    ],
-                    flags: MessageFlags.Ephemeral
+                    ...v2Message([createV2Container({ title: 'Success! You have entered the giveaway!', description: `Good luck! There are now ${participants.length} entry/entries.`, color: 'success' })], { ephemeral: true })
                 });
             });
         } catch (error) {
@@ -148,13 +138,10 @@ export const giveawayEndHandler = {
 
             logger.info(`Giveaway ended via button by ${interaction.user.tag}: ${interaction.message.id}`);
 
-            const updatedEmbed = createGiveawayEmbed(giveaway, 'ended', winners);
-            const updatedRow = createGiveawayButtons(true);
-
             await interaction.message.edit({
-                content: '🎉 **GIVEAWAY ENDED** 🎉',
-                embeds: [updatedEmbed],
-                components: [updatedRow]
+                content: null,
+                ...v2Message(buildGiveawayComponents(giveaway, 'ended', winners)),
+                allowedMentions: { parse: [] }
             });
             await completeGiveawayDelivery(client,interaction.guildId,giveaway);
 
@@ -193,13 +180,7 @@ export const giveawayEndHandler = {
             }
 
             await interaction.reply({
-                embeds: [
-                    successEmbed(
-                        `Giveaway Ended ✅`,
-                        `The giveaway has been ended and ${winners.length} winner(s) have been selected!`
-                    )
-                ],
-                flags: MessageFlags.Ephemeral
+                ...v2Message([createV2Container({ title: 'Giveaway Ended', description: `The giveaway has been ended and ${winners.length} winner(s) have been selected!`, color: 'success' })], { ephemeral: true })
             });
 
         } catch (error) {
@@ -276,13 +257,10 @@ export const giveawayRerollHandler = {
 
             logger.info(`Giveaway rerolled via button by ${interaction.user.tag}: ${interaction.message.id}`);
 
-            const updatedEmbed = createGiveawayEmbed(giveaway, 'reroll', newWinners);
-            const updatedRow = createGiveawayButtons(true);
-
             await interaction.message.edit({
-                content: '🔄 **GIVEAWAY REROLLED** 🔄',
-                embeds: [updatedEmbed],
-                components: [updatedRow]
+                content: null,
+                ...v2Message(buildGiveawayComponents(giveaway, 'reroll', newWinners)),
+                allowedMentions: { parse: [] }
             });
             await completeGiveawayDelivery(client,interaction.guildId,giveaway);
 
@@ -319,13 +297,7 @@ export const giveawayRerollHandler = {
             }
 
             await interaction.reply({
-                embeds: [
-                    successEmbed(
-                        'Giveaway Rerolled ✅',
-                        `New winner(s) have been selected!`
-                    )
-                ],
-                flags: MessageFlags.Ephemeral
+                ...v2Message([createV2Container({ title: 'Giveaway Rerolled', description: `New winner(s) have been selected!`, color: 'success' })], { ephemeral: true })
             });
 
         } catch (error) {
@@ -376,13 +348,12 @@ export const giveawayViewHandler = {
                 : 'No valid winners were selected for this giveaway.';
 
             await interaction.reply({
-                embeds: [
-                    successEmbed(
-                        `Winners for ${giveaway.prize || 'this giveaway'} 🎉`,
-                        winnerMentions
-                    )
-                ],
-                flags: MessageFlags.Ephemeral
+                ...v2Message([createV2Container({
+                    title: 'Winners',
+                    description: `Winners for **${giveaway.prize || 'this giveaway'}**\n\n${winnerMentions}`,
+                    color: 'success',
+                })], { ephemeral: true }),
+                allowedMentions: { parse: [] },
             });
         } catch (error) {
             logger.error('Error in giveaway view handler:', error);

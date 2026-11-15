@@ -1,6 +1,6 @@
 // ticket.js
 
-import {
+import { FileBuilder,
   ChannelType,
   ActionRowBuilder,
   ButtonBuilder,
@@ -8,11 +8,11 @@ import {
   PermissionFlagsBits,
   AttachmentBuilder,
 } from 'discord.js';
-import { buildStandardLogEmbed, formatLogLine } from '../utils/logging/logEmbeds.js';
+import { buildStandardLogContainer, formatLogLine } from '../utils/logging/logEmbeds.js';
 import { getGuildConfig } from './config/guildConfig.js';
 import { getTicketData, saveTicketData, getOpenTicketCountForUser, listOpenTicketsForUser, incrementTicketCounter } from '../utils/database.js';
 import { logger } from '../utils/logger.js';
-import { createEmbed, errorEmbed } from '../utils/embeds.js';
+import { createV2Container, v2Message } from '../utils/componentsV2.js';
 import { logTicketEvent } from '../utils/ticket/ticketLogging.js';
 import { createError, ErrorTypes } from '../utils/errorHandler.js';
 import { ensureTypedServiceError, wrapServiceBoundary } from '../utils/serviceErrorBoundary.js';
@@ -94,6 +94,69 @@ function runInTurn(key, task) {
   return run;
 }
 
+// Text of a v2 message's components (text displays and text displays nested in sections),
+// joined with newlines. Duck-typed on purpose: it works on builders (toJSON), API objects,
+// and plain fixtures — both camelCase and snake_case spellings.
+function extractComponentText(message) {
+  const asJson = (c) => (typeof c?.toJSON === 'function' ? c.toJSON() : c);
+  const texts = [];
+  const walk = (c) => {
+    const json = asJson(c);
+    if (!json || typeof json !== 'object') return;
+    if (typeof json.content === 'string') texts.push(json.content);
+    for (const child of json.components ?? []) walk(child);
+    if (json.accessory) walk(json.accessory);
+  };
+  for (const comp of message?.components ?? []) walk(comp);
+  return texts.join('\n');
+}
+
+function messageMatchesTitle(message, title) {
+  if ((message?.embeds ?? []).some((e) => e?.title === title)) return true;
+  return extractComponentText(message).includes(title);
+}
+
+function messageHasActionCustomId(message, customId) {
+  const walk = (comp) => {
+    const json = typeof comp?.toJSON === 'function' ? comp.toJSON() : comp;
+    if (!json || typeof json !== 'object') return false;
+    if ((json.type === 2 || json.type === 3) && (json.custom_id ?? json.customId) === customId) return true;
+    if (Array.isArray(json.components) && json.components.some(walk)) return true;
+    if (json.accessory && walk(json.accessory)) return true;
+    return false;
+  };
+  return (message?.components ?? []).some(walk);
+}
+
+// Title number of the existing card, for records written before ticketNumber was stored.
+function existingTicketCardTitle(message) {
+  const legacy = (message?.embeds ?? [])[0]?.title;
+  if (typeof legacy === 'string' && legacy.startsWith('Ticket #')) return legacy.slice('Ticket #'.length);
+  const match = extractComponentText(message).match(/(?:^|\n)## Ticket #([^\n]+)/);
+  return match ? match[1] : null;
+}
+
+// The ticket card is rebuilt from ticketData on every transition instead of parsed
+// out of the old message, so the card is always consistent with storage.
+function buildTicketCard(ticketData, titleHint = null) {
+  const priorityInfo = PRIORITY_MAP[ticketData?.priority] || PRIORITY_MAP.none;
+  const statusLabel = ticketData?.status === 'closed' ? 'Closed' : 'Open';
+  const claimedBy = ticketData?.claimedBy ? `<@${ticketData.claimedBy}>` : 'Not claimed';
+  const createdMs = ticketData?.createdAt ? new Date(ticketData.createdAt).getTime() : NaN;
+  const created = Number.isFinite(createdMs) ? `<t:${Math.floor(createdMs / 1000)}:R>` : 'Unknown';
+  const ticketNumber = ticketData?.ticketNumber ?? titleHint ?? ticketData?.id;
+  return createV2Container({
+    title: `Ticket #${ticketNumber}`,
+    description: `<@${ticketData?.userId}>, thanks for creating a ticket!\n\n**Reason:** ${ticketData?.reason || 'No reason provided'}\n**Priority:** ${priorityInfo.emoji} ${priorityInfo.label}`,
+    color: priorityInfo.color || 'primary',
+    fields: [
+      { name: 'Status', value: statusLabel },
+      { name: 'Claimed By', value: claimedBy },
+      { name: 'Created', value: created },
+    ],
+  });
+}
+
 /**
  * The first message of a ticket (embed and control buttons). New tickets store
  * its ID. Older tickets are searched in the most recent messages, which misses
@@ -107,9 +170,9 @@ async function findTicketMessage(channel, ticketData, recentMessages) {
       if (error?.code !== 10008) throw error;
     }
   }
-  return recentMessages.find(m =>
-    m.embeds.length > 0 &&
-    m.embeds[0].title?.startsWith('Ticket #')
+  return recentMessages.find((m) =>
+    (m.embeds ?? []).some((embed) => embed?.title?.startsWith('Ticket #'))
+    || extractComponentText(m).includes('Ticket #')
   );
 }
 
@@ -281,14 +344,15 @@ async function createTicketInTurn(guild, member, categoryId, reason, priority) {
     try {
       const priorityInfo = PRIORITY_MAP[priority] || PRIORITY_MAP.none;
 
-      const embed = createEmbed({
+      const staffMention = config.ticketStaffRoleId ? ` <@&${config.ticketStaffRoleId}>` : '';
+      const container = createV2Container({
         title: `Ticket #${ticketNumber}`,
-        description: `${member.toString()}, thanks for creating a ticket!\n\n**Reason:** ${reason}\n**Priority:** ${priorityInfo.emoji} ${priorityInfo.label}`,
+        description: `${member.toString()}${staffMention}, thanks for creating a ticket!\n\n**Reason:** ${reason}\n**Priority:** ${priorityInfo.emoji} ${priorityInfo.label}`,
         color: priorityInfo.color,
         fields: [
-          { name: 'Status', value: '🟢 Open', inline: true },
-          { name: 'Claimed By', value: 'Not claimed', inline: true },
-          { name: 'Created', value: `<t:${Math.floor(Date.now() / 1000)}:R>`, inline: true },
+          { name: 'Status', value: 'Open' },
+          { name: 'Claimed By', value: 'Not claimed' },
+          { name: 'Created', value: `<t:${Math.floor(Date.now() / 1000)}:R>` },
         ],
       });
 
@@ -309,15 +373,12 @@ async function createTicketInTurn(guild, member, categoryId, reason, priority) {
         );
       }
 
-      const staffMention = config.ticketStaffRoleId ? ` <@&${config.ticketStaffRoleId}>` : '';
-      const messageContent = `${member.toString()}${staffMention}`;
-
       ticketMessage = await channel.send({
-        content: messageContent,
-        embeds: [embed],
-        components: [row]
+        ...v2Message([container, row]),
+        allowedMentions: { parse: ['users', 'roles'] },
       });
       ticketData.messageId = ticketMessage.id;
+      ticketData.ticketNumber = ticketNumber;
 
       await saveTicketData(guild.id, channel.id, ticketData);
     } catch (error) {
@@ -379,13 +440,15 @@ export async function closeTicket(channel, closer, reason = 'No reason provided'
       }
       if (!hasControls) {
         await channel.send({
-          embeds: [createEmbed({
-            title: 'Ticket Closed',
-            description: `This ticket is closed.\n**Reason:** ${ticketData.closeReason || 'No reason provided'}`,
-            color: '#e74c3c',
-            footer: { text: `Ticket ID: ${ticketData.id}` }
-          })],
-          components: [buildClosedControlRow()]
+          ...v2Message([
+            createV2Container({
+              title: 'Ticket Closed',
+              description: `This ticket is closed.\n**Reason:** ${ticketData.closeReason || 'No reason provided'}`,
+              color: '#e74c3c',
+              footer: { text: `Ticket ID: ${ticketData.id}` },
+            }),
+            buildClosedControlRow(),
+          ]),
         });
         return ticketData;
       }
@@ -430,19 +493,19 @@ export async function closeTicket(channel, closer, reason = 'No reason provided'
       try {
         const ticketCreator = await channel.client.users.fetch(ticketData.userId).catch(() => null);
         if (ticketCreator) {
-          const dmEmbed = createEmbed({
-            title: '🎫 Your Ticket Has Been Closed',
+          const dmContainer = createV2Container({
+            title: 'Your Ticket Has Been Closed',
             description: `Your ticket **${channel.name}** has been closed.\n\n**Reason:** ${reason}\n**Closed by:** ${closer.tag}\n**Closed at:** <t:${Math.floor(Date.now() / 1000)}:F>\n\nThank you for using our support system! If you have any further questions, feel free to create a new ticket.`,
             color: '#e74c3c',
-            footer: { text: `Ticket ID: ${ticketData.id}` }
+            footer: { text: `Ticket ID: ${ticketData.id}` },
           });
 
-          await ticketCreator.send({ embeds: [dmEmbed] });
+          await ticketCreator.send({ ...v2Message([dmContainer]) });
           dmSent = true;
 
           try {
-            const feedbackEmbed = createEmbed({
-              title: '⭐ How was your support experience?',
+            const feedbackContainer = createV2Container({
+              title: 'How was your support experience?',
               description: `We'd love to know how we did with **${channel.name}**.\nSelect a rating below — it only takes a second!`,
               color: '#F1C40F',
               footer: { text: 'Your feedback helps us improve.' },
@@ -468,8 +531,7 @@ export async function closeTicket(channel, closer, reason = 'No reason provided'
             );
 
             await ticketCreator.send({
-              embeds: [feedbackEmbed],
-              components: [starsRow, declineRow],
+              ...v2Message([feedbackContainer, starsRow, declineRow]),
             });
           } catch (feedbackError) {
             logger.warn(`Could not send feedback survey to ticket creator ${ticketData.userId}: ${feedbackError.message}`);
@@ -508,38 +570,24 @@ export async function closeTicket(channel, closer, reason = 'No reason provided'
       const ticketMessage = await findTicketMessage(channel, ticketData, messages);
     
       if (ticketMessage) {
-        const embed = ticketMessage.embeds[0];
-        const statusField = embed.fields?.find(f => f.name === 'Status');
-      
-        if (statusField) {
-          statusField.value = '🔴 Closed';
-        }
-      
-        const updatedEmbed = createEmbed({
-          title: embed.title || 'Ticket',
-          description: embed.description || 'Ticket discussion',
-          color: '#e74c3c',
-          fields: embed.fields || [],
-          footer: embed.footer
-        });
-      
         await ticketMessage.edit({
-          embeds: [updatedEmbed],
-          components: []
+          content: null,
+          ...v2Message([buildTicketCard(ticketData, existingTicketCardTitle(ticketMessage))]),
+          allowedMentions: { parse: [] },
         });
       }
     } catch (editError) {
       logger.warn(`Could not update the first message of closed ticket ${channel.id}: ${editError.message}`);
     }
     
-    const closeEmbed = createEmbed({
+    const closeContainer = createV2Container({
       title: 'Ticket Closed',
-      description: `This ticket has been closed by ${closer}.\n**Reason:** ${reason}${dmOnClose ? (dmSent ? '\n\n📩 A DM has been sent to the ticket creator.' : '\n\n⚠️ The ticket creator could not be notified by DM.') : ''}`,
+      description: `This ticket has been closed by ${closer}.\n**Reason:** ${reason}${dmOnClose ? (dmSent ? '\n\nA DM has been sent to the ticket creator.' : '\n\nThe ticket creator could not be notified by DM.') : ''}`,
       color: '#e74c3c',
-      footer: { text: `Ticket ID: ${ticketData.id}` }
+      footer: { text: `Ticket ID: ${ticketData.id}` },
     });
-    
-    await channel.send({ embeds: [closeEmbed], components: [buildClosedControlRow()] });
+
+    await channel.send({ ...v2Message([closeContainer, buildClosedControlRow()]) });
     
     await logTicketEvent({
       client: channel.client,
@@ -597,24 +645,18 @@ export async function claimTicket(channel, claimer) {
     const ticketMessage = await findTicketMessage(channel, ticketData, messages);
     
     if (ticketMessage) {
-      const embed = ticketMessage.embeds[0];
-      const claimedField = embed.fields?.find(f => f.name === 'Claimed By');
-      
-      if (claimedField) {
-        claimedField.value = claimer.toString();
-      }
-      
       const row = buildTicketControlRow({ claimedBy: claimer.id });
-      
-      await ticketMessage.edit({ 
-        embeds: [embed],
-        components: [row] 
+
+      await ticketMessage.edit({
+        content: null,
+        ...v2Message([buildTicketCard(ticketData, existingTicketCardTitle(ticketMessage)), row]),
+        allowedMentions: { parse: [] },
       });
     }
     
-    const claimEmbed = createEmbed({
+    const claimContainer = createV2Container({
       title: 'Ticket Claimed',
-      description: `🎉 ${claimer} has claimed this ticket!`,
+      description: `${claimer} has claimed this ticket!`,
       color: '#2ecc71'
     });
     
@@ -626,15 +668,14 @@ export async function claimTicket(channel, claimer) {
         .setEmoji('🔓')
     );
 
-    const claimStatusMessage = messages.find(m =>
-      m.embeds.length > 0 &&
-      (m.embeds[0].title === 'Ticket Claimed' || m.embeds[0].title === 'Ticket Unclaimed')
+    const claimStatusMessage = messages.find((m) =>
+      messageMatchesTitle(m, 'Ticket Claimed') || messageMatchesTitle(m, 'Ticket Unclaimed')
     );
 
     if (claimStatusMessage) {
-      await claimStatusMessage.edit({ embeds: [claimEmbed], components: [unclaimRow] });
+      await claimStatusMessage.edit({ content: null, ...v2Message([claimContainer, unclaimRow]), allowedMentions: { parse: [] } });
     } else {
-      await channel.send({ embeds: [claimEmbed], components: [unclaimRow] });
+      await channel.send({ ...v2Message([claimContainer, unclaimRow]) });
     }
     
     await logTicketEvent({
@@ -720,38 +761,29 @@ export async function reopenTicket(channel, reopener) {
     const ticketMessage = await findTicketMessage(channel, ticketData, messages);
     
     if (ticketMessage) {
-      const embed = ticketMessage.embeds[0];
-      const statusField = embed.fields?.find(f => f.name === 'Status');
-      
-      if (statusField) {
-        statusField.value = '🟢 Open';
-      }
-      
       const row = buildTicketControlRow({ claimedBy: ticketData.claimedBy });
-      
-      await ticketMessage.edit({ 
-        embeds: [embed],
-        components: [row] 
+
+      await ticketMessage.edit({
+        content: null,
+        ...v2Message([buildTicketCard(ticketData, existingTicketCardTitle(ticketMessage)), row]),
+        allowedMentions: { parse: [] },
       });
     }
     
-    const reopenEmbed = createEmbed({
+    const reopenContainer = createV2Container({
       title: 'Ticket Reopened',
-      description: `🔓 ${reopener} has reopened this ticket!`,
+      description: `${reopener} has reopened this ticket!`,
       color: '#2ecc71'
     });
 
-    const closeStatusMessage = messages.find(m =>
-      m.embeds.length > 0 &&
-      m.embeds[0].title === 'Ticket Closed' &&
-      m.components.length > 0 &&
-      m.components[0].components.some(c => c.customId === 'ticket_reopen')
+    const closeStatusMessage = messages.find((m) =>
+      messageMatchesTitle(m, 'Ticket Closed') && messageHasActionCustomId(m, 'ticket_reopen')
     );
 
     if (closeStatusMessage) {
-      await closeStatusMessage.edit({ embeds: [reopenEmbed], components: [] });
+      await closeStatusMessage.edit({ content: null, ...v2Message([reopenContainer]), allowedMentions: { parse: [] } });
     } else {
-      await channel.send({ embeds: [reopenEmbed] });
+      await channel.send({ ...v2Message([reopenContainer]) });
     }
     
     return { ticketData, movedToOpenCategory, openCategoryMoveFailed };
@@ -874,14 +906,14 @@ export async function deleteTicket(channel, deleter, { delayMs = TICKET_DELETE_D
     pendingDeletions.add(channel.id);
 
     try {
-      const deleteEmbed = createEmbed({
+      const deleteContainer = createV2Container({
         title: 'Ticket Deleted',
-        description: `🗑️ This ticket will be permanently deleted in ${TICKET_DELETE_DELAY_SECONDS} seconds.`,
+        description: `This ticket will be permanently deleted in ${TICKET_DELETE_DELAY_SECONDS} seconds.`,
         color: '#e74c3c',
-        footer: { text: `Ticket ID: ${ticketData.id}` }
+        footer: { text: `Ticket ID: ${ticketData.id}` },
       });
 
-      await channel.send({ embeds: [deleteEmbed] });
+      await channel.send({ ...v2Message([deleteContainer]) });
     } catch (error) {
       pendingDeletions.delete(channel.id);
       throw error;
@@ -926,7 +958,7 @@ async function deliverTranscript(channel, ticketData, deleter, transcriptChannel
       return false;
     }
 
-    const transcriptEmbed = buildStandardLogEmbed({
+    const transcriptContainer = buildStandardLogContainer({
       color: 0x3498db,
       title: 'Ticket Transcript',
       description: [
@@ -935,12 +967,20 @@ async function deliverTranscript(channel, ticketData, deleter, transcriptChannel
         formatLogLine('Generated', `<t:${Math.floor(Date.now() / 1000)}:F>`),
       ].join('\n'),
       footer: deleter?.username
-        ? { text: `Deleted by ${deleter.username}`, iconURL: deleter.displayAvatarURL?.() }
+        ? { text: `Deleted by ${deleter.username}` }
         : undefined,
       timestamp: true,
     });
+    // A v2 message cannot reference plain attachments; the File component points at the upload.
+    transcriptContainer.addFileComponents(
+      new FileBuilder().setURL(`attachment://${attachment.name}`),
+    );
 
-    await transcriptChannel.send({ embeds: [transcriptEmbed], files: [attachment] });
+    await transcriptChannel.send({
+      ...v2Message([transcriptContainer]),
+      files: [attachment],
+      allowedMentions: { parse: [] },
+    });
 
     logger.info('✅ Transcript sent successfully', {
       channelId: channel.id,
@@ -960,7 +1000,7 @@ async function deliverTranscript(channel, ticketData, deleter, transcriptChannel
 
 async function announceDeletionCancelled(channel, text) {
   try {
-    await channel.send({ embeds: [createEmbed({ title: 'Deletion Cancelled', description: text, color: '#f39c12' })] });
+    await channel.send({ ...v2Message([createV2Container({ title: 'Deletion Cancelled', description: text, color: '#f39c12' })]) });
   } catch (error) {
     logger.warn(`Could not announce the cancelled deletion in ticket ${channel.id}: ${error.message}`);
   }
@@ -1071,45 +1111,29 @@ export async function unclaimTicket(channel, unclaimer) {
     const ticketMessage = await findTicketMessage(channel, ticketData, messages);
     
     if (ticketMessage) {
-      const embed = ticketMessage.embeds[0];
-      const claimedField = embed.fields?.find(f => f.name === 'Claimed By');
-      
-      if (claimedField) {
-        claimedField.value = 'Not claimed';
-      }
-      
       const row = buildTicketControlRow();
-      
-      await ticketMessage.edit({ 
-        embeds: [embed],
-        components: [row] 
+
+      await ticketMessage.edit({
+        content: null,
+        ...v2Message([buildTicketCard(ticketData, existingTicketCardTitle(ticketMessage)), row]),
+        allowedMentions: { parse: [] },
       });
     }
     
-    const claimMessage = messages.find(m => 
-      m.embeds.length > 0 && 
-      (m.embeds[0].title === 'Ticket Claimed' || m.embeds[0].title === 'Ticket Unclaimed')
+    const claimMessage = messages.find((m) =>
+      messageMatchesTitle(m, 'Ticket Claimed') || messageMatchesTitle(m, 'Ticket Unclaimed')
     );
-    
+
+    const unclaimContainer = createV2Container({
+      title: 'Ticket Unclaimed',
+      description: `${unclaimer} has unclaimed this ticket!`,
+      color: '#f39c12'
+    });
+
     if (claimMessage) {
-      const unclaimEmbed = createEmbed({
-        title: 'Ticket Unclaimed',
-        description: `🔓 ${unclaimer} has unclaimed this ticket!`,
-        color: '#f39c12'
-      });
-      
-      await claimMessage.edit({ 
-        embeds: [unclaimEmbed],
-        components: []
-      });
+      await claimMessage.edit({ content: null, ...v2Message([unclaimContainer]), allowedMentions: { parse: [] } });
     } else {
-      const unclaimEmbed = createEmbed({
-        title: 'Ticket Unclaimed',
-        description: `🔓 ${unclaimer} has unclaimed this ticket!`,
-        color: '#f39c12'
-      });
-      
-      await channel.send({ embeds: [unclaimEmbed] });
+      await channel.send({ ...v2Message([unclaimContainer]) });
     }
     
     await logTicketEvent({
@@ -1179,26 +1203,21 @@ export async function updateTicketPriority(channel, priority, updater) {
     const ticketMessage = await findTicketMessage(channel, ticketData, messages);
     
     if (ticketMessage) {
-      const embed = ticketMessage.embeds[0];
-      
-      const updatedEmbed = createEmbed({
-        title: embed.title || 'Ticket',
-        description: embed.description?.split('\n**Priority:**')[0] + `\n**Priority:** ${priorityInfo.emoji} ${priorityInfo.label}`,
-        color: priorityInfo.color,
-        fields: embed.fields || [],
-        footer: embed.footer
+      await ticketMessage.edit({
+        content: null,
+        // Keep the control row: an edit without components would otherwise drop the buttons.
+        ...v2Message([buildTicketCard(ticketData, existingTicketCardTitle(ticketMessage)), buildTicketControlRow({ claimedBy: ticketData.claimedBy })]),
+        allowedMentions: { parse: [] },
       });
-      
-      await ticketMessage.edit({ embeds: [updatedEmbed] });
     }
     
-    const updateEmbed = createEmbed({
+    const updateContainer = createV2Container({
       title: 'Priority Updated',
-      description: `📊 Ticket priority updated to **${priorityInfo.emoji} ${priorityInfo.label}** by ${updater}`,
+      description: `Ticket priority updated to **${priorityInfo.emoji} ${priorityInfo.label}** by ${updater}`,
       color: priorityInfo.color
     });
-    
-    await channel.send({ embeds: [updateEmbed] });
+
+    await channel.send({ ...v2Message([updateContainer]) });
     
     await logTicketEvent({
       client: channel.client,

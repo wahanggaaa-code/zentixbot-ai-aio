@@ -1,11 +1,13 @@
-import { SlashCommandBuilder, PermissionFlagsBits, PermissionsBitField, ChannelType, MessageFlags } from 'discord.js';
-import { createEmbed, successEmbed, infoEmbed, warningEmbed } from '../../utils/embeds.js';
+import { SlashCommandBuilder, PermissionFlagsBits, PermissionsBitField, ChannelType } from 'discord.js';
+
 import { logEvent } from '../../utils/moderation.js';
 import { logger } from '../../utils/logger.js';
 import { sanitizeMarkdown } from '../../utils/validation.js';
 
 import { InteractionHelper } from '../../utils/interactionHelper.js';
 import { replyUserError, ErrorTypes } from '../../utils/errorHandler.js';
+import { createV2Container, v2Message } from '../../utils/componentsV2.js';
+
 export default {
     data: new SlashCommandBuilder()
         .setName("dm")
@@ -62,14 +64,7 @@ export default {
             const dmChannel = await targetUser.createDM();
             
             await dmChannel.send({
-                embeds: [
-                    successEmbed(
-                        anonymous ? "Message from the Staff Team" : `Message from ${interaction.user.tag}`,
-                        sanitized
-                    ).setFooter({
-                        text: `You cannot reply to this message. | Logger ID: ${interaction.id}`
-                    })
-                ]
+                ...v2Message([createV2Container({ title: anonymous ? "Message from the Staff Team" : `Message from ${interaction.user.tag}`, description: sanitized, color: 'success', footer: { text: `You cannot reply to this message. | Logger ID: ${interaction.id}`, always: true } })])
             });
 
             await logEvent({
@@ -90,12 +85,7 @@ export default {
             });
 
             return await InteractionHelper.safeEditReply(interaction, {
-                embeds: [
-                    successEmbed(
-                        "DM Sent",
-                        `Successfully sent a message to ${targetUser.tag}`
-                    ),
-                ],
+                ...v2Message([createV2Container({ title: "DM Sent", description: `Successfully sent a message to ${targetUser.tag}`, color: 'success' })]),
             });
         } catch (error) {
             logger.error('DM command error:', error);

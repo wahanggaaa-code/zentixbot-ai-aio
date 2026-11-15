@@ -4,12 +4,14 @@ import {
     ChannelType,
     MessageFlags,
 } from 'discord.js';
-import { successEmbed } from '../../utils/embeds.js';
+
 import { logEvent } from '../../utils/moderation.js';
 import { logger } from '../../utils/logger.js';
 import { InteractionHelper } from '../../utils/interactionHelper.js';
 import { replyUserError, ErrorTypes } from '../../utils/errorHandler.js';
 import { sanitizeInput } from '../../utils/validation.js';
+import { createV2Container, v2Message } from '../../utils/componentsV2.js';
+
 
 const TEXT_CHANNEL_TYPES = [
     ChannelType.GuildText,
@@ -122,13 +124,7 @@ export default {
         });
 
         await InteractionHelper.safeEditReply(interaction, {
-            embeds: [
-                successEmbed(
-                    'Message Sent',
-                    `Posted in ${channel}. [Jump to message](${sentMessage.url})`,
-                ),
-            ],
-            flags: MessageFlags.Ephemeral,
+            ...v2Message([createV2Container({ title: 'Message Sent', description: `Posted in ${channel}. [Jump to message](${sentMessage.url})`, color: 'success' })], { ephemeral: true }),
         });
     },
 };

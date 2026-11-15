@@ -1,5 +1,5 @@
 import { SlashCommandBuilder } from 'discord.js';
-import { createEmbed } from '../../utils/embeds.js';
+import { createV2Container, v2Message } from '../../utils/componentsV2.js';
 import { logger } from '../../utils/logger.js';
 import { replyUserError, ErrorTypes } from '../../utils/errorHandler.js';
 import { InteractionHelper } from '../../utils/interactionHelper.js';
@@ -50,9 +50,10 @@ export default {
     const roleList = roles.slice(0, ROLES_SHOWN).map((role) => `<@&${role.id}>`).join(", ")
       + (roles.length > ROLES_SHOWN ? ` and ${roles.length - ROLES_SHOWN} more` : "");
 
-    const embed = createEmbed({ title: `User Info: ${plainText(user.username, 100)}` })
-      .setThumbnail(user.displayAvatarURL({ size: 256 }))
-      .addFields(
+    const container = createV2Container({
+      title: `User Info: ${plainText(user.username, 100)}`,
+      thumbnail: user.displayAvatarURL({ size: 256 }),
+      fields: [
         { name: "ID", value: user.id, inline: true },
         { name: "Bot", value: user.bot ? "Yes" : "No", inline: true },
         { name: "Roles", value: roleList || "None", inline: true },
@@ -71,9 +72,10 @@ export default {
           value: roles.length > 0 ? `<@&${roles[0].id}>` : "None",
           inline: true,
         },
-      );
+      ],
+    });
 
-    await InteractionHelper.safeEditReply(interaction, { embeds: [embed], allowedMentions: { parse: [] } });
+    await InteractionHelper.safeEditReply(interaction, { ...v2Message([container]), allowedMentions: { parse: [] } });
     logger.info(`UserInfo command executed`, {
       userId: interaction.user.id,
       targetUserId: user.id,

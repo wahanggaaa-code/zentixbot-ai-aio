@@ -1,5 +1,5 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionFlagsBits } from 'discord.js';
-import { createEmbed } from '../utils/embeds.js';
+import { createV2Container, v2Message } from '../utils/componentsV2.js';
 import { logger } from '../utils/logger.js';
 import { replyUserError, ErrorTypes } from '../utils/errorHandler.js';
 
@@ -31,21 +31,20 @@ const button = (id, label, style) => new ButtonBuilder().setCustomId(id).setLabe
 const cancelButton = (ownerId) => button(`countdown:cancel:${ownerId}`, 'Cancel', ButtonStyle.Danger);
 
 export function runningPayload(title, ownerId, endsAt) {
-    return {
-        embeds: [createEmbed({ title: title || DEFAULT_TITLE, description: `Ends <t:${endsAt}:R>, at <t:${endsAt}:T>.`, color: 'success' })],
-        components: [new ActionRowBuilder().addComponents(button(`countdown:pause:${ownerId}:${endsAt}`, 'Pause', ButtonStyle.Secondary), cancelButton(ownerId))],
-    };
+    return v2Message([
+        createV2Container({ title: title || DEFAULT_TITLE, description: `Ends <t:${endsAt}:R>, at <t:${endsAt}:T>.`, color: 'success' }),
+        new ActionRowBuilder().addComponents(button(`countdown:pause:${ownerId}:${endsAt}`, 'Pause', ButtonStyle.Secondary), cancelButton(ownerId)),
+    ]);
 }
 
-const pausedPayload = (title, ownerId, remaining) => ({
-    embeds: [createEmbed({ title: title || DEFAULT_TITLE, description: `Paused with **${formatTime(remaining)}** remaining.`, color: 'warning' })],
-    components: [new ActionRowBuilder().addComponents(button(`countdown:resume:${ownerId}:${remaining}`, 'Resume', ButtonStyle.Success), cancelButton(ownerId))],
-});
+const pausedPayload = (title, ownerId, remaining) => v2Message([
+    createV2Container({ title: title || DEFAULT_TITLE, description: `Paused with **${formatTime(remaining)}** remaining.`, color: 'warning' }),
+    new ActionRowBuilder().addComponents(button(`countdown:resume:${ownerId}:${remaining}`, 'Resume', ButtonStyle.Success), cancelButton(ownerId)),
+]);
 
-const finishedPayload = (title, endsAt) => ({
-    embeds: [createEmbed({ title: title || DEFAULT_TITLE, description: `**Time's up!** Ended <t:${endsAt}:R>.`, color: 'success' })],
-    components: [],
-});
+const finishedPayload = (title, endsAt) => v2Message([
+    createV2Container({ title: title || DEFAULT_TITLE, description: `**Time's up!** Ended <t:${endsAt}:R>.`, color: 'success' }),
+]);
 
 function forget(messageId) {
     clearTimeout(timers.get(messageId));
@@ -71,7 +70,21 @@ export function scheduleFinish(message, title, endsAt) {
     return true;
 }
 
-const titleOf = (interaction) => interaction.message?.embeds?.[0]?.title ?? DEFAULT_TITLE;
+// The title travels inside the v2 container ('## Title'); embeds only for pre-v2 messages.
+const titleOf = (interaction) => {
+    const legacy = interaction.message?.embeds?.[0]?.title;
+    if (legacy) return legacy;
+    for (const top of interaction.message?.components ?? []) {
+        const data = typeof top?.toJSON === 'function' ? top.toJSON() : top;
+        for (const child of data?.components ?? []) {
+            const c = typeof child?.toJSON === 'function' ? child.toJSON() : child;
+            if (c?.type === 10 && typeof c.content === 'string' && c.content.startsWith('## ')) {
+                return c.content.slice(3).trim() || DEFAULT_TITLE;
+            }
+        }
+    }
+    return DEFAULT_TITLE;
+};
 const gone = (interaction) => replyUserError(interaction, { type: ErrorTypes.VALIDATION, message: 'This countdown is no longer valid. Use `/countdown` to start a new one.' });
 
 function mayControl(interaction, ownerId) {
@@ -94,8 +107,8 @@ export async function countdownButtonHandler(interaction, client, args) {
     if (action === 'cancel') {
         forget(messageId);
         return interaction.update({
-            embeds: [createEmbed({ title, description: `Cancelled by <@${interaction.user.id}>.`, color: 'error' })],
-            components: [],
+            ...v2Message([createV2Container({ title, description: `Cancelled by <@${interaction.user.id}>.`, color: 'error' })]),
+            allowedMentions: { parse: [] },
         });
     }
 

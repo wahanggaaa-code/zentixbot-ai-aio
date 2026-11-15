@@ -1,4 +1,4 @@
-import { botConfig, getColor } from '../../../config/bot.js';
+import { botConfig } from '../../../config/bot.js';
 import {
     ActionRowBuilder,
     StringSelectMenuBuilder,
@@ -13,10 +13,9 @@ import {
     ChannelType,
     MessageFlags,
     ComponentType,
-    EmbedBuilder,
 } from 'discord.js';
 import { InteractionHelper } from '../../../utils/interactionHelper.js';
-import { successEmbed } from '../../../utils/embeds.js';
+import { createV2Container, v2Success, v2Message } from '../../../utils/componentsV2.js';
 import { logger } from '../../../utils/logger.js';
 import { ZentixBotError, ErrorTypes, replyUserError } from '../../../utils/errorHandler.js';
 import { getGuildConfig } from '../../../services/config/guildConfig.js';
@@ -29,6 +28,14 @@ import {
 } from '../../../utils/panelStatus.js';
 import { startDashboardSession, wrapDashboardHandler } from '../../../utils/dashboardSession.js';
 
+const dashboardPayload = (container, components, { ephemeral = false } = {}) => ({ ...v2Message([container, ...components], { ephemeral }), allowedMentions: { parse: [] } });
+const panelContainer = (cfg) => createV2Container({
+    title: 'Server Verification',
+    description: cfg.message || botConfig.verification.defaultMessage,
+    color: 'success',
+    raw: true,
+});
+
 async function updateLivePanel(guild, cfg) {
     if (!cfg.channelId || !cfg.messageId) return;
     try {
@@ -37,10 +44,7 @@ async function updateLivePanel(guild, cfg) {
         const msg = await channel.messages.fetch(cfg.messageId).catch(() => null);
         if (!msg) return;
 
-        const verifyEmbed = new EmbedBuilder()
-            .setTitle('Server Verification')
-            .setDescription(cfg.message || botConfig.verification.defaultMessage)
-            .setColor(getColor('success'));
+        const verifyContainer = panelContainer(cfg);
 
         const verifyButton = new ActionRowBuilder().addComponents(
             new ButtonBuilder()
@@ -50,13 +54,13 @@ async function updateLivePanel(guild, cfg) {
                 .setEmoji('✅'),
         );
 
-        await msg.edit({ embeds: [verifyEmbed], components: [verifyButton] });
+        await msg.edit(dashboardPayload(verifyContainer, [verifyButton]));
     } catch (error) {
         logger.warn('Could not update live verification panel:', error.message);
     }
 }
 
-function buildDashboardEmbed(cfg, guild, verifiedUserCount = 0, conflictSummary = '', panelStatus = null) {
+function buildDashboardContainer(cfg, guild, verifiedUserCount = 0, conflictSummary = '', panelStatus = null) {
     const channel = cfg.channelId ? `<#${cfg.channelId}>` : '`Not set`';
     const role = cfg.roleId ? `<@&${cfg.roleId}>` : '`Not set`';
     const rawMsg = cfg.message || botConfig.verification.defaultMessage;
@@ -64,28 +68,28 @@ function buildDashboardEmbed(cfg, guild, verifiedUserCount = 0, conflictSummary 
     const buttonText = cfg.buttonText || botConfig.verification.defaultButtonText;
     const panelStatusValue = cfg.channelId ? formatPanelStatusField(panelStatus) : '`Not configured`';
 
-    const embed = new EmbedBuilder()
-        .setTitle('✅ Verification System Dashboard')
-        .setDescription(`Manage verification settings for **${guild.name}**.\nSelect an option below to modify a setting.`)
-        .setColor(getColor('info'))
-        .addFields(
-            { name: 'Panel Status', value: panelStatusValue, inline: false },
-            { name: 'Verification Channel', value: channel, inline: true },
-            { name: 'Verified Role', value: role, inline: true },
-            { name: 'System Status', value: cfg.enabled !== false ? 'Enabled' : 'Disabled', inline: true },
-            { name: 'Button Text', value: `\`${buttonText}\``, inline: true },
-            { name: 'Verified Users', value: `${verifiedUserCount} users`, inline: true },
-            { name: '\u200B', value: '\u200B', inline: true },
-            { name: 'Verification Message', value: msgPreview, inline: false },
-        );
+    const fields = [
+        { name: 'Panel Status', value: panelStatusValue },
+        { name: 'Verification Channel', value: channel },
+        { name: 'Verified Role', value: role },
+        { name: 'System Status', value: cfg.enabled !== false ? 'Enabled' : 'Disabled' },
+        { name: 'Button Text', value: `\`${buttonText}\`` },
+        { name: 'Verified Users', value: `${verifiedUserCount} users` },
+        { name: 'Verification Message', value: msgPreview },
+    ];
 
     if (conflictSummary) {
-        embed.addFields({ name: 'Setup Conflicts', value: conflictSummary, inline: false });
+        fields.push({ name: 'Setup Conflicts', value: conflictSummary });
     }
 
-    return embed
-        .setFooter({ text: 'Dashboard closes after 10 minutes of inactivity' })
-        .setTimestamp();
+    return createV2Container({
+        title: '✅ Verification System Dashboard',
+        description: `Manage verification settings for **${guild.name}**.\nSelect an option below to modify a setting.`,
+        color: 'info',
+        raw: true,
+        fields,
+        footer: 'Dashboard closes after 10 minutes of inactivity',
+    });
 }
 
 function buildSelectMenu(guildId) {
@@ -156,10 +160,7 @@ async function repostVerificationPanel(guild, cfg) {
         );
     }
 
-    const verifyEmbed = new EmbedBuilder()
-        .setTitle('Server Verification')
-        .setDescription(cfg.message || botConfig.verification.defaultMessage)
-        .setColor(getColor('success'));
+    const verifyContainer = panelContainer(cfg);
 
     const verifyButton = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
@@ -169,7 +170,7 @@ async function repostVerificationPanel(guild, cfg) {
             .setEmoji('✅'),
     );
 
-    return channel.send({ embeds: [verifyEmbed], components: [verifyButton] });
+    return channel.send(dashboardPayload(verifyContainer, [verifyButton]));
 }
 
 async function refreshDashboard(rootInteraction, cfg, guildId, client) {
@@ -212,12 +213,14 @@ async function refreshDashboard(rootInteraction, cfg, guildId, client) {
         }
         
         await InteractionHelper.safeEditReply(rootInteraction, {
-            embeds: [buildDashboardEmbed(cfg, rootInteraction.guild, verifiedUserCount, conflictSummary, panelStatus)],
-            components: [
-                buildButtonRow(cfg, guildId, false, panelStatus),
-                new ActionRowBuilder().addComponents(selectMenu),
-            ],
-            flags: MessageFlags.Ephemeral,
+            ...dashboardPayload(
+                buildDashboardContainer(cfg, rootInteraction.guild, verifiedUserCount, conflictSummary, panelStatus),
+                [
+                    buildButtonRow(cfg, guildId, false, panelStatus),
+                    new ActionRowBuilder().addComponents(selectMenu),
+                ],
+                { ephemeral: true },
+            ),
         });
     } catch (error) {
         logger.debug('Could not refresh verification dashboard (interaction may have expired):', error.message);
@@ -278,7 +281,7 @@ export default {
 
             await startDashboardSession({
                 interaction,
-                embeds: [buildDashboardEmbed(cfg, interaction.guild, verifiedUserCount, conflictSummary, panelStatus)],
+                container: buildDashboardContainer(cfg, interaction.guild, verifiedUserCount, conflictSummary, panelStatus),
                 components: [
                     buildButtonRow(cfg, guildId, false, panelStatus),
                     new ActionRowBuilder().addComponents(buildSelectMenu(guildId)),
@@ -310,10 +313,7 @@ export default {
                         const expected = structuredClone(cfg);
                         const newMsg = await repostVerificationPanel(interaction.guild, expected);
                         await saveVerificationDashboardChange(client, guildId, cfg, expected, { messageId: newMsg.id });
-                        await btnInteraction.followUp({
-                            embeds: [successEmbed('Panel Reposted', `Verification panel restored in ${newMsg.channel}.`)],
-                            flags: MessageFlags.Ephemeral,
-                        });
+                        await btnInteraction.followUp(v2Message([v2Success('Panel Reposted', `Verification panel restored in ${newMsg.channel}.`)], { ephemeral: true }));
                         await refreshDashboard(interaction, cfg, guildId, client);
                         return;
                     }
@@ -356,29 +356,20 @@ export default {
                         if (msg) await msg.delete().catch(() => {});
                     }
 
-                    await btnInteraction.followUp({
-                        embeds: [
-                            successEmbed(
-                                '✅ System Updated',
-                                `The verification system is now **${cfg.enabled ? 'enabled' : 'disabled'}**.`,
-                            ),
-                        ],
-                        flags: MessageFlags.Ephemeral,
-                    });
+                    await btnInteraction.followUp(v2Message([v2Success(
+                        '✅ System Updated',
+                        `The verification system is now **${cfg.enabled ? 'enabled' : 'disabled'}**.`,
+                    )], { ephemeral: true }));
 
                     await refreshDashboard(interaction, cfg, guildId, client);
                 },
                 onTimeout: async (rootInteraction) => {
-                    await InteractionHelper.safeEditReply(rootInteraction, {
-                        embeds: [
-                            new EmbedBuilder()
-                                .setTitle('Dashboard Timed Out')
-                                .setDescription('This dashboard has been closed due to inactivity. Please run the command again to continue.')
-                                .setColor(getColor('error')),
-                        ],
-                        components: [],
-                        flags: MessageFlags.Ephemeral,
-                    });
+                    await InteractionHelper.safeEditReply(rootInteraction,
+                        v2Message([createV2Container({
+                            title: 'Dashboard Timed Out',
+                            description: 'This dashboard has been closed due to inactivity. Please run the command again to continue.',
+                            color: 'error',
+                        })], { ephemeral: true }));
                 },
             });
         } catch (error) {
@@ -404,16 +395,15 @@ async function handleChannel(selectInteraction, rootInteraction, cfg, guildId, c
         .setMaxValues(1);
 
     await selectInteraction.followUp({
-        embeds: [
-            new EmbedBuilder()
-                .setTitle('Change Verification Channel')
-                .setDescription(
-                    `**Current:** ${cfg.channelId ?`<#${cfg.channelId}>`: '`Not set`'}\n\nSelect the channel where the verification panel will be posted.\n\n> ⚠️ The existing panel will be deleted and re-posted in the new channel.`,
-                )
-                .setColor(getColor('info')),
-        ],
-        components: [new ActionRowBuilder().addComponents(channelSelect)],
-        flags: MessageFlags.Ephemeral,
+        ...dashboardPayload(
+            createV2Container({
+                title: 'Change Verification Channel',
+                description: `**Current:** ${cfg.channelId ?`<#${cfg.channelId}>`: '`Not set`'}\n\nSelect the channel where the verification panel will be posted.\n\n> The existing panel will be deleted and re-posted in the new channel.`,
+                color: 'info',
+            }),
+            [new ActionRowBuilder().addComponents(channelSelect)],
+            { ephemeral: true },
+        ),
     });
 
     const chanCollector = rootInteraction.channel.createMessageComponentCollector({
@@ -441,11 +431,6 @@ async function handleChannel(selectInteraction, rootInteraction, cfg, guildId, c
 
         if (expected.enabled !== false) {
             try {
-                const verifyEmbed = new EmbedBuilder()
-                    .setTitle('Server Verification')
-                    .setDescription(expected.message || botConfig.verification.defaultMessage)
-                    .setColor(getColor('success'));
-
                 const verifyButton = new ActionRowBuilder().addComponents(
                     new ButtonBuilder()
                         .setCustomId('verify_user')
@@ -454,7 +439,7 @@ async function handleChannel(selectInteraction, rootInteraction, cfg, guildId, c
                         .setEmoji('✅'),
                 );
 
-                const newMsg = await newChannel.send({ embeds: [verifyEmbed], components: [verifyButton] });
+                const newMsg = await newChannel.send(dashboardPayload(panelContainer(expected), [verifyButton]));
                 next.messageId = newMsg.id;
             } catch (error) {
                 logger.warn('Could not post verification panel in new channel:', error.message);
@@ -472,10 +457,7 @@ async function handleChannel(selectInteraction, rootInteraction, cfg, guildId, c
             if (oldMsg) await oldMsg.delete().catch(() => {});
         }
 
-        await chanInteraction.followUp({
-            embeds: [successEmbed('Channel Updated', `Verification panel moved to ${newChannel}.`)],
-            flags: MessageFlags.Ephemeral,
-        });
+        await chanInteraction.followUp({ ...v2Message([v2Success('Channel Updated', `Verification panel moved to ${newChannel}.`)], { ephemeral: true }), allowedMentions: { parse: [] } });
 
         await refreshDashboard(rootInteraction, cfg, guildId, client);
     }, 'nested dashboard selection'));
@@ -500,16 +482,15 @@ async function handleRole(selectInteraction, rootInteraction, cfg, guildId, clie
         .setMaxValues(1);
 
     await selectInteraction.followUp({
-        embeds: [
-            new EmbedBuilder()
-                .setTitle('Change Verified Role')
-                .setDescription(
-                    `**Current:** ${cfg.roleId ?`<@&${cfg.roleId}>`: '`Not set`'}\n\nSelect the role to assign when a user verifies.`,
-                )
-                .setColor(getColor('info')),
-        ],
-        components: [new ActionRowBuilder().addComponents(roleSelect)],
-        flags: MessageFlags.Ephemeral,
+        ...dashboardPayload(
+            createV2Container({
+                title: 'Change Verified Role',
+                description: `**Current:** ${cfg.roleId ?`<@&${cfg.roleId}>`: '`Not set`'}\n\nSelect the role to assign when a user verifies.`,
+                color: 'info',
+            }),
+            [new ActionRowBuilder().addComponents(roleSelect)],
+            { ephemeral: true },
+        ),
     });
 
     const roleCollector = rootInteraction.channel.createMessageComponentCollector({
@@ -544,10 +525,7 @@ async function handleRole(selectInteraction, rootInteraction, cfg, guildId, clie
 
         await saveVerificationDashboardChange(client, guildId, cfg, expected, { roleId: role.id });
 
-        await roleInteraction.followUp({
-            embeds: [successEmbed('Role Updated', `Verified role set to ${role}.`)],
-            flags: MessageFlags.Ephemeral,
-        });
+        await roleInteraction.followUp({ ...v2Message([v2Success('Role Updated', `Verified role set to ${role}.`)], { ephemeral: true }), allowedMentions: { parse: [] } });
 
         await refreshDashboard(rootInteraction, cfg, guildId, client);
     }, 'nested dashboard selection'));
@@ -598,10 +576,7 @@ async function handleMessage(selectInteraction, rootInteraction, cfg, guildId, c
 
         await updateLivePanel(rootInteraction.guild, cfg);
 
-        await submitted.reply({
-            embeds: [successEmbed('Message Updated', 'The verification panel has been updated with the new message.')],
-            flags: MessageFlags.Ephemeral,
-        });
+        await submitted.reply(v2Message([v2Success('Message Updated', 'The verification panel has been updated with the new message.')], { ephemeral: true }));
 
         await refreshDashboard(rootInteraction, cfg, guildId, client);
     } catch (error) {
@@ -649,10 +624,7 @@ async function handleButtonText(selectInteraction, rootInteraction, cfg, guildId
 
         await updateLivePanel(rootInteraction.guild, cfg);
 
-        await submitted.reply({
-            embeds: [successEmbed('Button Text Updated', `The verify button now reads **${cfg.buttonText}**.`)],
-            flags: MessageFlags.Ephemeral,
-        });
+        await submitted.reply(v2Message([v2Success('Button Text Updated', `The verify button now reads **${cfg.buttonText}**.`)], { ephemeral: true }));
 
         await refreshDashboard(rootInteraction, cfg, guildId, client);
     } catch (error) {

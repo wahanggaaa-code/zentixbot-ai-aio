@@ -1,6 +1,7 @@
 // Player event handlers for Riffy. Adapted from Musicify playerHandler (Apache-2.0).
 
 import { logger } from '../../utils/logger.js';
+import { v2Message } from '../../utils/componentsV2.js';
 import { getGuildMusicData, clearUpdateInterval } from './playerStore.js';
 import {
     buildNowPlayingEmbed,
@@ -10,7 +11,7 @@ import {
 const UPDATE_INTERVAL_MS = 15 * 1000;
 const IDLE_DISCONNECT_MS = 30 * 1000;
 
-async function editOrSendPlayerMessage(client, guildData, channelId, embed, components) {
+async function editOrSendPlayerMessage(client, guildData, channelId, container, components) {
     const channel = client.channels.cache.get(channelId);
     if (!channel) {
         guildData.playerMessageId = null;
@@ -18,7 +19,7 @@ async function editOrSendPlayerMessage(client, guildData, channelId, embed, comp
         return;
     }
 
-    const payload = { embeds: [embed], components };
+    const payload = v2Message([container, ...components]);
 
     if (guildData.playerMessageId) {
         try {
@@ -49,10 +50,10 @@ export async function refreshPlayerMessage(client, guildId) {
         }
 
         const guildData = getGuildMusicData(guildId);
-        const embed = buildNowPlayingEmbed(player.current, player, guildData);
+        const container = buildNowPlayingEmbed(player.current, player, guildData);
         const components = buildPlayerButtonRows(player, guildData);
         const channelId = guildData.playerChannelId || player.textChannel;
-        await editOrSendPlayerMessage(client, guildData, channelId, embed, components);
+        await editOrSendPlayerMessage(client, guildData, channelId, container, components);
     } catch (error) {
         logger.error('Failed to refresh music player message:', error);
     }
@@ -142,10 +143,10 @@ export function setupPlayerHandler(client) {
                 guildData.idleTimeout = null;
             }
 
-            const embed = buildNowPlayingEmbed(track, player, guildData);
+            const container = buildNowPlayingEmbed(track, player, guildData);
             const components = buildPlayerButtonRows(player, guildData);
             const channelId = guildData.playerChannelId || player.textChannel;
-            await editOrSendPlayerMessage(client, guildData, channelId, embed, components);
+            await editOrSendPlayerMessage(client, guildData, channelId, container, components);
             startUpdateInterval(client, player.guildId);
         } catch (error) {
             logger.error('Music trackStart error:', error);

@@ -1,4 +1,4 @@
-import { createEmbed } from '../../../utils/embeds.js';
+import { createV2Container, v2Message } from '../../../utils/componentsV2.js';
 import { logger } from '../../../utils/logger.js';
 import { handleInteractionError, replyUserError, ErrorTypes } from '../../../utils/errorHandler.js';
 import { InteractionHelper } from '../../../utils/interactionHelper.js';
@@ -112,21 +112,21 @@ export default {
                 inline: true
             });
 
-            const embed = createEmbed({
+            // A v2 container has no title link, so the source page is a link line at the
+            // end of the description; the permalink is validated exactly as before.
+            const permalink = permalinkOf(entry);
+            const description = permalink
+                ? `${definition}\n\n[Open this definition on Urban Dictionary](${permalink})`
+                : definition;
+            const container = createV2Container({
                 title: plainText(entry.word, 250),
-                description: definition,
-                color: 'info'
-            })
-            .addFields(fields)
-            .setFooter({
-                text: 'Urban Dictionary',
-                iconURL: 'https://i.imgur.com/8aQrX3a.png'
+                description,
+                color: 'info',
+                fields,
+                footer: { text: 'Urban Dictionary', always: true },
             });
 
-            const permalink = permalinkOf(entry);
-            if (permalink) embed.setURL(permalink);
-
-            await InteractionHelper.safeEditReply(interaction, { embeds: [embed] });
+            await InteractionHelper.safeEditReply(interaction, v2Message([container]));
 
             logger.info('Urban Dictionary definition retrieved', {
                 userId: interaction.user.id,

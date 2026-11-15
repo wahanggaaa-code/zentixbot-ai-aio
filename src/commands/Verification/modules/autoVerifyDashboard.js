@@ -1,4 +1,4 @@
-import { botConfig, getColor } from '../../../config/bot.js';
+import { botConfig } from '../../../config/bot.js';
 import {
     ActionRowBuilder,
     StringSelectMenuBuilder,
@@ -9,13 +9,11 @@ import {
     RoleSelectMenuBuilder,
     ButtonBuilder,
     ButtonStyle,
-    MessageFlags,
     ComponentType,
-    EmbedBuilder,
 } from 'discord.js';
 import { InteractionHelper } from '../../../utils/interactionHelper.js';
 import { wrapDashboardHandler } from '../../../utils/dashboardSession.js';
-import { successEmbed } from '../../../utils/embeds.js';
+import { createV2Container, v2Success, v2Message } from '../../../utils/componentsV2.js';
 import { logger } from '../../../utils/logger.js';
 import { ZentixBotError, ErrorTypes, replyUserError } from '../../../utils/errorHandler.js';
 import { getGuildConfig } from '../../../services/config/guildConfig.js';
@@ -24,12 +22,15 @@ import { getWelcomeConfigForEditing } from '../../../utils/database.js';
 import { validateAutoVerifyCriteria } from '../../../services/verificationService.js';
 import { botHasPermission } from '../../../utils/permissionGuard.js';
 
+const dashboardPayload = (container, components, { ephemeral = false } = {}) => ({ ...v2Message([container, ...components], { ephemeral }), allowedMentions: { parse: [] } });
+const dashboardOnlyPayload = (container, { ephemeral = false } = {}) => ({ ...v2Message([container], { ephemeral }), allowedMentions: { parse: [] } });
+
 const autoVerifyDefaults = botConfig.verification?.autoVerify || {};
 const minAccountAgeDays = autoVerifyDefaults.minAccountAge ?? 1;
 const maxAccountAgeDays = autoVerifyDefaults.maxAccountAge ?? 365;
 const defaultAccountAgeDays = autoVerifyDefaults.defaultAccountAgeDays ?? 7;
 
-function buildDashboardEmbed(cfg, guild, conflictSummary = '') {
+function buildDashboardContainer(cfg, guild, conflictSummary = '') {
     const autoVerify = cfg.verification?.autoVerify;
     const autoVerifyRole = autoVerify?.roleId ? guild.roles.cache.get(autoVerify.roleId) : null;
     
@@ -45,26 +46,25 @@ function buildDashboardEmbed(cfg, guild, conflictSummary = '') {
         }
     }
 
-    const embed = new EmbedBuilder()
-        .setTitle('🤖 Auto-Verification Dashboard')
-        .setDescription(`Manage auto-verification settings for **${guild.name}**.\nSelect an option below to modify a setting.`)
-        .setColor(getColor('info'))
-        .addFields(
-            { name: 'System Status', value: autoVerify?.enabled ? 'Enabled' : 'Disabled', inline: true },
-            { name: 'Target Role', value: autoVerifyRole ? autoVerifyRole.toString() : '`Not set`', inline: true },
-            { name: 'Criteria', value: criteriaDescription, inline: true },
-            { name: 'Account Age', value: autoVerify?.accountAgeDays ? `\`${autoVerify.accountAgeDays}\` days` : '`N/A`', inline: true },
-            { name: '\u200B', value: '\u200B', inline: true },
-            { name: '\u200B', value: '\u200B', inline: true },
-        );
+    const fields = [
+        { name: 'System Status', value: autoVerify?.enabled ? 'Enabled' : 'Disabled' },
+        { name: 'Target Role', value: autoVerifyRole ? autoVerifyRole.toString() : '`Not set`' },
+        { name: 'Criteria', value: criteriaDescription },
+        { name: 'Account Age', value: autoVerify?.accountAgeDays ? `\`${autoVerify.accountAgeDays}\` days` : '`N/A`' },
+    ];
 
     if (conflictSummary) {
-        embed.addFields({ name: 'Setup Conflicts', value: conflictSummary, inline: false });
+        fields.push({ name: 'Setup Conflicts', value: conflictSummary });
     }
 
-    return embed
-        .setFooter({ text: 'Dashboard closes after 10 minutes of inactivity' })
-        .setTimestamp();
+    return createV2Container({
+        title: '🤖 Auto-Verification Dashboard',
+        description: `Manage auto-verification settings for **${guild.name}**.\nSelect an option below to modify a setting.`,
+        color: 'info',
+        raw: true,
+        fields,
+        footer: 'Dashboard closes after 10 minutes of inactivity',
+    });
 }
 
 function buildSelectMenu(guildId) {
@@ -125,14 +125,15 @@ async function refreshDashboard(rootInteraction, cfg, guildId, client) {
             logger.warn('Could not fetch autoverify dashboard conflicts:', error.message);
         }
         
-        await InteractionHelper.safeEditReply(rootInteraction, {
-            embeds: [buildDashboardEmbed(cfg, rootInteraction.guild, conflictSummary)],
-            components: [
-                buildButtonRow(cfg, guildId),
-                new ActionRowBuilder().addComponents(selectMenu),
-            ],
-            flags: MessageFlags.Ephemeral,
-        });
+        await InteractionHelper.safeEditReply(rootInteraction,
+            dashboardPayload(
+                buildDashboardContainer(cfg, rootInteraction.guild, conflictSummary),
+                [
+                    buildButtonRow(cfg, guildId),
+                    new ActionRowBuilder().addComponents(selectMenu),
+                ],
+                { ephemeral: true },
+            ));
     } catch (error) {
         logger.debug('Could not refresh autoverify dashboard (interaction may have expired):', error.message);
     }
@@ -159,17 +160,12 @@ export default {
                     ? `\n\n⚠️ **To enable AutoVerify, you must first disable:**\n${blockingMessage.map(msg =>`• ${msg}`).join('\n')}`
                     : '';
 
-                return await InteractionHelper.safeReply(interaction, {
-                    embeds: [
-                        new EmbedBuilder()
-                            .setTitle('🤖 Auto-Verification Dashboard')
-                            .setDescription(`Auto-verification is not yet configured.${blockingText}\n\nUse \`/autoverify setup\` to configure it.`)
-                            .setColor(getColor('warning'))
-                            .setFooter({ text: 'Dashboard closes after 10 minutes of inactivity' })
-                            .setTimestamp()
-                    ],
-                    flags: MessageFlags.Ephemeral
-                });
+                return await InteractionHelper.safeReply(interaction, dashboardOnlyPayload(createV2Container({
+                    title: '🤖 Auto-Verification Dashboard',
+                    description: `Auto-verification is not yet configured.${blockingText}\n\nUse \`/autoverify setup\` to configure it.`,
+                    color: 'warning',
+                    raw: true,
+                }), { ephemeral: true }));
             }
 
             await InteractionHelper.safeDefer(interaction, { ephemeral: true });
@@ -194,14 +190,15 @@ export default {
                 logger.warn('Could not fetch autoverify dashboard conflicts:', error.message);
             }
 
-            await InteractionHelper.safeEditReply(interaction, {
-                embeds: [buildDashboardEmbed(guildConfig, interaction.guild, conflictSummary)],
-                components: [
-                    buildButtonRow(guildConfig, guildId),
-                    new ActionRowBuilder().addComponents(selectMenu),
-                ],
-                flags: MessageFlags.Ephemeral,
-            });
+            await InteractionHelper.safeEditReply(interaction,
+                dashboardPayload(
+                    buildDashboardContainer(guildConfig, interaction.guild, conflictSummary),
+                    [
+                        buildButtonRow(guildConfig, guildId),
+                        new ActionRowBuilder().addComponents(selectMenu),
+                    ],
+                    { ephemeral: true },
+                ));
 
             const collector = interaction.channel.createMessageComponentCollector({
                 componentType: ComponentType.StringSelect,
@@ -263,15 +260,10 @@ export default {
                             autoVerify: { ...expected.autoVerify, enabled: !expected.autoVerify.enabled },
                         });
                         
-                        await btnInteraction.followUp({
-                            embeds: [
-                                successEmbed(
-                                    '✅ Status Updated',
-                                    `Auto-verification is now **${saved.autoVerify.enabled ? 'enabled' : 'disabled'}**.`,
-                                ),
-                            ],
-                            flags: MessageFlags.Ephemeral,
-                        });
+                        await btnInteraction.followUp(v2Message([v2Success(
+                            '✅ Status Updated',
+                            `Auto-verification is now **${saved.autoVerify.enabled ? 'enabled' : 'disabled'}**.`,
+                        )], { ephemeral: true }));
 
                         await refreshDashboard(interaction, guildConfig, guildId, client);
                     }
@@ -291,15 +283,12 @@ export default {
                 if (reason === 'time') {
                     btnCollector.stop();
                     try {
-                        const timeoutEmbed = new EmbedBuilder()
-                            .setTitle('Dashboard Timed Out')
-                            .setDescription('This dashboard has been closed due to inactivity. Please run the command again to continue.')
-                            .setColor(getColor('error'));
-                        await InteractionHelper.safeEditReply(interaction, {
-                            embeds: [timeoutEmbed],
-                            components: [],
-                            flags: MessageFlags.Ephemeral,
-                        });
+                        await InteractionHelper.safeEditReply(interaction,
+                            v2Message([createV2Container({
+                                title: 'Dashboard Timed Out',
+                                description: 'This dashboard has been closed due to inactivity. Please run the command again to continue.',
+                                color: 'error',
+                            })], { ephemeral: true }));
                     } catch (error) {
                         logger.debug('Could not update dashboard on timeout:', error.message);
                     }
@@ -323,10 +312,11 @@ async function handleCriteria(selectInteraction, rootInteraction, guildConfig, g
         await selectInteraction.deferUpdate().catch(() => null);
     }
     
-    const criteriaEmbed = new EmbedBuilder()
-        .setTitle('Select Verification Criteria')
-        .setDescription('Choose the criteria for automatic verification')
-        .setColor(getColor('info'));
+    const criteriaContainer = createV2Container({
+        title: 'Select Verification Criteria',
+        description: 'Choose the criteria for automatic verification',
+        color: 'info',
+    });
 
     const criteriaMenu = new StringSelectMenuBuilder()
         .setCustomId('autoverify_criteria_select')
@@ -342,11 +332,7 @@ async function handleCriteria(selectInteraction, rootInteraction, guildConfig, g
                 .setValue('none'),
         );
 
-    await selectInteraction.followUp({
-        embeds: [criteriaEmbed],
-        components: [new ActionRowBuilder().addComponents(criteriaMenu)],
-        flags: MessageFlags.Ephemeral,
-    });
+    await selectInteraction.followUp(dashboardPayload(criteriaContainer, [new ActionRowBuilder().addComponents(criteriaMenu)], { ephemeral: true }));
 
     const criteriaCollector = rootInteraction.channel.createMessageComponentCollector({
         componentType: ComponentType.StringSelect,
@@ -378,10 +364,7 @@ async function handleCriteria(selectInteraction, rootInteraction, guildConfig, g
                 break;
         }
 
-        await criteriaInteraction.followUp({
-            embeds: [successEmbed('Criteria Updated', `Auto-verification criteria changed to **${criteriaDisplay}**.`)],
-            flags: MessageFlags.Ephemeral,
-        });
+        await criteriaInteraction.followUp(v2Message([v2Success('Criteria Updated', `Auto-verification criteria changed to **${criteriaDisplay}**.`)], { ephemeral: true }));
 
         await refreshDashboard(rootInteraction, guildConfig, guildId, client);
     }, 'nested dashboard selection'));
@@ -405,16 +388,15 @@ async function handleRole(selectInteraction, rootInteraction, guildConfig, guild
         .setPlaceholder('Select a role...')
         .setMaxValues(1);
 
-    await selectInteraction.followUp({
-        embeds: [
-            new EmbedBuilder()
-                .setTitle('Auto-Verification Role')
-                .setDescription('Select the role to assign to auto-verified users.')
-                .setColor(getColor('info')),
-        ],
-        components: [new ActionRowBuilder().addComponents(roleSelect)],
-        flags: MessageFlags.Ephemeral,
-    });
+    await selectInteraction.followUp(dashboardPayload(
+        createV2Container({
+            title: 'Auto-Verification Role',
+            description: 'Select the role to assign to auto-verified users.',
+            color: 'info',
+        }),
+        [new ActionRowBuilder().addComponents(roleSelect)],
+        { ephemeral: true },
+    ));
 
     const roleCollector = rootInteraction.channel.createMessageComponentCollector({
         componentType: ComponentType.RoleSelect,
@@ -449,10 +431,7 @@ async function handleRole(selectInteraction, rootInteraction, guildConfig, guild
             autoVerify: { ...expected.autoVerify, roleId: role.id },
         });
 
-        await roleInteraction.followUp({
-            embeds: [successEmbed('Role Updated', `Auto-verification role set to ${role}.`)],
-            flags: MessageFlags.Ephemeral,
-        });
+        await roleInteraction.followUp({ ...v2Message([v2Success('Role Updated', `Auto-verification role set to ${role}.`)], { ephemeral: true }), allowedMentions: { parse: [] } });
 
         await refreshDashboard(rootInteraction, guildConfig, guildId, client);
     }, 'nested dashboard selection'));
@@ -508,10 +487,7 @@ async function handleAccountAge(selectInteraction, rootInteraction, guildConfig,
         await saveVerificationDashboardChange(client, guildId, guildConfig.verification, expected, {
             autoVerify: { ...expected.autoVerify, accountAgeDays: days },
         });
-        await submitted.reply({
-            embeds: [successEmbed('Account Age Updated', `Minimum account age requirement set to **${days} days**.`)],
-            flags: MessageFlags.Ephemeral,
-        });
+        await submitted.reply(v2Message([v2Success('Account Age Updated', `Minimum account age requirement set to **${days} days**.`)], { ephemeral: true }));
         await refreshDashboard(rootInteraction, guildConfig, guildId, client);
     } catch (error) {
         logger.warn('Could not save auto-verification account age:', error.message);

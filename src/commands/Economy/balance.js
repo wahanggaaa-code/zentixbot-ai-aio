@@ -1,9 +1,11 @@
 import { SlashCommandBuilder } from 'discord.js';
-import { createEmbed, errorEmbed, successEmbed, infoEmbed, warningEmbed } from '../../utils/embeds.js';
+
 import { getEconomyData, getMaxBankCapacity } from '../../utils/economy.js';
 import { withErrorHandling, createError, ErrorTypes } from '../../utils/errorHandler.js';
 import { logger } from '../../utils/logger.js';
 import { InteractionHelper } from '../../utils/interactionHelper.js';
+import { createV2Container, v2Message } from '../../utils/componentsV2.js';
+
 
 export default {
     data: new SlashCommandBuilder()
@@ -54,34 +56,10 @@ export default {
         const wallet = typeof userData.wallet === 'number' ? userData.wallet : 0;
         const bank = typeof userData.bank === 'number' ? userData.bank : 0;
 
-            const embed = createEmbed({
-                title: `${targetUser.username}'s Balance`,
-                description: `Here is the current financial status for ${targetUser.username}.`,
-            })
-                .addFields(
-                    {
-                        name: "💵 Cash",
-                        value: `$${wallet.toLocaleString()}`,
-                        inline: true,
-                    },
-                    {
-                        name: "🏦 Bank",
-                        value: `$${bank.toLocaleString()} / $${maxBank.toLocaleString()}`,
-                        inline: true,
-                    },
-                    {
-                        name: "💰 Total",
-                        value: `$${(wallet + bank).toLocaleString()}`,
-                        inline: true,
-                    }
-                )
-                .setFooter({
-                    text: `Requested by ${interaction.user.tag}`,
-                    iconURL: interaction.user.displayAvatarURL(),
-                });
+            const embed = createV2Container({ title: `${targetUser.username}'s Balance`, description: `Here is the current financial status for ${targetUser.username}.`, fields: [{ name: "💵 Cash", value: `$${wallet.toLocaleString()}` }, { name: "🏦 Bank", value: `$${bank.toLocaleString()} / $${maxBank.toLocaleString()}` }, { name: "💰 Total", value: `$${(wallet + bank).toLocaleString()}` }], footer: { text: `Requested by ${interaction.user.tag}`, always: true } });
 
             logger.info(`[ECONOMY] Balance retrieved`, { userId: targetUser.id, wallet, bank });
 
-            await InteractionHelper.safeEditReply(interaction, { embeds: [embed] });
+            await InteractionHelper.safeEditReply(interaction, { ...v2Message([embed]) });
     }, { command: 'balance' })
 };

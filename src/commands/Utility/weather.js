@@ -1,5 +1,5 @@
 import { SlashCommandBuilder } from 'discord.js';
-import { createEmbed } from '../../utils/embeds.js';
+import { createV2Container, v2Message } from '../../utils/componentsV2.js';
 import { logger } from '../../utils/logger.js';
 import { replyUserError, ErrorTypes } from '../../utils/errorHandler.js';
 import { InteractionHelper } from '../../utils/interactionHelper.js';
@@ -83,14 +83,14 @@ export default {
         if (finite(humidity)) fields.push({ name: 'Humidity', value: `${Math.round(humidity)}%`, inline: true });
         if (finite(windSpeed)) fields.push({ name: 'Wind Speed', value: `${Math.round(windSpeed)} km/h`, inline: true });
 
-        const embed = createEmbed({
+        const container = createV2Container({
             title: `Weather in ${where || plainText(city, 100)}`,
             description: describeWeatherCode(current.weathercode ?? current.weather_code),
-        })
-            .addFields(fields)
-            .setFooter({ text: `Latitude: ${place.latitude.toFixed(2)} | Longitude: ${place.longitude.toFixed(2)}` });
+            fields,
+            footer: { text: `Latitude: ${place.latitude.toFixed(2)} | Longitude: ${place.longitude.toFixed(2)}`, always: true },
+        });
 
-        await InteractionHelper.safeEditReply(interaction, { embeds: [embed] });
+        await InteractionHelper.safeEditReply(interaction, v2Message([container]));
         logger.info('Weather command executed', { userId: interaction.user.id, guildId: interaction.guildId });
     },
 };

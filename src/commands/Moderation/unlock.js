@@ -1,11 +1,12 @@
 import { SlashCommandBuilder, PermissionFlagsBits, PermissionsBitField, ChannelType } from 'discord.js';
-import { createEmbed, successEmbed, infoEmbed, warningEmbed } from '../../utils/embeds.js';
+
 import { logEvent } from '../../utils/moderation.js';
 import { logger } from '../../utils/logger.js';
-import { getColor } from '../../config/bot.js';
 
 import { InteractionHelper } from '../../utils/interactionHelper.js';
 import { replyUserError, ErrorTypes } from '../../utils/errorHandler.js';
+import { createV2Container, v2Message } from '../../utils/componentsV2.js';
+
 export default {
     data: new SlashCommandBuilder()
         .setName("unlock")
@@ -64,12 +65,7 @@ export default {
             });
 
             await InteractionHelper.safeEditReply(interaction, {
-                embeds: [
-                    successEmbed(
-                        `🔓 **Channel Unlocked**`,
-                        `${channel} is now unlocked. You may speak now.`,
-                    ),
-                ],
+                ...v2Message([createV2Container({ title: `🔓 **Channel Unlocked**`, description: `${channel} is now unlocked. You may speak now.`, color: 'success' })]),
             });
         } catch (error) {
             logger.error('Unlock command error:', error);

@@ -1,6 +1,6 @@
-import { ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType, EmbedBuilder, MessageFlags } from 'discord.js';
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType } from 'discord.js';
+import { createV2Container, v2Message } from '../../../utils/componentsV2.js';
 import { shopItems } from '../../../config/shop/items.js';
-import { getColor } from '../../../config/bot.js';
 import { logger } from '../../../utils/logger.js';
 import { handleInteractionError } from '../../../utils/errorHandler.js';
 
@@ -15,19 +15,16 @@ export default {
             const createShopEmbed = (page) => {
                 const startIndex = (page - 1) * ITEMS_PER_PAGE;
                 const pageItems = shopItems.slice(startIndex, startIndex + ITEMS_PER_PAGE);
-                const embed = new EmbedBuilder()
-                    .setTitle('Store')
-                    .setColor(getColor('primary'))
-                    .setDescription('Use `/buy item_id:<id> quantity:<amount>` to purchase an item.');
-                pageItems.forEach(item => {
-                    embed.addFields({
+                return createV2Container({
+                    title: 'Store',
+                    color: 'primary',
+                    description: 'Use `/buy item_id:<id> quantity:<amount>` to purchase an item.',
+                    fields: pageItems.map((item) => ({
                         name: `${item.name} (${item.id})`,
                         value: `**Type:** ${item.type}\n **Price:** $${item.price.toLocaleString()}\n${item.description}`,
-                        inline: false,
-                    });
+                    })),
+                    footer: `Page ${page}/${totalPages}`,
                 });
-                embed.setFooter({ text: `Page ${page}/${totalPages}` });
-                return embed;
             };
 
             const createShopComponents = (page) => {
@@ -48,11 +45,7 @@ export default {
                 ];
             };
 
-            const message = await interaction.reply({
-                embeds: [createShopEmbed(currentPage)],
-                components: createShopComponents(currentPage),
-                flags: 0,
-            });
+            const message = await interaction.reply(v2Message([createShopEmbed(currentPage), ...createShopComponents(currentPage)]));
 
             const collector = message.createMessageComponentCollector({
                 componentType: ComponentType.Button,
@@ -69,10 +62,7 @@ export default {
                     await buttonInteraction.deferUpdate();
                     if (customId === 'shop_prev' && currentPage > 1) currentPage--;
                     else if (customId === 'shop_next' && currentPage < totalPages) currentPage++;
-                    await buttonInteraction.editReply({
-                        embeds: [createShopEmbed(currentPage)],
-                        components: createShopComponents(currentPage),
-                    });
+                    await buttonInteraction.editReply(v2Message([createShopEmbed(currentPage), ...createShopComponents(currentPage)]));
                 }
             });
 
@@ -80,7 +70,7 @@ export default {
                 try {
                     const disabledComponents = createShopComponents(currentPage);
                     disabledComponents.forEach(row => row.components.forEach(btn => btn.setDisabled(true)));
-                    await message.edit({ components: disabledComponents });
+                    await message.edit({ ...v2Message([createShopEmbed(currentPage), ...disabledComponents]), allowedMentions: { parse: [] } });
                 } catch (error) {
                     logger.debug('shop_browse: could not disable components on collector end', {
                         error: error.message,

@@ -1,5 +1,5 @@
 import { SlashCommandBuilder, MessageFlags } from 'discord.js';
-import { infoEmbed, successEmbed } from '../../utils/embeds.js';
+import { v2Info, v2Success, v2Message } from '../../utils/componentsV2.js';
 import { replyUserError, ErrorTypes } from '../../utils/errorHandler.js';
 import { verifyUser } from '../../services/verificationService.js';
 import { InteractionHelper } from '../../utils/interactionHelper.js';
@@ -18,18 +18,12 @@ export default {
         });
 
         if (result.status === 'already_verified') {
-            return await InteractionHelper.safeReply(interaction, {
-                embeds: [infoEmbed('Already Verified', "You are already verified.")],
-                flags: MessageFlags.Ephemeral
-            });
+            return await InteractionHelper.safeReply(interaction, v2Message([v2Info('Already Verified', "You are already verified.")], { ephemeral: true }));
         }
 
-        await InteractionHelper.safeReply(interaction, {
-            embeds: [successEmbed(
-                "Verification Complete",
-                `You have been verified and given the **${result.roleName}** role! Welcome to the server! 🎉`
-            )],
-            flags: MessageFlags.Ephemeral
-        });
+        await InteractionHelper.safeReply(interaction, v2Message([v2Success(
+            "Verification Complete",
+            `You have been verified and given the **${result.roleName}** role! Welcome to the server!`
+        )], { ephemeral: true }));
     }
 };

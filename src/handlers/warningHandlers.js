@@ -1,5 +1,5 @@
 import { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, MessageFlags } from 'discord.js';
-import { successEmbed } from '../utils/embeds.js';
+import { createV2Container, v2Message } from '../utils/componentsV2.js';
 import { WarningService } from '../services/moderation/warningService.js';
 import { InteractionHelper } from '../utils/interactionHelper.js';
 import { logger } from '../utils/logger.js';
@@ -113,7 +113,13 @@ async function warningDeleteModalHandler(interaction, client) {
     });
 
     await interaction.editReply({
-      embeds: [successEmbed('✅ Warning Deleted', `Warning #${warningNumber} for **${targetName}** has been deleted.\n\n**Reason was:** ${warningToDelete.reason.substring(0, 100)}`)]
+      ...v2Message([createV2Container({
+        title: '✅ Warning Deleted',
+        description: `Warning #${warningNumber} for **${targetName}** has been deleted.\n\n**Reason was:** ${warningToDelete.reason.substring(0, 100)}`,
+        color: 'success',
+        raw: true,
+      })]),
+      allowedMentions: { parse: [] },
     });
   } catch (error) {
     logger.error('Warning delete modal handler error:', error);
@@ -146,7 +152,13 @@ async function warningClearConfirmModalHandler(interaction, client) {
     logger.info(`[MODERATION] All warnings cleared for ${targetUserId} in ${guildId} by ${interaction.user.id}`);
 
     await interaction.editReply({
-      embeds: [successEmbed('✅ Warnings Cleared', `All warnings for **${targetName}** have been cleared. **${count}** warning(s) removed.`)]
+      ...v2Message([createV2Container({
+        title: '✅ Warnings Cleared',
+        description: `All warnings for **${targetName}** have been cleared. **${count}** warning(s) removed.`,
+        color: 'success',
+        raw: true,
+      })]),
+      allowedMentions: { parse: [] },
     });
   } catch (error) {
     logger.error('Warning clear confirm modal handler error:', error);

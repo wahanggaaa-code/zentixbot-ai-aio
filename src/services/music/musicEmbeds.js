@@ -1,5 +1,5 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
-import { createEmbed } from '../../utils/embeds.js';
+import { createV2Container } from '../../utils/componentsV2.js';
 import { getPaginationRow } from '../../utils/components.js';
 
 const QUEUE_PAGE_SIZE = 10;
@@ -58,20 +58,19 @@ export function buildNowPlayingEmbed(track, player, guildData) {
     const position = formatDuration(player?.position || 0);
     const duration = formatDuration(track?.info?.length || 0);
 
-    return createEmbed({
+    return createV2Container({
         title: 'Now Playing',
         description: track?.info?.title || 'Unknown track',
         color: 'primary',
         fields: [
-            { name: 'Artist', value: track?.info?.author || 'Unknown', inline: true },
-            { name: 'Requester', value: requesterLabel, inline: true },
-            { name: 'Progress', value: `${position} / ${duration}`, inline: true },
-            { name: 'Volume', value: `${guildData?.volume ?? 75}%`, inline: true },
-            { name: 'Loop', value: getLoopLabel(guildData?.loop), inline: true },
-            { name: 'Queue', value: `${player?.queue?.length || 0} track(s)`, inline: true },
+            { name: 'Artist', value: track?.info?.author || 'Unknown' },
+            { name: 'Requester', value: requesterLabel },
+            { name: 'Progress', value: `${position} / ${duration}` },
+            { name: 'Volume', value: `${guildData?.volume ?? 75}%` },
+            { name: 'Loop', value: getLoopLabel(guildData?.loop) },
+            { name: 'Queue', value: `${player?.queue?.length || 0} track(s)` },
         ],
         thumbnail: getTrackArtwork(track),
-        footer: player?.paused ? 'Paused' : 'Playing',
     });
 }
 
@@ -98,7 +97,7 @@ export function buildQueueEmbed(queue, currentTrack, page = 0) {
             .join('\n');
     }
 
-    return createEmbed({
+    return createV2Container({
         title: 'Music Queue',
         description: description.substring(0, 4096),
         color: 'info',

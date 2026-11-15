@@ -1,8 +1,10 @@
 import { SlashCommandBuilder } from 'discord.js';
-import { createEmbed, errorEmbed, successEmbed, infoEmbed, warningEmbed } from '../../utils/embeds.js';
+
 import { withEconomyTransaction } from '../../services/economy/transaction.js';
 import { withErrorHandling, createError, ErrorTypes } from '../../utils/errorHandler.js';
 import { InteractionHelper } from '../../utils/interactionHelper.js';
+import { createV2Container, v2Message } from '../../utils/componentsV2.js';
+
 
 const FISH_COOLDOWN = 45 * 60 * 1000; 
 const BASE_MIN_REWARD = 300;
@@ -111,25 +113,8 @@ export default {
                 legendary: '#F1C40F'
             };
 
-            const embed = createEmbed({
-                title: 'Fishing Success!',
-                description: `${catchMessage}\n\nYou caught a **${fishCaught.emoji} ${fishCaught.name}**! You sold it for **$${finalEarned.toLocaleString()}**!${multiplierMessage}`,
-                color: rarityColors[fishCaught.rarity]
-            })
-                .addFields(
-                    {
-                        name: "New Cash Balance",
-                        value: `$${newWallet.toLocaleString()}`,
-                        inline: true,
-                    },
-                    {
-                        name: "Rarity",
-                        value: fishCaught.rarity.charAt(0).toUpperCase() + fishCaught.rarity.slice(1),
-                        inline: true,
-                    }
-                )
-                .setFooter({ text: `Next fishing trip available in 45 minutes.` });
+            const embed = createV2Container({ title: 'Fishing Success!', description: `${catchMessage}\n\nYou caught a **${fishCaught.emoji} ${fishCaught.name}**! You sold it for **$${finalEarned.toLocaleString()}**!${multiplierMessage}`, color: rarityColors[fishCaught.rarity], fields: [{ name: "New Cash Balance", value: `$${newWallet.toLocaleString()}` }, { name: "Rarity", value: fishCaught.rarity.charAt(0).toUpperCase() + fishCaught.rarity.slice(1) }], footer: { text: `Next fishing trip available in 45 minutes.`, always: true } });
 
-            await InteractionHelper.safeEditReply(interaction, { embeds: [embed] });
+            await InteractionHelper.safeEditReply(interaction, { ...v2Message([embed]) });
     }, { command: 'fish' })
 };

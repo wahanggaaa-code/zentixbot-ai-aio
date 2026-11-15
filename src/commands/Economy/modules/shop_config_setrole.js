@@ -1,11 +1,13 @@
 import { PermissionsBitField } from 'discord.js';
-import { successEmbed } from '../../../utils/embeds.js';
+
 import { getGuildConfig, setGuildConfig } from '../../../services/config/guildConfig.js';
 import { InteractionHelper } from '../../../utils/interactionHelper.js';
 import { logger } from '../../../utils/logger.js';
 import { checkPremiumRole } from '../../../services/economy/premiumRole.js';
 
 import { replyUserError, ErrorTypes } from '../../../utils/errorHandler.js';
+import { createV2Container, v2Message } from '../../../utils/componentsV2.js';
+
 export default {
     async execute(interaction, config, client) {
         if (!interaction.member.permissions.has(PermissionsBitField.Flags.ManageGuild)) {
@@ -31,7 +33,7 @@ export default {
             await setGuildConfig(client, guildId, currentConfig);
 
             return InteractionHelper.safeReply(interaction, {
-                embeds: [successEmbed('Premium Role Set', `The **Premium Shop Role** has been set to ${role.toString()}. Members who purchase the Premium Role item will be granted this role.`)],
+                ...v2Message([createV2Container({ title: 'Premium Role Set', description: `The **Premium Shop Role** has been set to ${role.toString()}. Members who purchase the Premium Role item will be granted this role.`, color: 'success' })]),
                 ephemeral: true,
             });
         } catch (error) {

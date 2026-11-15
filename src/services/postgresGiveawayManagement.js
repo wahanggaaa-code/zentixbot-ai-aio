@@ -1,5 +1,6 @@
 import { ChannelType, PermissionFlagsBits } from 'discord.js';
-import { createGiveawayEmbed, createGiveawayButtons } from './giveawayService.js';
+import { buildGiveawayComponents } from './giveawayService.js';
+import { v2Message } from '../utils/componentsV2.js';
 import { performPostgresGiveawayDelivery } from './postgresGiveawayRuntime.js';
 import {
     assertPostgresGiveawayReady,
@@ -110,9 +111,7 @@ export async function createPostgresGiveawayFromDashboard(client, guild, input) 
         let message;
         try {
             message = await channel.send({
-                content: '🎉 **NEW GIVEAWAY** 🎉',
-                embeds: [createGiveawayEmbed(data, 'active')],
-                components: [createGiveawayButtons(false)],
+                ...v2Message(buildGiveawayComponents(data, 'active')),
                 allowedMentions: { parse: [] },
             });
         } catch (error) {

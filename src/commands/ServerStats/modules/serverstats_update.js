@@ -1,4 +1,4 @@
-import { successEmbed } from '../../../utils/embeds.js';
+import { v2Success, v2Message } from '../../../utils/componentsV2.js';
 import { changeCounterType } from '../../../services/serverStats/manage.js';
 import { logger } from '../../../utils/logger.js';
 import { InteractionHelper } from '../../../utils/interactionHelper.js';
@@ -29,7 +29,7 @@ export async function handleUpdate(interaction, client) {
             '',
             describeRefresh(refresh),
         ];
-        await InteractionHelper.safeEditReply(interaction, { embeds: [successEmbed(lines.join('\n'))] }).catch(logger.error);
+        await InteractionHelper.safeEditReply(interaction, { ...v2Message([v2Success(lines.join('\n'))]), allowedMentions: { parse: [] } }).catch(logger.error);
     } catch (error) {
         const where = error?.code === 'SERVERSTATS_DUPLICATE' && guild.channels.cache.get(error.channelId)
             ? ` It is in ${guild.channels.cache.get(error.channelId)}.` : '';

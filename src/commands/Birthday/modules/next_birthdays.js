@@ -1,4 +1,5 @@
-import { EmbedBuilder } from 'discord.js';
+import { createV2Container, v2Message } from '../../../utils/componentsV2.js';
+import { plainText } from '../../../services/searchLookup.js';
 import { getUpcomingBirthdays } from '../../../services/birthdayService.js';
 import { logger } from '../../../utils/logger.js';
 
@@ -10,13 +11,12 @@ export default {
         const next5 = await getUpcomingBirthdays(client, interaction.guildId, 5);
 
         if (next5.length === 0) {
-            const embed = new EmbedBuilder()
-                .setColor(0xFF0000)
-                .setTitle('No Birthdays Found')
-                .setDescription('No birthdays have been set up in this server yet. Use `/birthday set` to add birthdays!');
-            return await InteractionHelper.safeEditReply(interaction, {
-                embeds: [embed]
+            const container = createV2Container({
+                title: 'No Birthdays Found',
+                description: 'No birthdays have been set up in this server yet. Use `/birthday set` to add birthdays!',
+                color: 'error',
             });
+            return await InteractionHelper.safeEditReply(interaction, v2Message([container]));
         }
 
         let displayIndex = 0;
@@ -38,13 +38,12 @@ export default {
         }
 
         if (displayIndex === 0) {
-            const embed = new EmbedBuilder()
-                .setColor(0xFF0000)
-                .setTitle('No Upcoming Birthdays')
-                .setDescription('No upcoming birthdays found for current server members.');
-            return await InteractionHelper.safeEditReply(interaction, {
-                embeds: [embed]
+            const container = createV2Container({
+                title: 'No Upcoming Birthdays',
+                description: 'No upcoming birthdays found for current server members.',
+                color: 'error',
             });
+            return await InteractionHelper.safeEditReply(interaction, v2Message([container]));
         }
 
         let birthdayList = `🎂 **Next 5 Upcoming Birthdays**\n\nHere are the next 5 birthdays in ${interaction.guild.name}:\n\n`;
@@ -65,19 +64,19 @@ export default {
                 timeUntil = `In ${birthday.daysUntil} day${birthday.daysUntil > 1 ? 's' : ''}`;
             }
 
-            birthdayList += `${displayIndex}. **${member.displayName}**\n<@${birthday.userId}>\n📅 **Date:** ${birthday.monthName} ${birthday.day}\n⏰ **Time:** ${timeUntil}\n\n`;
+            birthdayList += `${displayIndex}. **${plainText(member.displayName, 80)}**\n<@${birthday.userId}>\n📅 **Date:** ${birthday.monthName} ${birthday.day}\n⏰ **Time:** ${timeUntil}\n\n`;
         }
 
         birthdayList += `Use /birthday set to add your birthday!`;
 
-        const embed = new EmbedBuilder()
-            .setColor(0x00FF00)
-            .setTitle('Next 5 Upcoming Birthdays')
-            .setDescription(birthdayList);
-
-        await InteractionHelper.safeEditReply(interaction, {
-            embeds: [embed]
+        const container = createV2Container({
+            title: '🎉 Next 5 Upcoming Birthdays',
+            description: birthdayList,
+            color: 'success',
+            raw: true,
         });
+
+        await InteractionHelper.safeEditReply(interaction, { ...v2Message([container]), allowedMentions: { parse: [] } });
 
         logger.info('Next birthdays retrieved successfully', {
             userId: interaction.user.id,

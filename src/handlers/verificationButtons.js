@@ -1,5 +1,5 @@
 import { MessageFlags } from 'discord.js';
-import { successEmbed } from '../utils/embeds.js';
+import { createV2Container, v2Message } from '../utils/componentsV2.js';
 import { verifyUser } from '../services/verificationService.js';
 import { handleInteractionError, replyUserError, ErrorTypes } from '../utils/errorHandler.js';
 import { logger } from '../utils/logger.js';
@@ -38,10 +38,12 @@ export async function handleVerificationButton(interaction, client) {
         });
 
         await InteractionHelper.safeEditReply(interaction, {
-            embeds: [successEmbed(
-                "✅ Verification Successful!",
-                `You have been verified and given the **${result.roleName}** role!\n\nYou now have access to all server channels and features. Welcome! 🎉`
-            )],
+            ...v2Message([createV2Container({
+                title: '✅ Verification Successful!',
+                description: `You have been verified and given the **${result.roleName}** role!\n\nYou now have access to all server channels and features. Welcome! 🎉`,
+                color: 'success',
+                raw: true,
+            })]),
         });
 
     } catch (error) {

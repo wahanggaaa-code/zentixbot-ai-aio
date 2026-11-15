@@ -11,12 +11,10 @@ import {
     ButtonStyle,
     MessageFlags,
     ComponentType,
-    EmbedBuilder,
     PermissionFlagsBits,
 } from 'discord.js';
-import { getColor } from '../../../config/bot.js';
 import { InteractionHelper } from '../../../utils/interactionHelper.js';
-import { successEmbed } from '../../../utils/embeds.js';
+import { createV2Container, v2Success, v2Message } from '../../../utils/componentsV2.js';
 import { logger } from '../../../utils/logger.js';
 import { ZentixBotError, ErrorTypes, replyUserError } from '../../../utils/errorHandler.js';
 import { getEconomyPrefix } from '../../../utils/database.js';
@@ -70,7 +68,12 @@ async function economyTotals(guild, client) {
     return { total, users };
 }
 
-async function buildDashboardEmbed(guild, client) {
+const dashboardPayload = (container, components = []) => ({
+    ...v2Message([container, ...components]),
+    allowedMentions: { parse: [] },
+});
+
+async function buildDashboardContainer(guild, client) {
     const { symbol: currencySymbol, name: currencyName } = await currencyOf(client, guild.id);
 
     let totals = null;
@@ -85,19 +88,20 @@ async function buildDashboardEmbed(guild, client) {
 
     const avgBalance = userCount > 0 ? Math.floor(totalInCirculation / userCount) : 0;
 
-    return new EmbedBuilder()
-        .setTitle('💰 Economy Dashboard')
-        .setDescription(`Manage the economy system for **${guild.name}**.\nSelect an option below to perform an action.`)
-        .setColor(getColor('economy'))
-        .addFields(
-            { name: '💰 Total in Circulation', value: shown(totalInCirculation, currencySymbol), inline: true },
-            { name: '👥 Active Users', value: shown(userCount), inline: true },
-            { name: '📊 Average Balance', value: shown(avgBalance, currencySymbol), inline: true },
-            { name: '💱 Currency Symbol', value: `\`${currencySymbol}\``, inline: true },
-            { name: '📝 Currency Name', value: `\`${currencyName}\``, inline: true },
-        )
-        .setFooter({ text: 'Dashboard closes after 10 minutes of inactivity' })
-        .setTimestamp();
+    return createV2Container({
+        title: '💰 Economy Dashboard',
+        description: `Manage the economy system for **${guild.name}**.\nSelect an option below to perform an action.`,
+        color: 'economy',
+        raw: true,
+        fields: [
+            { name: '💰 Total in Circulation', value: shown(totalInCirculation, currencySymbol) },
+            { name: '👥 Active Users', value: shown(userCount) },
+            { name: '📊 Average Balance', value: shown(avgBalance, currencySymbol) },
+            { name: '💱 Currency Symbol', value: `\`${currencySymbol}\`` },
+            { name: '📝 Currency Name', value: `\`${currencyName}\`` },
+        ],
+        footer: 'Dashboard closes after 10 minutes of inactivity',
+    });
 }
 
 function buildSelectMenu(guildId) {
@@ -130,12 +134,10 @@ function buildSelectMenu(guildId) {
 
 async function refreshDashboard(rootInteraction, guild, client) {
     const selectMenu = buildSelectMenu(guild.id);
-    await InteractionHelper.safeEditReply(rootInteraction, {
-        embeds: [await buildDashboardEmbed(guild, client)],
-        components: [
+    await InteractionHelper.safeEditReply(rootInteraction,
+        dashboardPayload(await buildDashboardContainer(guild, client), [
             new ActionRowBuilder().addComponents(selectMenu),
-        ],
-    }).catch(() => {});
+        ])).catch(() => {});
 }
 
 export default {
@@ -146,10 +148,8 @@ export default {
             const selectMenu = buildSelectMenu(guild.id);
             const selectRow = new ActionRowBuilder().addComponents(selectMenu);
 
-            await InteractionHelper.safeEditReply(interaction, {
-                embeds: [await buildDashboardEmbed(guild, client)],
-                components: [selectRow],
-            });
+            await InteractionHelper.safeEditReply(interaction,
+                dashboardPayload(await buildDashboardContainer(guild, client), [selectRow]));
 
             const collector = interaction.channel.createMessageComponentCollector({
                 componentType: ComponentType.StringSelect,
@@ -204,15 +204,12 @@ export default {
 
             collector.on('end', async (collected, reason) => {
                 if (reason === 'time') {
-                    const timeoutEmbed = new EmbedBuilder()
-                        .setTitle('Dashboard Timed Out')
-                        .setDescription('This dashboard has been closed due to inactivity. Please run the command again to continue.')
-                        .setColor(getColor('error'));
-                    
-                    await InteractionHelper.safeEditReply(interaction, {
-                        embeds: [timeoutEmbed],
-                        components: [],
-                    }).catch(() => {});
+                    await InteractionHelper.safeEditReply(interaction,
+                        v2Message([createV2Container({
+                            title: 'Dashboard Timed Out',
+                            description: 'This dashboard has been closed due to inactivity. Please run the command again to continue.',
+                            color: 'error',
+                        })])).catch(() => {});
                 }
             });
         } catch (error) {
@@ -312,10 +309,7 @@ async function handleAddCurrency(selectInteraction, rootInteraction, guild, clie
 
     const { symbol: currencySymbol } = await currencyOf(client, guild.id);
 
-    await submitted.reply({
-        embeds: [successEmbed('Currency Added', `Successfully added ${currencySymbol}${amount.toLocaleString()} to ${member.user.tag}'s ${type}.\n**New Balance:** ${currencySymbol}${newBalance.toLocaleString()}`)],
-        flags: MessageFlags.Ephemeral,
-    });
+    await submitted.reply({ ...v2Message([v2Success('Currency Added', `Successfully added ${currencySymbol}${amount.toLocaleString()} to ${member.user.tag}'s ${type}.\n**New Balance:** ${currencySymbol}${newBalance.toLocaleString()}`)], { ephemeral: true }), allowedMentions: { parse: [] } });
 
     logger.info(`[ECONOMY_DASHBOARD] Currency added`, {
         adminId: submitted.user.id,
@@ -413,10 +407,7 @@ async function handleRemoveCurrency(selectInteraction, rootInteraction, guild, c
 
     const { symbol: currencySymbol } = await currencyOf(client, guild.id);
 
-    await submitted.reply({
-        embeds: [successEmbed('Currency Removed', `Successfully removed ${currencySymbol}${amount.toLocaleString()} from ${member.user.tag}'s ${type}.\n**New Balance:** ${currencySymbol}${newBalance.toLocaleString()}`)],
-        flags: MessageFlags.Ephemeral,
-    });
+    await submitted.reply({ ...v2Message([v2Success('Currency Removed', `Successfully removed ${currencySymbol}${amount.toLocaleString()} from ${member.user.tag}'s ${type}.\n**New Balance:** ${currencySymbol}${newBalance.toLocaleString()}`)], { ephemeral: true }), allowedMentions: { parse: [] } });
 
     logger.info(`[ECONOMY_DASHBOARD] Currency removed`, {
         adminId: submitted.user.id,
@@ -474,10 +465,7 @@ async function handleChangeCurrency(selectInteraction, rootInteraction, guild, c
 
     await saveCurrency(client, guild.id, { symbol: newSymbol });
 
-    await submitted.reply({
-        embeds: [successEmbed('Currency Symbol Updated', `Currency symbol changed to **${newSymbol}**.\n\n${CURRENCY_SCOPE}`)],
-        flags: MessageFlags.Ephemeral,
-    });
+    await submitted.reply({ ...v2Message([v2Success('Currency Symbol Updated', `Currency symbol changed to **${newSymbol}**.\n\n${CURRENCY_SCOPE}`)], { ephemeral: true }), allowedMentions: { parse: [] } });
 
     logger.info(`[ECONOMY_DASHBOARD] Currency symbol changed`, {
         adminId: submitted.user.id,
@@ -533,10 +521,7 @@ async function handleChangeName(selectInteraction, rootInteraction, guild, clien
 
     await saveCurrency(client, guild.id, { name: newName });
 
-    await submitted.reply({
-        embeds: [successEmbed('Currency Name Updated', `Currency name changed to **${newName}**.\n\n${CURRENCY_SCOPE}`)],
-        flags: MessageFlags.Ephemeral,
-    });
+    await submitted.reply({ ...v2Message([v2Success('Currency Name Updated', `Currency name changed to **${newName}**.\n\n${CURRENCY_SCOPE}`)], { ephemeral: true }), allowedMentions: { parse: [] } });
 
     logger.info(`[ECONOMY_DASHBOARD] Currency name changed`, {
         adminId: submitted.user.id,

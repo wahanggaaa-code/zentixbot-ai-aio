@@ -1,6 +1,6 @@
 import { once } from 'node:events';
 import { MessageFlags, PermissionFlagsBits } from 'discord.js';
-import { successEmbed } from '../../utils/embeds.js';
+import { v2Success, v2Message } from '../../utils/componentsV2.js';
 import { InteractionHelper } from '../../utils/interactionHelper.js';
 import { botHasPermission } from '../../utils/permissionGuard.js';
 import { ZentixBotError, ErrorTypes } from '../../utils/errorHandler.js';
@@ -189,7 +189,7 @@ export async function joinVoiceChannel(client, interaction) {
 
     player.setVolume(guildData.volume);
 
-    return successEmbed(
+    return v2Success(
         'Joined Voice Channel',
         `Connected to **${channel.name}**. Use /play to start music, or /music for playback controls.`,
     );
@@ -232,7 +232,7 @@ export async function playQuery(client, interaction, query) {
         }
 
         return {
-            embed: successEmbed(
+            embed: v2Success(
                 'Playlist Added',
                 `**${playlistInfo?.name || 'Playlist'}**\nAdded ${added} of ${tracks.length} track(s).${skipped ? ` Skipped ${skipped} duplicate(s).` : ''}`,
             ),
@@ -269,7 +269,7 @@ export async function playQuery(client, interaction, query) {
         }
 
         return {
-            embed: successEmbed(
+            embed: v2Success(
                 willPlayNow ? 'Now Playing' : 'Track Added',
                 willPlayNow
                     ? `**${track.info.title}**\n${track.info.author}`
@@ -294,7 +294,7 @@ export async function skipTrack(client, interaction) {
         player.setLoop('none');
     }
     player.stop();
-    return successEmbed('Skipped', `Skipped **${title}**.`);
+    return v2Success('Skipped', `Skipped **${title}**.`);
 }
 
 export async function stopPlayback(client, interaction) {
@@ -314,7 +314,7 @@ export async function stopPlayback(client, interaction) {
                 guildData.stopConfirmPending = null;
             }
         }, 15000);
-        return successEmbed(
+        return v2Success(
             'Confirm Stop',
             `There are **${queueLength}** tracks in the queue. Run **/music stop** again within 15 seconds to confirm.`,
         );
@@ -322,7 +322,7 @@ export async function stopPlayback(client, interaction) {
 
     guildData.stopConfirmPending = null;
     await destroyPlayerSession(client, interaction.guild.id, player, guildData);
-    return successEmbed('Stopped', 'Playback stopped and the queue was cleared.');
+    return v2Success('Stopped', 'Playback stopped and the queue was cleared.');
 }
 
 export async function applyPause(client, guildId) {
@@ -359,7 +359,7 @@ export async function pausePlayback(client, interaction) {
     }
 
     await applyPause(client, interaction.guild.id);
-    return successEmbed('Paused', 'Playback paused.');
+    return v2Success('Paused', 'Playback paused.');
 }
 
 export async function resumePlayback(client, interaction) {
@@ -374,7 +374,7 @@ export async function resumePlayback(client, interaction) {
     }
 
     await applyResume(client, interaction.guild.id);
-    return successEmbed('Resumed', 'Playback resumed.');
+    return v2Success('Resumed', 'Playback resumed.');
 }
 
 export async function shuffleQueue(client, interaction) {
@@ -386,7 +386,7 @@ export async function shuffleQueue(client, interaction) {
     player.queue.shuffle();
     getGuildMusicData(interaction.guild.id).shuffle = true;
     await refreshPlayerMessage(client, interaction.guild.id);
-    return successEmbed('Shuffled', 'The queue has been shuffled.');
+    return v2Success('Shuffled', 'The queue has been shuffled.');
 }
 
 export async function setLoopMode(client, interaction, mode) {
@@ -402,7 +402,7 @@ export async function setLoopMode(client, interaction, mode) {
 
     const labels = { none: 'Off', track: 'Track', queue: 'Queue' };
     await refreshPlayerMessage(client, interaction.guild.id);
-    return successEmbed('Loop Updated', `Loop mode set to **${labels[mode] || mode}**.`);
+    return v2Success('Loop Updated', `Loop mode set to **${labels[mode] || mode}**.`);
 }
 
 export async function toggleLoop(client, interaction) {
@@ -422,7 +422,7 @@ export async function setVolume(client, interaction, volume) {
     guildData.volume = Math.max(0, Math.min(100, volume));
     player.setVolume(guildData.volume);
     await refreshPlayerMessage(client, interaction.guild.id);
-    return successEmbed('Volume Updated', `Volume set to **${guildData.volume}%**.`);
+    return v2Success('Volume Updated', `Volume set to **${guildData.volume}%**.`);
 }
 
 export async function adjustVolume(client, interaction, delta) {
@@ -457,7 +457,7 @@ export async function seekTrack(client, interaction, seconds) {
 
     player.seek(position);
     await refreshPlayerMessage(client, interaction.guild.id);
-    return successEmbed('Seeked', `Seeked to **${seconds}s**.`);
+    return v2Success('Seeked', `Seeked to **${seconds}s**.`);
 }
 
 export async function removeFromQueue(client, interaction, index) {
@@ -475,7 +475,7 @@ export async function removeFromQueue(client, interaction, index) {
     const removed = player.queue[queueIndex];
     player.queue.remove(queueIndex);
     await refreshPlayerMessage(client, interaction.guild.id);
-    return successEmbed('Removed', `Removed **${removed.info?.title || 'track'}** from the queue.`);
+    return v2Success('Removed', `Removed **${removed.info?.title || 'track'}** from the queue.`);
 }
 
 export async function moveInQueue(client, interaction, from, to) {
@@ -495,7 +495,7 @@ export async function moveInQueue(client, interaction, from, to) {
     player.queue.remove(fromIndex);
     player.queue.splice(toIndex, 0, track);
     await refreshPlayerMessage(client, interaction.guild.id);
-    return successEmbed('Moved', `Moved **${track.info?.title || 'track'}** to position #${to}.`);
+    return v2Success('Moved', `Moved **${track.info?.title || 'track'}** to position #${to}.`);
 }
 
 export async function clearQueue(client, interaction) {
@@ -506,13 +506,13 @@ export async function clearQueue(client, interaction) {
     assertCanControl(interaction.member, player);
     player.queue.clear();
     await refreshPlayerMessage(client, interaction.guild.id);
-    return successEmbed('Queue Cleared', 'All queued tracks were removed.');
+    return v2Success('Queue Cleared', 'All queued tracks were removed.');
 }
 
 export async function setTwentyFourSeven(client, interaction, enabled) {
     const guildData = getGuildMusicData(interaction.guild.id);
     guildData.twentyFourSeven = enabled;
-    return successEmbed(
+    return v2Success(
         '24/7 Mode',
         enabled
             ? '24/7 mode enabled. The bot will stay in the voice channel when the queue ends.'
@@ -526,9 +526,7 @@ export function buildNowPlayingReply(client, guildId) {
         throw new ZentixBotError('No player', ErrorTypes.USER_INPUT, 'Nothing is playing right now.');
     }
     const guildData = getGuildMusicData(guildId);
-    return {
-        embeds: [buildNowPlayingEmbed(player.current, player, guildData)],
-    };
+    return v2Message([buildNowPlayingEmbed(player.current, player, guildData)]);
 }
 
 export function buildQueueReply(client, guildId, page = 0) {
@@ -540,9 +538,10 @@ export function buildQueueReply(client, guildId, page = 0) {
     const totalPages = Math.max(1, Math.ceil((player.queue?.length || 0) / getQueuePageSize()));
     const safePage = Math.min(Math.max(page, 0), totalPages - 1);
 
+    const container = buildQueueEmbed(player.queue, player.current, safePage);
+    const components = [container, ...(totalPages > 1 ? [buildQueuePaginationRow(safePage, totalPages)] : [])];
     return {
-        embeds: [buildQueueEmbed(player.queue, player.current, safePage)],
-        components: totalPages > 1 ? [buildQueuePaginationRow(safePage, totalPages)] : [],
+        ...v2Message(components),
         page: safePage,
         totalPages,
     };
@@ -600,13 +599,9 @@ export async function leaveVoiceChannel(client, interaction) {
 
     await destroyPlayerSession(client, guildId, player, guildData, { forceDisconnect: true });
 
-    return successEmbed('Left Voice Channel', `Disconnected from **${channelName}**.`);
+    return v2Success('Left Voice Channel', `Disconnected from **${channelName}**.`);
 }
 
-export async function replyMusicSuccess(interaction, embed) {
-    const options = { embeds: [embed] };
-    if (!interaction._isPrefixCommand) {
-        options.flags = MessageFlags.Ephemeral;
-    }
-    await InteractionHelper.safeReply(interaction, options);
+export async function replyMusicSuccess(interaction, container) {
+    await InteractionHelper.safeReply(interaction, v2Message([container], { ephemeral: !interaction._isPrefixCommand }));
 }

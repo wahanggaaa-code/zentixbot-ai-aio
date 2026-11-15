@@ -1,5 +1,5 @@
 import { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, AttachmentBuilder, MessageFlags } from 'discord.js';
-import { createEmbed, successEmbed } from '../utils/embeds.js';
+import { createV2Container, v2Message } from '../utils/componentsV2.js';
 import { createTicket, closeTicket, claimTicket, updateTicketPriority, getTicketLimit, countOpenTickets } from '../services/ticket.js';
 import { getGuildConfig } from '../services/config/guildConfig.js';
 import { logTicketEvent } from '../utils/ticket/ticketLogging.js';
@@ -168,10 +168,7 @@ const createTicketModalHandler = {
         reason
       );
       await interaction.editReply({
-        embeds: [successEmbed(
-          'Ticket Created',
-          `Your ticket has been created in ${channel}!`
-        )]
+        ...v2Message([createV2Container({ title: 'Ticket Created', description: `Your ticket has been created in ${channel}!`, color: 'success' })])
       });
     } catch (error) {
       await handleInteractionError(interaction, error, { type: 'button', handler: 'ticket', customId: interaction.customId });
@@ -228,7 +225,7 @@ const closeTicketModalHandler = {
       const reason = providedReason || 'Closed via ticket button without a specific reason.';
 
       await closeTicket(interaction.channel, interaction.user, reason);
-      await interaction.editReply({ embeds: [successEmbed('Ticket Closed', 'This ticket has been closed.')] });
+      await interaction.editReply({ ...v2Message([createV2Container({ title: 'Ticket Closed', description: 'This ticket has been closed.', color: 'success' })]) });
     } catch (error) {
       // Shows the reason given by the ticket service (already closed, already claimed, missing permission).
       await handleInteractionError(interaction, error, { type: 'button', handler: 'ticket', customId: interaction.customId });
@@ -248,7 +245,7 @@ const claimTicketHandler = {
       if (!deferSuccess) return;
       
       await claimTicket(interaction.channel, interaction.user);
-      await interaction.editReply({ embeds: [successEmbed('Ticket Claimed', 'You have claimed this ticket.')] });
+      await interaction.editReply({ ...v2Message([createV2Container({ title: 'Ticket Claimed', description: 'You have claimed this ticket.', color: 'success' })]) });
     } catch (error) {
       // Shows the reason given by the ticket service (already closed, already claimed, missing permission).
       await handleInteractionError(interaction, error, { type: 'button', handler: 'ticket', customId: interaction.customId });
@@ -274,7 +271,7 @@ const priorityTicketHandler = {
       }
 
       await updateTicketPriority(interaction.channel, priority, interaction.user);
-      await interaction.editReply({ embeds: [successEmbed('Priority Updated', `Ticket priority set to **${priority.toUpperCase()}**.`)] });
+      await interaction.editReply({ ...v2Message([createV2Container({ title: 'Priority Updated', description: `Ticket priority set to **${priority.toUpperCase()}**.`, color: 'success' })]) });
     } catch (error) {
       // Shows the reason given by the ticket service (already closed, already claimed, missing permission).
       await handleInteractionError(interaction, error, { type: 'button', handler: 'ticket', customId: interaction.customId });
@@ -312,12 +309,9 @@ const pinTicketHandler = {
         });
 
         await interaction.editReply({
-          embeds: [createEmbed({
-            title: '📌 Ticket Unpinned',
+          ...v2Message([createV2Container({ title: 'Ticket Unpinned',
             description: 'This ticket has been unpinned and moved back to normal position.',
-            color: 0x95A5A6
-          })],
-          flags: MessageFlags.Ephemeral
+            color: 0x95A5A6 })])
         });
 
         logger.info('Ticket unpinned', {
@@ -335,12 +329,9 @@ const pinTicketHandler = {
         });
 
         await interaction.editReply({
-          embeds: [createEmbed({
-            title: '📌 Ticket Pinned',
+          ...v2Message([createV2Container({ title: 'Ticket Pinned',
             description: 'This ticket has been pinned to the top of the category.',
-            color: 0x3498db
-          })],
-          flags: MessageFlags.Ephemeral
+            color: 0x3498db })])
         });
 
         logger.info('Ticket pinned', {
@@ -391,7 +382,7 @@ const unclaimTicketHandler = {
       
       const { unclaimTicket } = await import('../services/ticket.js');
       await unclaimTicket(interaction.channel, interaction.member);
-      await interaction.editReply({ embeds: [successEmbed('Ticket Unclaimed', 'This ticket has been unclaimed.')] });
+      await interaction.editReply({ ...v2Message([createV2Container({ title: 'Ticket Unclaimed', description: 'This ticket has been unclaimed.', color: 'success' })]) });
     } catch (error) {
       // Shows the reason given by the ticket service (already closed, already claimed, missing permission).
       await handleInteractionError(interaction, error, { type: 'button', handler: 'ticket', customId: interaction.customId });
@@ -416,7 +407,7 @@ const reopenTicketHandler = {
       if (openCategoryMoveFailed) {
         reopenMessage += ' Note: Could not move the channel back to the open tickets category.';
       }
-      await interaction.editReply({ embeds: [successEmbed('Ticket Reopened', reopenMessage)] });
+      await interaction.editReply({ ...v2Message([createV2Container({ title: 'Ticket Reopened', description: reopenMessage, color: 'success' })]) });
     } catch (error) {
       // Shows the reason given by the ticket service (already closed, already claimed, missing permission).
       await handleInteractionError(interaction, error, { type: 'button', handler: 'ticket', customId: interaction.customId });
@@ -437,7 +428,7 @@ const deleteTicketHandler = {
       
       const { deleteTicket } = await import('../services/ticket.js');
       await deleteTicket(interaction.channel, interaction.member);
-      await interaction.editReply({ embeds: [successEmbed('Ticket Deleted', 'This ticket will be deleted shortly.')] });
+      await interaction.editReply({ ...v2Message([createV2Container({ title: 'Ticket Deleted', description: 'This ticket will be deleted shortly.', color: 'success' })]) });
     } catch (error) {
       // Shows the reason given by the ticket service (already closed, already claimed, missing permission).
       await handleInteractionError(interaction, error, { type: 'button', handler: 'ticket', customId: interaction.customId });

@@ -4,7 +4,7 @@ import {
   MessageFlags,
 } from 'discord.js';
 import { InteractionHelper } from '../../utils/interactionHelper.js';
-import { successEmbed } from '../../utils/embeds.js';
+import { v2Success, v2Message } from '../../utils/componentsV2.js';
 import { logger } from '../../utils/logger.js';
 import { replyUserError, ErrorTypes } from '../../utils/errorHandler.js';
 import {
@@ -18,6 +18,7 @@ import {
 } from '../../services/commandAccessService.js';
 import {
   buildDashboardView,
+  dashboardPayload,
   handleDashboardComponent,
   createDashboardCollectorFilter,
   isCommandAccessCustomId,
@@ -167,10 +168,7 @@ export default {
       }
 
       const view = await buildDashboardView(client, interaction.guildId, interaction.guild, 'overview');
-      await InteractionHelper.safeEditReply(interaction, {
-        embeds: [view.embed],
-        components: view.components,
-      });
+      await InteractionHelper.safeEditReply(interaction, dashboardPayload(view));
 
       const replyMessage = await interaction.fetchReply().catch(() => null);
       if (!replyMessage) {
@@ -204,12 +202,11 @@ export default {
       collector.on('end', async () => {
         const finalView = await buildDashboardView(client, interaction.guildId, interaction.guild, 'overview');
         const disabledComponents = finalView.components.map((row) => {
-          const newRow = row.toJSON();
-          newRow.components = newRow.components.map((component) => ({ ...component, disabled: true }));
-          return newRow;
+          row.components.forEach((component) => component.setDisabled(true));
+          return row;
         });
 
-        await replyMessage.edit({ components: disabledComponents }).catch(() => {});
+        await replyMessage.edit({ ...v2Message([finalView.container, ...disabledComponents]), allowedMentions: { parse: [] } }).catch(() => {});
       });
 
       return;
@@ -232,33 +229,27 @@ export default {
 
       if (isDisable) {
         await disableCategory(client, interaction.guildId, category.key);
-        return InteractionHelper.safeEditReply(interaction, {
-          embeds: [
-            successEmbed(
-              'Category Disabled',
-              `All **${category.displayName}** commands are now disabled.\nProtected commands remain available.`,
-            ),
-          ],
-        });
+        return InteractionHelper.safeEditReply(interaction,
+          v2Message([v2Success(
+            'Category Disabled',
+            `All **${category.displayName}** commands are now disabled.\nProtected commands remain available.`,
+          )]));
       }
 
       await enableCategory(client, interaction.guildId, category.key);
-      return InteractionHelper.safeEditReply(interaction, {
-        embeds: [successEmbed('Category Enabled', `**${category.displayName}** commands are now enabled (except individually disabled commands).`)],
-      });
+      return InteractionHelper.safeEditReply(interaction,
+        v2Message([v2Success('Category Enabled', `**${category.displayName}** commands are now enabled (except individually disabled commands).`)]));
     }
 
     const commandName = target.toLowerCase();
     if (isDisable) {
       await disableCommand(client, interaction.guildId, commandName);
-      return InteractionHelper.safeEditReply(interaction, {
-        embeds: [successEmbed('Command Disabled', `\`/${commandName}\` is now disabled in this server.`)],
-      });
+      return InteractionHelper.safeEditReply(interaction,
+        v2Message([v2Success('Command Disabled', `\`/${commandName}\` is now disabled in this server.`)]));
     }
 
     await enableCommand(client, interaction.guildId, commandName);
-    return InteractionHelper.safeEditReply(interaction, {
-      embeds: [successEmbed('Command Enabled', `\`/${commandName}\` is now enabled in this server.`)],
-    });
+    return InteractionHelper.safeEditReply(interaction,
+      v2Message([v2Success('Command Enabled', `\`/${commandName}\` is now enabled in this server.`)]));
   },
 };

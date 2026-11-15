@@ -1,8 +1,10 @@
 import { SlashCommandBuilder } from 'discord.js';
-import { createEmbed, successEmbed, infoEmbed, warningEmbed } from '../../utils/embeds.js';
+
 import { withEconomyTransaction } from '../../services/economy/transaction.js';
 import { withErrorHandling, createError, ErrorTypes } from '../../utils/errorHandler.js';
 import { InteractionHelper } from '../../utils/interactionHelper.js';
+import { createV2Container, v2Message } from '../../utils/componentsV2.js';
+
 
 const BASE_WIN_CHANCE = 0.4;
 const CLOVER_WIN_BONUS = 0.1;
@@ -80,55 +82,44 @@ export default {
 
                 const win = Math.random() < winChance;
                 let cashChange = 0;
-                let resultEmbed;
+                let outcome;
 
                 if (win) {
                     const amountWon = Math.floor(betAmount * PAYOUT_MULTIPLIER);
                     // Net change: the bet is replaced by the payout (bet was at stake, not pre-deducted)
                     cashChange = amountWon - betAmount;
 
-                    resultEmbed = successEmbed(
-                        "🎉 You Won!",
-                        `You successfully gambled and turned your **$${betAmount.toLocaleString()}** bet into **$${amountWon.toLocaleString()}**!${cloverMessage}`,
-                    );
+                    outcome = { title: "You Won!", description: `You successfully gambled and turned your **$${betAmount.toLocaleString()}** bet into **$${amountWon.toLocaleString()}**!${cloverMessage}`, color: 'success' };
                 } else {
                     cashChange = -betAmount;
 
-                    resultEmbed = warningEmbed(
-                        "💔 You Lost...",
-                        `The dice rolled against you. You lost your **$${betAmount.toLocaleString()}** bet.`,
-                    );
+                    outcome = { title: "You Lost...", description: `The dice rolled against you. You lost your **$${betAmount.toLocaleString()}** bet.`, color: 'warning' };
                 }
 
                 userData.wallet = (userData.wallet || 0) + cashChange;
                 userData.lastGamble = now;
 
-                return {userData,resultEmbed,usedClover,usedCharm,winChance};
+                return {userData,outcome,usedClover,usedCharm,winChance};
             });
-            const {userData,resultEmbed,usedClover,usedCharm,winChance}=result;
+            const {userData,outcome,usedClover,usedCharm,winChance}=result;
 
             const newCash = userData.wallet;
 
-            resultEmbed.addFields({
-                name: "New Cash Balance",
-                value: `$${newCash.toLocaleString()}`,
-                inline: true,
-            });
-
+            let footerText;
             if (usedClover) {
-                resultEmbed.setFooter({
-                    text: `You have ${userData.inventory["lucky_clover"]} Lucky Clovers left. Win chance was ${Math.round(winChance * 100)}%.`,
-                });
+                footerText = `You have ${userData.inventory["lucky_clover"]} Lucky Clovers left. Win chance was ${Math.round(winChance * 100)}%.`;
             } else if (usedCharm) {
-                resultEmbed.setFooter({
-                    text: `You have ${userData.inventory["lucky_charm"]} Lucky Charm uses left. Win chance was ${Math.round(winChance * 100)}%.`,
-                });
+                footerText = `You have ${userData.inventory["lucky_charm"]} Lucky Charm uses left. Win chance was ${Math.round(winChance * 100)}%.`;
             } else {
-                resultEmbed.setFooter({
-                    text: `Next gamble available in 5 minutes. Base win chance: ${Math.round(BASE_WIN_CHANCE * 100)}%.`,
-                });
+                footerText = `Next gamble available in 5 minutes. Base win chance: ${Math.round(BASE_WIN_CHANCE * 100)}%.`;
             }
 
-            await InteractionHelper.safeEditReply(interaction, { embeds: [resultEmbed] });
+            const resultEmbed = createV2Container({
+                ...outcome,
+                fields: [{ name: "New Cash Balance", value: `$${newCash.toLocaleString()}` }],
+                footer: { text: footerText, always: true },
+            });
+
+            await InteractionHelper.safeEditReply(interaction, { ...v2Message([resultEmbed]) });
     }, { command: 'gamble' })
 };

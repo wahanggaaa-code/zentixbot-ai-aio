@@ -1,6 +1,15 @@
 import {withEconomyTransaction} from './transaction.js';
 import {createError,ErrorTypes} from '../../utils/errorHandler.js';
-import {formatDuration} from '../../utils/embeds.js';
+function formatDuration(ms){
+ if(ms<0)return '0s';
+ const seconds=Math.floor(ms/1000)%60, minutes=Math.floor(ms/(1000*60))%60, hours=Math.floor(ms/(1000*60*60))%24, days=Math.floor(ms/(1000*60*60*24));
+ const parts=[];
+ if(days>0)parts.push(`${days}d`);
+ if(hours>0)parts.push(`${hours}h`);
+ if(minutes>0)parts.push(`${minutes}m`);
+ if(seconds>0||parts.length===0)parts.push(`${seconds}s`);
+ return parts.join('');
+}
 import {botConfig} from '../../config/bot.js';
 const cooldown=24*60*60*1000,amount=botConfig.economy?.dailyAmount??100;
 export async function claimDailyAtomic({client,guildId,userId,premium=false,now=Date.now()}){

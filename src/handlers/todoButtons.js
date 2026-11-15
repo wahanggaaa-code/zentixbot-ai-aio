@@ -1,7 +1,7 @@
 // The three buttons under a shared to-do list, and the forms they open.
 
-import { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, MessageFlags } from 'discord.js';
-import { successEmbed } from '../utils/embeds.js';
+import { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder } from 'discord.js';
+import { v2Success, v2Message } from '../utils/componentsV2.js';
 import { checkRateLimit } from '../utils/rateLimiter.js';
 import { logger } from '../utils/logger.js';
 import { replyUserError, ErrorTypes } from '../utils/errorHandler.js';
@@ -59,7 +59,7 @@ function buttonHandler(kind) {
  * stored at this point, so a redraw that fails is not reported as a failed change.
  */
 async function showChange(interaction, client, list, page, title, body) {
-    const confirmation = { embeds: [successEmbed(title, body)], flags: MessageFlags.Ephemeral };
+    const confirmation = v2Message([v2Success(title, body)], { ephemeral: true });
     const botId = client?.user?.id ?? interaction.client?.user?.id;
     if (!isSharedViewOf(interaction.message, list.id, botId) || typeof interaction.update !== 'function') {
         return interaction.reply(confirmation);

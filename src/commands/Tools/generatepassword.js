@@ -1,6 +1,6 @@
 import { randomInt } from 'node:crypto';
 import { SlashCommandBuilder, MessageFlags } from 'discord.js';
-import { createEmbed } from '../../utils/embeds.js';
+import { createV2Container, v2Message } from '../../utils/componentsV2.js';
 import { logger } from '../../utils/logger.js';
 import { replyUserError, ErrorTypes } from '../../utils/errorHandler.js';
 import { InteractionHelper } from '../../utils/interactionHelper.js';
@@ -74,12 +74,12 @@ export default {
         }
 
         const { password, bits } = generatePassword(length, wanted);
-        const embed = createEmbed({
+        const container = createV2Container({
             title: 'Generated Password',
             description: `**Password:** ||\`${password}\`||\n**Length:** ${length} characters\n**Contains:** ${wanted.map((name) => CLASSES[name].label).join(', ')}\n**Randomness:** about ${bits} bits\n\nOnly you can see this message. The password is not stored or logged.`,
             color: 'success',
         });
 
-        await InteractionHelper.safeEditReply(interaction, { embeds: [embed] });
+        await InteractionHelper.safeEditReply(interaction, v2Message([container]));
     },
 };

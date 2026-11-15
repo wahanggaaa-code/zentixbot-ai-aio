@@ -1,11 +1,13 @@
-import { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } from 'discord.js';
-import { createEmbed, successEmbed, infoEmbed, warningEmbed } from '../../utils/embeds.js';
+import { SlashCommandBuilder, PermissionFlagsBits } from 'discord.js';
+
 import { logger } from '../../utils/logger.js';
 import { getFromDb, setInDb, deleteFromDb, getUserNotesKey, getUserNotesListKey } from '../../utils/database.js';
 import { sanitizeInput } from '../../utils/validation.js';
 
 import { InteractionHelper } from '../../utils/interactionHelper.js';
 import { replyUserError, ErrorTypes } from '../../utils/errorHandler.js';
+import { createV2Container, v2Message } from '../../utils/componentsV2.js';
+
 
 export default {
     data: new SlashCommandBuilder()
@@ -149,27 +151,17 @@ async function handleAddNote(interaction, targetUser, notes, guildId) {
     const typeInfo = getNoteTypeInfo(type);
 
     return InteractionHelper.safeReply(interaction, {
-        embeds: [
-            successEmbed(
-                `${typeInfo.emoji} Note Added`,
-                `Added a **${type}** note for **${targetUser.tag}**:\n\n` +
+        ...v2Message([createV2Container({ title: `${typeInfo.emoji} Note Added`, description: `Added a **${type}** note for **${targetUser.tag}**:\n\n` +
                 `> ${note}\n\n` +
                 `**Moderator:** ${interaction.user.tag}\n` +
-                `**Total Notes:** ${notes.length}`
-            )
-        ]
+                `**Total Notes:** ${notes.length}`, color: 'success' })])
     });
 }
 
 async function handleViewNotes(interaction, targetUser, notes) {
     if (notes.length === 0) {
         return InteractionHelper.safeReply(interaction, {
-            embeds: [
-                infoEmbed(
-                    "📝 No Notes",
-                    `There are no notes for **${targetUser.tag}**.`
-                ),
-            ],
+            ...v2Message([createV2Container({ title: "📝 No Notes", description: `There are no notes for **${targetUser.tag}**.`, color: 'info' })]),
         });
     }
 
@@ -190,12 +182,7 @@ async function handleViewNotes(interaction, targetUser, notes) {
     }
 
     return InteractionHelper.safeReply(interaction, {
-        embeds: [
-            infoEmbed(
-                `📝 User Notes (${notes.length})`,
-                description
-            )
-        ]
+        ...v2Message([createV2Container({ title: `📝 User Notes (${notes.length})`, description: description, color: 'info' })])
     });
 }
 
@@ -219,14 +206,9 @@ async function handleRemoveNote(interaction, targetUser, notes, guildId) {
     const typeInfo = getNoteTypeInfo(removedNote.type);
 
     return InteractionHelper.safeReply(interaction, {
-        embeds: [
-            successEmbed(
-                `${typeInfo.emoji} Note Removed`,
-                `Removed note #${index + 1} from **${targetUser.tag}**:\n\n` +
+        ...v2Message([createV2Container({ title: `${typeInfo.emoji} Note Removed`, description: `Removed note #${index + 1} from **${targetUser.tag}**:\n\n` +
                 `> ${removedNote.content}\n\n` +
-                `**Remaining Notes:** ${notes.length}`
-            )
-        ]
+                `**Remaining Notes:** ${notes.length}`, color: 'success' })])
     });
 }
 
@@ -235,12 +217,7 @@ async function handleClearNotes(interaction, targetUser, notes, guildId) {
     
     if (noteCount === 0) {
         return InteractionHelper.safeReply(interaction, {
-            embeds: [
-                infoEmbed(
-                    "No Notes to Clear",
-                    `There are no notes for **${targetUser.tag}** to clear.`
-                ),
-            ],
+            ...v2Message([createV2Container({ title: "No Notes to Clear", description: `There are no notes for **${targetUser.tag}** to clear.`, color: 'info' })]),
         });
     }
 
@@ -250,12 +227,7 @@ async function handleClearNotes(interaction, targetUser, notes, guildId) {
     await setInDb(notesKey, notes);
 
     return InteractionHelper.safeReply(interaction, {
-        embeds: [
-            successEmbed(
-                "🗑️ Notes Cleared",
-                `Cleared **${noteCount}** notes from **${targetUser.tag}**.`
-            )
-        ]
+        ...v2Message([createV2Container({ title: "🗑️ Notes Cleared", description: `Cleared **${noteCount}** notes from **${targetUser.tag}**.`, color: 'success' })])
     });
 }
 

@@ -4,6 +4,7 @@ import { withErrorHandling, ErrorTypes, replyUserError } from '../../utils/error
 import { isApplicationId, purgeExpired, readAll, readConfig } from '../../services/applications/store.js';
 import { canConfigure, canReview } from '../../services/applications/service.js';
 import { adminListEmbed, newFormModal, refusalMessage, reviewPayload } from '../../services/applications/view.js';
+import { v2Message } from '../../utils/componentsV2.js';
 import { refuse, showDashboard } from '../../handlers/applicationHandlers.js';
 
 const PRIVATE = MessageFlags.Ephemeral;
@@ -51,7 +52,7 @@ async function handleList(interaction) {
         const hint = forms.length === 0 ? '\nNo application is set up yet. Use `/app-admin setup` to create one.' : '';
         return say(interaction, `No ${status} applications found${filters.length > 1 ? ' for this filter' : ''}.${hint}`);
     }
-    return interaction.editReply({ embeds: [adminListEmbed(found.slice(0, limit), { total: found.length, filters })] });
+    return interaction.editReply({ ...v2Message([adminListEmbed(found.slice(0, limit), { total: found.length, filters })]), allowedMentions: { parse: [] } });
 }
 
 export default {

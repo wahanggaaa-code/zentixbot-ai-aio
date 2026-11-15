@@ -1,5 +1,5 @@
 import { ChannelType, MessageFlags, PermissionsBitField } from 'discord.js';
-import { successEmbed, warningEmbed } from '../../../utils/embeds.js';
+import { v2Warning, v2Success, v2Message } from '../../../utils/componentsV2.js';
 import { getGuildConfig } from '../../../services/config/guildConfig.js';
 import { EVENT_TYPES, isEventEnabled, setLogChannel } from '../../../services/loggingService.js';
 import { InteractionHelper } from '../../../utils/interactionHelper.js';
@@ -53,19 +53,15 @@ export default {
         // cannot be read right now, the answer says only what is known.
         const current = await getGuildConfig(client, guildId).catch(() => null);
         if (current && !isEventEnabled(current, EVENT_TYPES.REPORT_FILE)) {
-            return await InteractionHelper.safeEditReply(interaction, {
-                embeds: [warningEmbed(
-                    'Report Channel Set, Reports Still Off',
-                    `The report channel is now ${channel}, but user reports are switched off in the logging settings, so nothing will arrive yet.\nSwitch them on in \`/logging dashboard\`.`,
-                )],
-            });
+            return await InteractionHelper.safeEditReply(interaction, v2Message([v2Warning(
+                'Report Channel Set, Reports Still Off',
+                `The report channel is now ${channel}, but user reports are switched off in the logging settings, so nothing will arrive yet.\nSwitch them on in \`/logging dashboard\`.`,
+            )]));
         }
 
-        return await InteractionHelper.safeEditReply(interaction, {
-            embeds: [successEmbed(
-                'Report Channel Set',
-                `All new reports will now be sent to ${channel}.\nYou can also manage this from \`/logging dashboard\`.`,
-            )],
-        });
+        return await InteractionHelper.safeEditReply(interaction, v2Message([v2Success(
+            'Report Channel Set',
+            `All new reports will now be sent to ${channel}.\nYou can also manage this from \`/logging dashboard\`.`,
+        )]));
     },
 };

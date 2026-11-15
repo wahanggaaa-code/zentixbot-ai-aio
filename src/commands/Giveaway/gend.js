@@ -1,14 +1,13 @@
 import {isPostgresGiveawayBackend} from '../../services/storage/postgresGiveawayTransactions.js';
-import { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } from 'discord.js';
-import { errorEmbed, successEmbed } from '../../utils/embeds.js';
+import { SlashCommandBuilder, PermissionFlagsBits } from 'discord.js';
 import { logger } from '../../utils/logger.js';
 import { ZentixBotError, ErrorTypes } from '../../utils/errorHandler.js';
 import { getGuildGiveaways, saveGiveaway } from '../../utils/giveaways.js';
 import { 
     endGiveaway as endGiveawayService,
-    createGiveawayEmbed, 
-    createGiveawayButtons 
+    buildGiveawayComponents
 } from '../../services/giveawayService.js';
+import { v2Message, createV2Container } from '../../utils/componentsV2.js';
 import { logEvent, EVENT_TYPES } from '../../services/loggingService.js';
 import { InteractionHelper } from '../../utils/interactionHelper.js';
 import {prepareGiveawayDelivery,completeGiveawayDelivery} from '../../services/storage/giveawayDelivery.js';
@@ -123,13 +122,10 @@ export default {
             updatedGiveaway,
         );
 
-        const newEmbed = createGiveawayEmbed(updatedGiveaway, "ended", winners);
-        const newRow = createGiveawayButtons(true);
-
         await message.edit({
-            content: "🎉 **GIVEAWAY ENDED** 🎉",
-            embeds: [newEmbed],
-            components: [newRow],
+            content: null,
+            ...v2Message(buildGiveawayComponents(updatedGiveaway, "ended", winners)),
+            allowedMentions: { parse: [] },
         });
 
         if (winners.length > 0) {
@@ -186,13 +182,11 @@ export default {
         logger.info(`Giveaway successfully ended by ${interaction.user.tag}: ${messageId}`);
 
         return InteractionHelper.safeReply(interaction, {
-            embeds: [
-                successEmbed(
-                    "Giveaway Ended ✅",
-                    `Successfully ended the giveaway for **${updatedGiveaway.prize}** in ${channel}. Selected ${winners.length} winner(s) from ${endResult.participantCount} entries.`,
-                ),
-            ],
-            flags: MessageFlags.Ephemeral,
+            ...v2Message([createV2Container({
+                title: 'Giveaway Ended',
+                description: `Successfully ended the giveaway for **${updatedGiveaway.prize}** in ${channel}. Selected ${winners.length} winner(s) from ${endResult.participantCount} entries.`,
+                color: 'success',
+            })], { ephemeral: true }),
         });
     },
 };

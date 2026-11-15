@@ -1,6 +1,6 @@
 import { randomInt } from 'node:crypto';
 import { SlashCommandBuilder, MessageFlags } from 'discord.js';
-import { createEmbed } from '../../utils/embeds.js';
+import { createV2Container, v2Message } from '../../utils/componentsV2.js';
 import { logger } from '../../utils/logger.js';
 import { InteractionHelper } from '../../utils/interactionHelper.js';
 import { replyUserError, ErrorTypes } from '../../utils/errorHandler.js';
@@ -79,13 +79,13 @@ export default {
         const brightness = (r * 299 + g * 587 + b * 114) / 1000;
         const textColor = brightness > 128 ? '000000' : 'FFFFFF';
         const { name, exact } = nearestNamedColor(hex);
-        const embed = createEmbed({
+        const container = createV2Container({
             title: 'Color Information',
             description: `**Hex:** \`${hex}\`\n**RGB:** \`rgb(${r}, ${g}, ${b})\`\n**HSL:** \`${rgbToHsl(r, g, b)}\`\n**${exact ? 'Name' : 'Nearest named color'}:** ${name}${typed ? '' : '\n\nRandomly generated color.'}`,
-        })
-            .setColor(parseInt(hex.slice(1), 16))
-            .setImage(`https://dummyimage.com/200x100/${hex.slice(1)}/${textColor}?text=${encodeURIComponent(hex)}`);
+            image: `https://dummyimage.com/200x100/${hex.slice(1)}/${textColor}?text=${encodeURIComponent(hex)}`,
+        });
+        container.setAccentColor(parseInt(hex.slice(1), 16));
 
-        await InteractionHelper.safeEditReply(interaction, { embeds: [embed] });
+        await InteractionHelper.safeEditReply(interaction, v2Message([container]));
     },
 };

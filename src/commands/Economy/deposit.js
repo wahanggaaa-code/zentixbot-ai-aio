@@ -1,9 +1,10 @@
-import { SlashCommandBuilder, MessageFlags } from 'discord.js';
-import { successEmbed, buildUserErrorEmbed } from '../../utils/embeds.js';
+import { SlashCommandBuilder } from 'discord.js';
 import { getMaxBankCapacity } from '../../utils/economy.js';
 import { withEconomyTransaction } from '../../services/economy/transaction.js';
 import { withErrorHandling, createError, ErrorTypes } from '../../utils/errorHandler.js';
 import { InteractionHelper } from '../../utils/interactionHelper.js';
+import { createV2Container, v2Message } from '../../utils/componentsV2.js';
+
 
 export default {
     data: new SlashCommandBuilder()
@@ -89,25 +90,10 @@ export default {
                 return {depositAmount,maxBank,wallet:userData.wallet,bank:userData.bank,warnings};
             });
             const {depositAmount,maxBank,wallet,bank,warnings}=result;
-            for (const warning of warnings) await interaction.followUp({embeds:[buildUserErrorEmbed('validation',warning)],flags:MessageFlags.Ephemeral}).catch(()=>{});
+            for (const warning of warnings) await interaction.followUp({ ...v2Message([createV2Container({ title: 'Invalid Input', description: String(warning ?? ''), color: 'warning' })], { ephemeral: true }), allowedMentions: { parse: [] } }).catch(()=>{});
 
-            const embed = successEmbed(
-                'Deposit Successful',
-                `You successfully deposited **$${depositAmount.toLocaleString()}** into your bank.`
-            )
-                .addFields(
-                    {
-                        name: "New Cash Balance",
-                        value: `$${wallet.toLocaleString()}`,
-                        inline: true,
-                    },
-                    {
-                        name: "New Bank Balance",
-                        value: `$${bank.toLocaleString()} / $${maxBank.toLocaleString()}`,
-                        inline: true,
-                    },
-                );
+            const embed = createV2Container({ title: 'Deposit Successful', description: `You successfully deposited **$${depositAmount.toLocaleString()}** into your bank.`, color: 'success', fields: [{ name: "New Cash Balance", value: `$${wallet.toLocaleString()}` }, { name: "New Bank Balance", value: `$${bank.toLocaleString()} / $${maxBank.toLocaleString()}` }] });
 
-            await InteractionHelper.safeEditReply(interaction, { embeds: [embed] });
+            await InteractionHelper.safeEditReply(interaction, { ...v2Message([embed]) });
     }, { command: 'deposit' })
 };

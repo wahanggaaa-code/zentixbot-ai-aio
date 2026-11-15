@@ -1,6 +1,5 @@
 import {isPostgresGiveawayBackend,assertPostgresGiveawayReady} from '../../services/storage/postgresGiveawayTransactions.js';
 import { SlashCommandBuilder, PermissionFlagsBits, PermissionsBitField, ChannelType, MessageFlags } from 'discord.js';
-import { errorEmbed, successEmbed } from '../../utils/embeds.js';
 import { logger } from '../../utils/logger.js';
 import { ZentixBotError, ErrorTypes } from '../../utils/errorHandler.js';
 import { saveGiveaway } from '../../utils/giveaways.js';
@@ -8,9 +7,9 @@ import {
     parseDuration, 
     validatePrize, 
     validateWinnerCount,
-    createGiveawayEmbed, 
-    createGiveawayButtons 
+    buildGiveawayComponents
 } from '../../services/giveawayService.js';
+import { v2Message, createV2Container } from '../../utils/componentsV2.js';
 import { logEvent, EVENT_TYPES } from '../../services/loggingService.js';
 import { InteractionHelper } from '../../utils/interactionHelper.js';
 
@@ -113,14 +112,12 @@ export default {
             createdAt: new Date().toISOString()
         };
 
-        const embed = createGiveawayEmbed(initialGiveawayData, "active");
-        const row = createGiveawayButtons(false);
+        const giveawayComponents = buildGiveawayComponents(initialGiveawayData, "active");
 
         if(isPostgresGiveawayBackend(interaction.client)){try{await assertPostgresGiveawayReady(interaction.client,interaction.guildId)}catch{throw new ZentixBotError('Giveaway storage unavailable',ErrorTypes.DATABASE,'Giveaway storage is unavailable or needs review. No message was sent.')}}
         const giveawayMessage = await targetChannel.send({
-            content: "🎉 **NEW GIVEAWAY** 🎉",
-            embeds: [embed],
-            components: [row],
+            ...v2Message(giveawayComponents),
+            allowedMentions: { parse: [] },
         });
 
         initialGiveawayData.messageId = giveawayMessage.id;
@@ -177,13 +174,11 @@ export default {
         logger.info(`Giveaway created successfully: ${giveawayMessage.id} in ${targetChannel.name}`);
 
         await InteractionHelper.safeReply(interaction, {
-            embeds: [
-                successEmbed(
-                    `Giveaway Started! 🎉`,
-                    `A new giveaway for **${prizeName}** has been started in ${targetChannel} and will end in **${durationString}**.`,
-                ),
-            ],
-            flags: MessageFlags.Ephemeral,
+            ...v2Message([createV2Container({
+                title: 'Giveaway Started!',
+                description: `A new giveaway for **${prizeName}** has been started in ${targetChannel} and will end in **${durationString}**.`,
+                color: 'success',
+            })], { ephemeral: true }),
         });
     },
 };

@@ -1,6 +1,5 @@
-import { getColor } from '../../../config/bot.js';
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
-import { createEmbed } from '../../../utils/embeds.js';
+import { createV2Container, v2Message } from '../../../utils/componentsV2.js';
 import { deleteCounter } from '../../../services/serverStats/manage.js';
 import { readCounters } from '../../../services/serverStats/store.js';
 import { logger } from '../../../utils/logger.js';
@@ -19,7 +18,7 @@ export async function handleDelete(interaction, client) {
         if (!counter) throw Object.assign(new Error('Counter not found'), { code: 'SERVERSTATS_MISSING' });
 
         const channel = guild.channels.cache.get(counter.channelId);
-        const embed = createEmbed({
+        const container = createV2Container({
             title: 'Delete Counter & Channel',
             description: [
                 'Are you sure you want to delete this counter and its channel?',
@@ -30,7 +29,8 @@ export async function handleDelete(interaction, client) {
                 '',
                 'The channel is deleted from Discord. This cannot be undone.',
             ].join('\n'),
-            color: getColor('error'),
+            color: 'error',
+            raw: true,
         });
 
         const row = new ActionRowBuilder().addComponents(
@@ -44,7 +44,7 @@ export async function handleDelete(interaction, client) {
                 .setStyle(ButtonStyle.Secondary),
         );
 
-        await InteractionHelper.safeEditReply(interaction, { embeds: [embed], components: [row] }).catch(logger.error);
+        await InteractionHelper.safeEditReply(interaction, { ...v2Message([container, row]), allowedMentions: { parse: [] } }).catch(logger.error);
     } catch (error) {
         await replyCounterError(interaction, error, 'The counters could not be read. Nothing was changed.');
     }

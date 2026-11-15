@@ -1,6 +1,5 @@
-import { getColor } from '../../config/bot.js';
 import { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } from 'discord.js';
-import { successEmbed } from '../../utils/embeds.js';
+import { createV2Container, v2Message } from '../../utils/componentsV2.js';
 import { logger } from '../../utils/logger.js';
 import { replyUserError, ErrorTypes } from '../../utils/errorHandler.js';
 import { InteractionHelper } from '../../utils/interactionHelper.js';
@@ -30,12 +29,11 @@ export default {
         await claimTicket(interaction.channel, interaction.user);
 
         await InteractionHelper.safeEditReply(interaction, {
-            embeds: [
-                successEmbed(
-                    "Ticket Claimed!",
-                    "You have successfully claimed this ticket.",
-                ),
-            ],
+            ...v2Message([createV2Container({
+                title: "Ticket Claimed!",
+                description: "You have successfully claimed this ticket.",
+                color: 'success',
+            })]),
         });
 
         logger.info('Ticket claimed successfully', {

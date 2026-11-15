@@ -13,6 +13,7 @@ import {
 import { canControlMusic, VOICE_CHANNEL_DENIAL } from '../services/music/permissions.js';
 import { refreshPlayerMessage } from '../services/music/playerHandler.js';
 import { MUSIC_BUTTON_IDS } from '../services/music/musicEmbeds.js';
+import { v2Flags } from '../utils/componentsV2.js';
 import { replyUserError, ErrorTypes } from '../utils/errorHandler.js';
 
 async function handleMusicButton(interaction, client) {
@@ -30,9 +31,8 @@ async function handleMusicButton(interaction, client) {
         guildData.queuePages.set(interaction.user.id, 0);
         const payload = buildQueueReply(client, interaction.guild.id, 0);
         return interaction.reply({
-            embeds: payload.embeds,
             components: payload.components,
-            flags: MessageFlags.Ephemeral,
+            flags: v2Flags(MessageFlags.Ephemeral),
         });
     }
 
@@ -76,8 +76,8 @@ async function handleMusicButton(interaction, client) {
         guildData.queuePages.set(interaction.user.id, page);
         const updated = buildQueueReply(client, interaction.guild.id, page);
         return interaction.editReply({
-            embeds: updated.embeds,
             components: updated.components,
+            flags: updated.flags,
         });
     }
 

@@ -1,8 +1,10 @@
 import { SlashCommandBuilder, PermissionFlagsBits } from 'discord.js';
-import { successEmbed } from '../../utils/embeds.js';
+
 import { InteractionHelper } from '../../utils/interactionHelper.js';
 import { ModerationService } from '../../services/moderation/moderationService.js';
 import { ZentixBotError, ErrorTypes } from '../../utils/errorHandler.js';
+import { createV2Container, v2Message } from '../../utils/componentsV2.js';
+
 
 export default {
     data: new SlashCommandBuilder()
@@ -67,12 +69,7 @@ export default {
         });
 
         await InteractionHelper.universalReply(interaction, {
-            embeds: [
-                successEmbed(
-                    `👢 **Kicked** ${targetUser.tag}`,
-                    `**Reason:** ${reason}\n**Case ID:** #${result.caseId}`,
-                ),
-            ],
+            ...v2Message([createV2Container({ title: `👢 **Kicked** ${targetUser.tag}`, description: `**Reason:** ${reason}\n**Case ID:** #${result.caseId}`, color: 'success' })]),
         });
     },
 };

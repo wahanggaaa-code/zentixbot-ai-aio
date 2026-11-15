@@ -11,8 +11,8 @@
 // draws it again. Nothing here deletes a record because Discord could not be
 // reached: only an answer that says "this does not exist" counts as missing.
 
-import { ActionRowBuilder, ChannelType, EmbedBuilder, PermissionFlagsBits, StringSelectMenuBuilder } from 'discord.js';
-import { getColor } from '../../config/bot.js';
+import { ActionRowBuilder, ChannelType, PermissionFlagsBits, StringSelectMenuBuilder } from 'discord.js';
+import { createV2Container, v2Message } from '../../utils/componentsV2.js';
 import { logger } from '../../utils/logger.js';
 import {
     MAX_DESCRIPTION, MAX_PANELS, MAX_ROLES, MAX_TITLE, fail, isSnowflake, mutatePanels, readPanel, readPanels, revisionOf,
@@ -205,11 +205,27 @@ export async function locatePanel(guild, panel) {
 }
 
 /** Title and description as the posted message shows them (for panels stored before the text was kept). */
-function shownText(message) {
+export function shownText(message) {
     const embed = message?.embeds?.[0];
     const text = {};
     if (typeof embed?.title === 'string' && embed.title.trim() && embed.title.length <= MAX_TITLE) text.title = embed.title.trim();
     if (typeof embed?.description === 'string' && embed.description.trim() && embed.description.length <= MAX_DESCRIPTION) text.description = embed.description.trim();
+    if (text.title && text.description) return text;
+    // Panels posted as v2 containers: title is the leading '## ' display, the description the next plain one.
+    for (const top of message?.components ?? []) {
+        const parent = typeof top?.toJSON === 'function' ? top.toJSON() : top;
+        for (const childRaw of parent?.components ?? []) {
+            const c = typeof childRaw?.toJSON === 'function' ? childRaw.toJSON() : childRaw;
+            if (c?.type !== 10 || typeof c.content !== 'string') continue;
+            const line = c.content.trim();
+            if (line.startsWith('## ')) {
+                if (text.title === undefined) text.title = line.slice(3).trim().slice(0, MAX_TITLE);
+                continue;
+            }
+            if (line.startsWith('-# ') || /^\*\*((?:\\.|[^*\n])+)\*\*\n/.test(line)) continue;
+            if (text.description === undefined && line) text.description = line.slice(0, MAX_DESCRIPTION);
+        }
+    }
     return text;
 }
 
@@ -224,12 +240,13 @@ async function existingRoles(guild, panel) {
 }
 
 function buildPanelMessage(panel, roles) {
-    const embed = new EmbedBuilder()
-        .setTitle(panel.title ?? DEFAULT_TITLE)
-        .setDescription(panel.description ?? DEFAULT_DESCRIPTION)
-        .setColor(getColor('info'))
-        .addFields({ name: 'Available Roles', value: roles.map((role) => `• ${role}`).join('\n').slice(0, 1024) })
-        .setFooter({ text: 'Select roles from the dropdown menu below' });
+    const container = createV2Container({
+        title: panel.title ?? DEFAULT_TITLE,
+        description: panel.description ?? DEFAULT_DESCRIPTION,
+        color: 'info',
+        fields: [{ name: 'Available Roles', value: roles.map((role) => `• ${role}`).join('\n').slice(0, 1024) }],
+        footer: { text: 'Select roles from the dropdown menu below' },
+    });
     const menu = new StringSelectMenuBuilder()
         .setCustomId(PANEL_SELECT_ID)
         .setPlaceholder('Select your roles')
@@ -241,7 +258,7 @@ function buildPanelMessage(panel, roles) {
             value: role.id,
             emoji: '🎭',
         })));
-    return { embeds: [embed], components: [new ActionRowBuilder().addComponents(menu)] };
+    return { ...v2Message([container, new ActionRowBuilder().addComponents(menu)]), allowedMentions: { parse: [] } };
 }
 
 /**

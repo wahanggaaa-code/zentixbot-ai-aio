@@ -1,6 +1,6 @@
 import { randomInt } from 'node:crypto';
 import { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
-import { createEmbed } from '../../utils/embeds.js';
+import { createV2Container, v2Message } from '../../utils/componentsV2.js';
 import { logger } from '../../utils/logger.js';
 import { replyUserError, ErrorTypes } from '../../utils/errorHandler.js';
 import { InteractionHelper } from '../../utils/interactionHelper.js';
@@ -40,18 +40,21 @@ export function drawPayload(guild, ownerId, { roleId = null, includeBots = false
         ? `Drawn from ${pool.length} matching of the ${known} members I currently know of (the server has ${guild.memberCount}).`
         : `Drawn from ${pool.length} matching member(s).`;
 
-    const embed = createEmbed({
+    const avatar = user.displayAvatarURL?.({ size: 256 });
+    const container = createV2Container({
         title: 'Random User Selected',
-        description: `${mention ? `<@${user.id}>` : `**${plainText(user.username, 80)}**`}\n\n${drawnFrom}`,
+        // A v2 message cannot carry separate content, so the ping (when asked for) lives here.
+        description: mention
+            ? `<@${user.id}>, you've been chosen!\n\n${drawnFrom}`
+            : `**${plainText(user.username, 80)}**\n\n${drawnFrom}`,
         fields: [
             { name: 'Username', value: plainText(user.username, 80) || 'Unknown', inline: true },
             { name: 'Bot', value: user.bot ? 'Yes' : 'No', inline: true },
             { name: `Roles (${roles.length})`, value: shownRoles, inline: false },
         ],
         color: 'primary',
+        thumbnail: avatar ?? undefined,
     });
-    const avatar = user.displayAvatarURL?.({ size: 256 });
-    if (avatar) embed.setThumbnail(avatar);
 
     const flags = (includeBots ? 1 : 0) | (mention ? 2 : 0);
     const row = new ActionRowBuilder().addComponents(
@@ -61,9 +64,8 @@ export function drawPayload(guild, ownerId, { roleId = null, includeBots = false
             .setStyle(ButtonStyle.Primary),
     );
     return {
-        content: mention ? `<@${user.id}>, you've been chosen!` : null,
-        embeds: [embed],
-        components: [row],
+        content: null, // kept as null for the callers that read it; v2 carries no content
+        ...v2Message([container, row]),
         allowedMentions: { parse: [], users: mention ? [user.id] : [] },
     };
 }

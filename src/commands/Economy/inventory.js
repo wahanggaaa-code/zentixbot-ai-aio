@@ -1,10 +1,12 @@
 import { SlashCommandBuilder, PermissionFlagsBits } from 'discord.js';
-import { createEmbed, errorEmbed, successEmbed, infoEmbed, warningEmbed } from '../../utils/embeds.js';
+
 import { shopItems } from '../../config/shop/items.js';
 import { getEconomyData } from '../../utils/economy.js';
 import { withErrorHandling, createError, ErrorTypes } from '../../utils/errorHandler.js';
 import { logger } from '../../utils/logger.js';
 import { InteractionHelper } from '../../utils/interactionHelper.js';
+import { createV2Container, v2Message } from '../../utils/componentsV2.js';
+
 
 const SHOP_ITEMS = shopItems;
 
@@ -60,11 +62,8 @@ export default {
                 itemCount: Object.keys(inventory).length
             });
 
-            const embed = createEmbed({ 
-                title: `🎒 ${interaction.user.username}'s Inventory`, 
-                description: inventoryDescription, 
-            }).setThumbnail(interaction.user.displayAvatarURL());
+            const embed = createV2Container({ title: `🎒 ${interaction.user.username}'s Inventory`, description: inventoryDescription, thumbnail: interaction.user.displayAvatarURL() });
 
-            await InteractionHelper.safeEditReply(interaction, { embeds: [embed] });
+            await InteractionHelper.safeEditReply(interaction, { ...v2Message([embed]) });
     }, { command: 'inventory' })
 };

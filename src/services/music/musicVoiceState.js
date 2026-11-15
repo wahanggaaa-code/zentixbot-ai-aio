@@ -1,4 +1,4 @@
-import { successEmbed } from '../../utils/embeds.js';
+import { v2Success, v2Message } from '../../utils/componentsV2.js';
 import { getGuildMusicData } from './playerStore.js';
 import { applyPause, applyResume, getPlayer } from './musicActions.js';
 
@@ -32,7 +32,7 @@ export async function handleMusicVoiceState(client, oldState, newState) {
         if (guildData.playerChannelId) {
             const channel = client.channels.cache.get(guildData.playerChannelId);
             if (channel) {
-                channel.send({ embeds: [successEmbed('Paused', 'Voice channel is empty. Music paused until someone joins.')] }).catch(() => null);
+                channel.send(v2Message([v2Success('Paused', 'Voice channel is empty. Music paused until someone joins.')])).catch(() => null);
             }
         }
         return;
@@ -44,7 +44,7 @@ export async function handleMusicVoiceState(client, oldState, newState) {
         if (guildData.playerChannelId) {
             const channel = client.channels.cache.get(guildData.playerChannelId);
             if (channel) {
-                channel.send({ embeds: [successEmbed('Resumed', 'Someone joined the voice channel. Playback resumed.')] }).catch(() => null);
+                channel.send(v2Message([v2Success('Resumed', 'Someone joined the voice channel. Playback resumed.')])).catch(() => null);
             }
         }
     }

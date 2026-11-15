@@ -1,9 +1,11 @@
 import { SlashCommandBuilder } from 'discord.js';
-import { createEmbed, errorEmbed, successEmbed, infoEmbed, warningEmbed } from '../../utils/embeds.js';
+
 import { withErrorHandling, createError, ErrorTypes } from '../../utils/errorHandler.js';
 import { logger } from '../../utils/logger.js';
 import { InteractionHelper } from '../../utils/interactionHelper.js';
 import EconomyService from '../../services/economyService.js';
+import { createV2Container, v2Message } from '../../utils/componentsV2.js';
+
 
 export default {
     data: new SlashCommandBuilder()
@@ -78,28 +80,9 @@ export default {
             const senderBalance = result.senderNewBalance;
             const receiverBalance = result.receiverNewBalance;
 
-            const embed = successEmbed(
-                'Payment Successful',
-                `You successfully paid **${receiver.username}** the amount of **$${amount.toLocaleString()}**!`
-            )
-                .addFields(
-                    {
-                        name: "Payment Amount",
-                        value: `$${amount.toLocaleString()}`,
-                        inline: true,
-                    },
-                    {
-                        name: "Your New Balance",
-                        value: `$${senderBalance.toLocaleString()}`,
-                        inline: true,
-                    },
-                )
-                .setFooter({
-                    text: `Paid to ${receiver.tag}`,
-                    iconURL: receiver.displayAvatarURL(),
-                });
+            const embed = createV2Container({ title: 'Payment Successful', description: `You successfully paid **${receiver.username}** the amount of **$${amount.toLocaleString()}**!`, color: 'success', fields: [{ name: "Payment Amount", value: `$${amount.toLocaleString()}` }, { name: "Your New Balance", value: `$${senderBalance.toLocaleString()}` }], footer: { text: `Paid to ${receiver.tag}`, always: true } });
 
-            await InteractionHelper.safeEditReply(interaction, { embeds: [embed] });
+            await InteractionHelper.safeEditReply(interaction, { ...v2Message([embed]) });
 
             logger.info(`[ECONOMY] Payment sent successfully`, {
                 senderId,
@@ -110,15 +93,8 @@ export default {
             });
 
             try {
-                const receiverEmbed = createEmbed({ 
-                    title: "Incoming Payment!", 
-                    description: `${interaction.user.username} paid you **$${amount.toLocaleString()}**.` 
-                }).addFields({
-                    name: "Your New Cash",
-                    value: `$${receiverBalance.toLocaleString()}`,
-                    inline: true,
-                });
-                await receiver.send({ embeds: [receiverEmbed] });
+                const receiverEmbed = createV2Container({ title: "Incoming Payment!", description: `${interaction.user.username} paid you **$${amount.toLocaleString()}**.`, fields: [{ name: "Your New Cash", value: `$${receiverBalance.toLocaleString()}` }] });
+                await receiver.send({ ...v2Message([receiverEmbed]) });
             } catch (e) {
                     logger.warn(`Could not DM user ${receiver.id}: ${e.message}`);
             }

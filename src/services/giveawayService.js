@@ -1,10 +1,11 @@
 import { isHomeGuild } from '../utils/singleGuild.js';
 // giveawayService.js
 
-import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } from 'discord.js';
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } from 'discord.js';
+import { createV2Container, v2Message, v2TextRaw } from '../utils/componentsV2.js';
 import { logger } from '../utils/logger.js';
 import { ZentixBotError, ErrorTypes } from '../utils/errorHandler.js';
-import { getColor, botConfig } from '../config/bot.js';
+import { botConfig } from '../config/bot.js';
 import { getEndedGiveaways, markGiveawayEnded } from '../utils/database.js';
 import {transferGiveawaySnapshot} from './storage/giveawaySnapshots.js';
 import { checkRateLimit, getRateLimitStatus } from '../utils/rateLimiter.js';
@@ -134,44 +135,64 @@ export function validateWinnerCount(winnerCount) {
     }
 }
 
-export function createGiveawayEmbed(giveaway, status, winners = []) {
+export function createGiveawayContainer(giveaway, status, winners = []) {
     try {
         const statusEmoji = status === 'ended' ? '🎉' : status === 'reroll' ? '🔄' : '🎉';
         const isEnded = status === 'ended' || status === 'reroll';
-        const color = isEnded ? getColor('giveaway.ended') : getColor('giveaway.active');
-        
-        const embed = new EmbedBuilder()
-            .setTitle(`${statusEmoji} ${giveaway.prize}`)
-            .setDescription('React with the button below to enter!')
-            .setColor(color)
-            .addFields(
-                { name: '👤 Hosted by', value: `<@${giveaway.hostId}>`, inline: true },
-                { name: '🏆 Winners', value: giveaway.winnerCount.toString(), inline: true },
-                { name: '👥 Entries', value: giveaway.participants?.length?.toString() || '0', inline: true }
-            );
+        const color = isEnded ? 'giveaway.ended' : 'giveaway.active';
+
+        const fields = [
+            { name: '👤 Hosted by', value: `<@${giveaway.hostId}>` },
+            { name: '🏆 Winners', value: String(giveaway.winnerCount) },
+            { name: '👥 Entries', value: giveaway.participants?.length?.toString() || '0' },
+        ];
 
         if (isEnded) {
-            const winnerDisplay = winners.length > 0 
+            const winnerDisplay = winners.length > 0
                 ? winners.map(id => `<@${id}>`).join(', ')
                 : 'No valid entries';
-            embed.addFields({ name: '🎯 Winners', value: winnerDisplay, inline: false });
+            fields.push({ name: '🎯 Winners', value: winnerDisplay });
         } else {
             const endTime = giveaway.endsAt || giveaway.endTime;
-            embed.addFields({ name: '⏰ Ends', value: `<t:${Math.floor(endTime / 1000)}:R>`, inline: false });
+            fields.push({ name: '⏰ Ends', value: `<t:${Math.floor(endTime / 1000)}:R>` });
         }
 
-        embed.setTimestamp();
-        
-        return embed;
+        return createV2Container({
+            title: `${statusEmoji} ${giveaway.prize}`,
+            description: 'React with the button below to enter!',
+            color,
+            fields,
+        });
     } catch (error) {
-        logger.error('Error creating giveaway embed:', error);
+        logger.error('Error creating giveaway container:', error);
         throw new ZentixBotError(
-            'Failed to create giveaway embed',
+            'Failed to create giveaway container',
             ErrorTypes.UNKNOWN,
             'An internal error occurred while formatting the giveaway.',
             { error: error.message }
         );
     }
+}
+
+export const GIVEAWAY_ANNOUNCEMENTS = Object.freeze({
+    active: '🎉 **NEW GIVEAWAY** 🎉',
+    ended: '🎉 **GIVEAWAY ENDED** 🎉',
+    reroll: '🔄 **GIVEAWAY REROLLED** 🔄',
+});
+
+// The public giveaway message: announcement line, container card and the action row.
+// v2 messages cannot carry `content`, so the announcement is a raw text display.
+// The prize is user input — callers must send with allowedMentions: { parse: [] }.
+export function buildGiveawayComponents(giveaway, status, winners = []) {
+    const ended = status === 'ended' || status === 'reroll';
+    const announcement = ended
+        ? (status === 'reroll' ? GIVEAWAY_ANNOUNCEMENTS.reroll : GIVEAWAY_ANNOUNCEMENTS.ended)
+        : GIVEAWAY_ANNOUNCEMENTS.active;
+    return [
+        v2TextRaw(announcement),
+        createGiveawayContainer(giveaway, status, winners),
+        createGiveawayButtons(ended),
+    ];
 }
 
 export function createGiveawayButtons(ended = false) {
@@ -385,8 +406,7 @@ export async function checkGiveaways(client) {
           giveaway.guildId ||= guildId;giveaway.ended=true;giveaway.isEnded=true;giveaway.winnerIds=winners;giveaway.endedAt=new Date().toISOString();giveaway.deliveryStatus='pending';
           if(!await markGiveawayEnded(client,giveawayId,giveaway)){logger.warn(`Could not claim giveaway ${messageId}; Discord was not modified`);continue;}
         }
-        const endedEmbed = createGiveawayEmbed(giveaway, 'ended', winners);
-        await message.edit({embeds:[endedEmbed],components:[createGiveawayButtons(true)]});
+        await message.edit({content: null, ...v2Message(buildGiveawayComponents(giveaway, 'ended', winners)), allowedMentions: { parse: [] }});
         if(!sqliteMode){
           giveaway.ended=true;giveaway.isEnded=true;giveaway.winnerIds=winners;giveaway.endedAt=new Date().toISOString();
           const markedSuccess=await markGiveawayEnded(client,giveawayId,giveaway);

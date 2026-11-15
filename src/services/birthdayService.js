@@ -7,6 +7,7 @@ import { logger } from '../utils/logger.js';
 import {isPostgresBirthdayBackend,deletePostgresBirthday} from './storage/postgresBirthdays.js';
 import { ZentixBotError, ErrorTypes } from '../utils/errorHandler.js';
 import { validBirthday, isBirthdayOn, nextBirthday } from '../utils/birthdayDates.js';
+import { createV2Container, v2Message } from '../utils/componentsV2.js';
 
 export function validateBirthday(month, day) {
   
@@ -339,13 +340,14 @@ export async function checkBirthdays(client, now = new Date()) {
         const mentionList = birthdayMembers.map(m => m.toString()).join(', ');
         
         await channel.send({
-          embeds: [{
+          ...v2Message([createV2Container({
             title: '🎉 Happy Birthday! 🎂',
             description: `A very happy birthday to ${mentionList}! Wishing you an amazing day! 🎈`,
-            color: 0xff69b4,
-            footer: { text: 'Birthday Bot' },
-            timestamp: new Date()
-          }]
+            color: '#ff69b4',
+            footer: { text: 'Birthday Bot', always: true },
+            raw: true,
+          })]),
+          allowedMentions: { users: birthdayMembers.map((member) => member.id) },
         });
       }
     } catch (error) {

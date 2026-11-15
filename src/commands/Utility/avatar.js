@@ -1,5 +1,5 @@
 import { SlashCommandBuilder } from 'discord.js';
-import { createEmbed } from '../../utils/embeds.js';
+import { createV2Container, v2Message } from '../../utils/componentsV2.js';
 import { logger } from '../../utils/logger.js';
 
 import { InteractionHelper } from '../../utils/interactionHelper.js';
@@ -20,13 +20,13 @@ export default {
     const user = interaction.options.getUser("target") || interaction.user;
     const avatarUrl = user.displayAvatarURL({ size: 2048 });
 
-    const embed = createEmbed({ 
+    const container = createV2Container({
       title: `${plainText(user.username, 100)}'s Avatar`,
-      description: `[Download Link](${avatarUrl})` 
-    })
-      .setImage(avatarUrl);
+      description: `[Download Link](${avatarUrl})`,
+      image: avatarUrl,
+    });
 
-    await InteractionHelper.safeReply(interaction, { embeds: [embed] });
+    await InteractionHelper.safeReply(interaction, v2Message([container]));
     logger.info(`Avatar command executed`, {
       userId: interaction.user.id,
       targetUserId: user.id,

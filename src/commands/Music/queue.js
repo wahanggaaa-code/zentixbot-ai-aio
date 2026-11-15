@@ -17,8 +17,8 @@ export default {
         const page = (interaction.options.getInteger('page') || 1) - 1;
         const payload = buildQueueReply(client, interaction.guild.id, page);
         await InteractionHelper.safeEditReply(interaction, {
-            embeds: payload.embeds,
             components: payload.components,
+            flags: payload.flags,
         });
     },
 };

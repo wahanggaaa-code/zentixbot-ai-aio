@@ -3,7 +3,7 @@
 // so each handler checks for itself that the member may do what the component does.
 
 import { ChannelType, MessageFlags, PermissionFlagsBits } from 'discord.js';
-import { createEmbed } from '../utils/embeds.js';
+import { createV2Container, v2Message } from '../utils/componentsV2.js';
 import { logger } from '../utils/logger.js';
 import { replyUserError, ErrorTypes } from '../utils/errorHandler.js';
 import { setLogChannel } from '../services/loggingService.js';
@@ -64,7 +64,7 @@ export async function showDashboard(interaction, client, scope, notice = null) {
     } catch (error) {
         const known = knownMessage(error, 'dashboard', interaction);
         if (!known) throw error;
-        payload = { embeds: [createEmbed({ title: 'Applications Dashboard', description: `${notice ? `${notice}\n\n` : ''}${known.message}`, color: 'error' })], components: [] };
+        payload = { ...v2Message([createV2Container({ title: 'Applications Dashboard', description: `${notice ? `${notice}\n\n` : ''}${known.message}`, color: 'error' })]), allowedMentions: { parse: [] } };
     }
     await interaction.editReply(payload);
 }
@@ -249,7 +249,7 @@ async function submitted(interaction, client, roleId, mark) {
     } catch (error) {
         return refuse(interaction, error, 'submit');
     }
-    await interaction.editReply({ embeds: [submittedEmbed(done.application)] });
+    await interaction.editReply(v2Message([submittedEmbed(done.application)]));
     // Stored and confirmed to the member; the log entry is extra.
     const { settings } = await readConfig(client, interaction.guild.id).catch(() => ({ settings: null }));
     if (settings) await postSubmissionLog(client, interaction.guild, done.application, done.form, settings);
@@ -265,10 +265,10 @@ async function verdict(interaction, client, action, id) {
         const known = knownMessage(error, 'review', interaction);
         if (!known) throw error;
         // The review message stays as it is: after most refusals the application can still be decided.
-        return interaction.followUp({ embeds: [createEmbed({ title: 'Not reviewed', description: known.message, color: 'error' })], flags: PRIVATE });
+        return interaction.followUp({ ...v2Message([createV2Container({ title: 'Not reviewed', description: known.message, color: 'error' })], { ephemeral: true }) });
     }
     const dmSent = await tellApplicant(client, interaction.guild, outcome);
-    await interaction.editReply({ embeds: [verdictEmbed(outcome, { dmSent })], components: [] });
+    await interaction.editReply({ ...v2Message([verdictEmbed(outcome, { dmSent })]), allowedMentions: { parse: [] } });
     const state = await readConfig(client, interaction.guild.id).catch(() => null);
     if (state) await recordDecisionInLog(client, interaction.guild, outcome, state.settings, state.forms.find((form) => form.roleId === outcome.application.roleId) ?? null);
 }

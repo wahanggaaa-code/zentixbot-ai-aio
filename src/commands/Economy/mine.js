@@ -1,8 +1,10 @@
 import { SlashCommandBuilder } from 'discord.js';
-import { createEmbed, errorEmbed, successEmbed, infoEmbed, warningEmbed } from '../../utils/embeds.js';
+
 import { withEconomyTransaction } from '../../services/economy/transaction.js';
 import { withErrorHandling, createError, ErrorTypes } from '../../utils/errorHandler.js';
 import { InteractionHelper } from '../../utils/interactionHelper.js';
+import { createV2Container, v2Message } from '../../utils/componentsV2.js';
+
 
 const MINE_COOLDOWN = 60 * 60 * 1000;
 const BASE_MIN_REWARD = 400;
@@ -80,17 +82,8 @@ export default {
             });
             const {finalEarned,multiplierMessage,location,newWallet}=result;
 
-            const embed = successEmbed(
-                "💰 Mining Expedition Successful!",
-                `You explored a **${location}** and managed to find minerals worth **$${finalEarned.toLocaleString()}**!${multiplierMessage}`,
-            )
-                .addFields({
-                    name: "New Cash Balance",
-                    value: `$${newWallet.toLocaleString()}`,
-                    inline: true,
-                })
-                .setFooter({ text: `Next mine available in 1 hour.` });
+            const embed = createV2Container({ title: "💰 Mining Expedition Successful!", description: `You explored a **${location}** and managed to find minerals worth **$${finalEarned.toLocaleString()}**!${multiplierMessage}`, color: 'success', fields: [{ name: "New Cash Balance", value: `$${newWallet.toLocaleString()}` }], footer: { text: `Next mine available in 1 hour.`, always: true } });
 
-            await InteractionHelper.safeEditReply(interaction, { embeds: [embed] });
+            await InteractionHelper.safeEditReply(interaction, { ...v2Message([embed]) });
     }, { command: 'mine' })
 };

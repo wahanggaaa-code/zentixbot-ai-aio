@@ -1,10 +1,11 @@
-import { getColor } from '../../config/bot.js';
 import { SlashCommandBuilder, PermissionFlagsBits, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
-import { createEmbed } from '../../utils/embeds.js';
+
 import { logEvent } from '../../utils/moderation.js';
 import { logger } from '../../utils/logger.js';
 import { WarningService } from '../../services/moderation/warningService.js';
 import { InteractionHelper } from '../../utils/interactionHelper.js';
+import { createV2Container, v2Message } from '../../utils/componentsV2.js';
+
 
 export default {
     data: new SlashCommandBuilder()
@@ -38,20 +39,10 @@ export default {
 
         if (totalWarns === 0) {
             await InteractionHelper.safeEditReply(interaction, {
-                embeds: [
-                    createEmbed({
-                        title: `Warnings: ${target.tag}`,
-                        description: "This user has no recorded warnings.",
-                    }).setColor(getColor('success')),
-                ],
+                ...v2Message([createV2Container({ title: `Warnings: ${target.tag}`, description: 'This user has no recorded warnings.', color: 'success' })]),
             });
             return;
         }
-
-        const embed = createEmbed({
-            title: `Warnings: ${target.tag}`,
-            description: `Total Warnings: **${totalWarns}**`,
-        }).setColor(getColor('warning'));
 
         const warningFields = validWarnings
             .map((w, i) => {
@@ -59,12 +50,11 @@ export default {
                 return {
                     name: `[#${i + 1}] Reason: ${w.reason.substring(0, 100)}`,
                     value: `**Moderator:** <@${w.moderatorId}>\n**Date:** <t:${discordTimestamp}:F> (<t:${discordTimestamp}:R>)`,
-                    inline: false,
                 };
             })
             .slice(0, 25);
 
-        embed.addFields(warningFields);
+        const embed = createV2Container({ title: `Warnings: ${target.tag}`, description: `Total Warnings: **${totalWarns}**`, color: 'warning', fields: warningFields });
 
         const actionRow = new ActionRowBuilder().addComponents(
             new ButtonBuilder()
@@ -93,6 +83,6 @@ export default {
             },
         });
 
-        await InteractionHelper.safeEditReply(interaction, { embeds: [embed], components: [actionRow] });
+        await InteractionHelper.safeEditReply(interaction, { ...v2Message([embed, actionRow]), allowedMentions: { parse: [] } });
     },
 };

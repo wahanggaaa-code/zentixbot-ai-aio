@@ -1,9 +1,10 @@
 import { SlashCommandBuilder } from 'discord.js';
-import { createEmbed } from '../../utils/embeds.js';
 import { withEconomyTransaction } from '../../services/economy/transaction.js';
 import { withErrorHandling, createError, ErrorTypes } from '../../utils/errorHandler.js';
 import { logger } from '../../utils/logger.js';
 import { InteractionHelper } from '../../utils/interactionHelper.js';
+import { createV2Container, v2Message } from '../../utils/componentsV2.js';
+
 
 const SLUT_COOLDOWN = 45 * 60 * 1000;
 
@@ -169,13 +170,12 @@ export default {
                 `🧾 **Total Lost:** $${(userData.totalSlutLosses || 0).toLocaleString()}`
             ];
 
-            const embed = createEmbed({
+            const embed = createV2Container({
                 title: outcome.title,
                 description: summaryLines.join('\n'),
                 color: outcome.delta >= 0 ? 'success' : 'error',
-                timestamp: true
             });
 
-            await InteractionHelper.safeEditReply(interaction, { embeds: [embed] });
+            await InteractionHelper.safeEditReply(interaction, { ...v2Message([embed]) });
     }, { command: 'slut' })
 };

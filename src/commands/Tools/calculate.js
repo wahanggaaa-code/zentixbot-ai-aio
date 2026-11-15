@@ -1,5 +1,5 @@
 import { SlashCommandBuilder, ButtonBuilder, ButtonStyle, ActionRowBuilder } from 'discord.js';
-import { createEmbed } from '../../utils/embeds.js';
+import { createV2Container, v2Message } from '../../utils/componentsV2.js';
 import { logger } from '../../utils/logger.js';
 import { replyUserError, ErrorTypes } from '../../utils/errorHandler.js';
 import { InteractionHelper } from '../../utils/interactionHelper.js';
@@ -46,8 +46,8 @@ export function resultButtons(ownerId, value) {
     );
 }
 
-export function resultEmbed(expression, value) {
-    return createEmbed({
+export function resultContainer(expression, value) {
+    return createV2Container({
         title: 'Calculation Result',
         description: `**Expression:** ${codeSpan(expression, MAX_EXPRESSION_LENGTH + 80)}\n**Result:** \`${formatResult(value)}\`\n\nUse the buttons to continue with this result.`,
         color: 'success',
@@ -84,8 +84,7 @@ export default {
         }
 
         await InteractionHelper.safeEditReply(interaction, {
-            embeds: [resultEmbed(expression, value)],
-            components: [resultButtons(interaction.user.id, value)],
+            ...v2Message([resultContainer(expression, value), resultButtons(interaction.user.id, value)]),
         });
     },
 };

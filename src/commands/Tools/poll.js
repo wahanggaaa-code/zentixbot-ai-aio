@@ -1,5 +1,5 @@
 import { SlashCommandBuilder, MessageFlags, PermissionFlagsBits } from 'discord.js';
-import { createEmbed } from '../../utils/embeds.js';
+import { createV2Container, v2Message } from '../../utils/componentsV2.js';
 import { logger } from '../../utils/logger.js';
 import { replyUserError, ErrorTypes } from '../../utils/errorHandler.js';
 import { InteractionHelper } from '../../utils/interactionHelper.js';
@@ -64,12 +64,12 @@ export default {
         }
 
         const lines = options.map((option, index) => `**${index + 1}.** ${option}`);
-        const embed = createEmbed({
+        const container = createV2Container({
             title: 'Poll',
             description: `**${question}**\n\n${lines.join('\n')}\n\nVote with the numbered reactions below. Reactions are visible to everyone.`,
             color: 'success',
         });
-        const message = (await interaction.editReply({ embeds: [embed], allowedMentions: { parse: [] } }))
+        const message = (await interaction.editReply({ ...v2Message([container]), allowedMentions: { parse: [] } }))
             ?? (await interaction.fetchReply?.().catch(() => null));
 
         let added = 0;

@@ -1,4 +1,4 @@
-import { EmbedBuilder } from 'discord.js';
+import { createV2Container, v2Message } from '../../../utils/componentsV2.js';
 import { getUserBirthday } from '../../../services/birthdayService.js';
 import { logger } from '../../../utils/logger.js';
 
@@ -14,25 +14,23 @@ export default {
         const birthdayData = await getUserBirthday(client, guildId, userId);
 
         if (!birthdayData) {
-            const embed = new EmbedBuilder()
-                .setColor(0xFF0000)
-                .setTitle('No Birthday Found')
-                .setDescription(targetUser.id === interaction.user.id 
+            const container = createV2Container({
+                title: 'No Birthday Found',
+                description: targetUser.id === interaction.user.id
                     ? "You haven't set your birthday yet. Use `/birthday set` to add it!"
-                    : `${targetUser.username} hasn't set their birthday yet.`);
-            return await InteractionHelper.safeEditReply(interaction, {
-                embeds: [embed]
+                    : `${targetUser.username} hasn't set their birthday yet.`,
+                color: 'error',
             });
+            return await InteractionHelper.safeEditReply(interaction, v2Message([container]));
         }
 
-        const embed = new EmbedBuilder()
-            .setColor(0x00FF00)
-            .setTitle('Birthday Information')
-            .setDescription(`**Date:** ${birthdayData.monthName} ${birthdayData.day}\n**User:** ${targetUser.toString()}`);
-
-        await InteractionHelper.safeEditReply(interaction, {
-            embeds: [embed]
+        const container = createV2Container({
+            title: 'Birthday Information',
+            description: `**Date:** ${birthdayData.monthName} ${birthdayData.day}\n**User:** ${targetUser.toString()}`,
+            color: 'success',
         });
+
+        await InteractionHelper.safeEditReply(interaction, { ...v2Message([container]), allowedMentions: { parse: [] } });
 
         logger.info('Birthday info retrieved successfully', {
             userId: interaction.user.id,

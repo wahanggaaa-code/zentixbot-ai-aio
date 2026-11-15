@@ -1,5 +1,5 @@
 import { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } from 'discord.js';
-import { errorEmbed, successEmbed } from '../../utils/embeds.js';
+import { createV2Container, v2Message } from '../../utils/componentsV2.js';
 import { logger } from '../../utils/logger.js';
 import { ZentixBotError, ErrorTypes } from '../../utils/errorHandler.js';
 import { getGuildGiveaways, deleteGiveaway } from '../../utils/giveaways.js';
@@ -60,8 +60,7 @@ async function deleteOnPostgres(interaction) {
         ? `It already had ${result.winners} winner(s); the winner announcement was left in the channel.`
         : result.ended ? 'It had ended without winners.' : 'No winner was picked.';
     return InteractionHelper.safeReply(interaction, {
-        embeds: [successEmbed('Giveaway Deleted', `Deleted the giveaway for **${result.prize}** and its ${result.entries} stored entries. ${messageText} ${resultText}`)],
-        flags: MessageFlags.Ephemeral,
+        ...v2Message([createV2Container({ title: 'Giveaway Deleted', description: `Deleted the giveaway for **${result.prize}** and its ${result.entries} stored entries. ${messageText} ${resultText}`, color: 'success' })]),
     });
 }
 export default {
@@ -243,13 +242,11 @@ export default {
         }
 
         return InteractionHelper.safeReply(interaction, {
-            embeds: [
-                successEmbed(
-                    "Giveaway Deleted",
-                    `Successfully deleted the giveaway for **${giveaway.prize}** ${statusMsg}. ${winnerStatusMsg}`,
-                ),
-            ],
-            flags: MessageFlags.Ephemeral,
+            ...v2Message([createV2Container({
+                title: 'Giveaway Deleted',
+                description: `Successfully deleted the giveaway for **${giveaway.prize}** ${statusMsg}. ${winnerStatusMsg}`,
+                color: 'success',
+            })], { ephemeral: true }),
         });
     },
 };

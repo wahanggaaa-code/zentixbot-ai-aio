@@ -1,12 +1,14 @@
-import { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder, MessageFlags } from 'discord.js';
+import { SlashCommandBuilder, PermissionFlagsBits } from 'discord.js';
 import { logger } from '../../utils/logger.js';
 import { ZentixBotError, ErrorTypes } from '../../utils/errorHandler.js';
 import { checkUserPermissions } from '../../utils/permissionGuard.js';
 import { setUserLevel, getLevelingConfig } from '../../services/leveling/leveling.js';
 import { syncMemberRewardRoles, describeRewardSync } from '../../services/leveling/rewardRoles.js';
-import { createEmbed } from '../../utils/embeds.js';
+
 
 import { InteractionHelper } from '../../utils/interactionHelper.js';
+import { createV2Container, v2Message } from '../../utils/componentsV2.js';
+
 export default {
   data: new SlashCommandBuilder()
     .setName('levelset')
@@ -41,12 +43,7 @@ export default {
     const levelingConfig = await getLevelingConfig(client, interaction.guildId);
     if (!levelingConfig?.enabled) {
       await InteractionHelper.safeEditReply(interaction, {
-        embeds: [
-          new EmbedBuilder()
-            .setColor('#f1c40f')
-            .setDescription('The leveling system is currently disabled on this server.')
-        ],
-        flags: MessageFlags.Ephemeral
+        ...v2Message([createV2Container({ description: 'The leveling system is currently disabled on this server.', color: '#f1c40f' })], { ephemeral: true }),
       });
       return;
     }
@@ -72,13 +69,7 @@ export default {
     );
 
     await InteractionHelper.safeEditReply(interaction, {
-      embeds: [
-        createEmbed({
-          title: 'Level Set',
-          description: `Successfully set ${targetUser.tag}'s level to **${newLevel}**.\n**Total XP:** ${userData.totalXp}${rewardLine ? `\n${rewardLine}` : ''}`,
-          color: 'success'
-        })
-      ]
+      ...v2Message([createV2Container({ title: 'Level Set', description: `Successfully set ${targetUser.tag}'s level to **${newLevel}**.\n**Total XP:** ${userData.totalXp}${rewardLine ? `\n${rewardLine}` : ''}`, color: 'success' })])
     });
 
     logger.info(

@@ -1,11 +1,12 @@
-import { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } from 'discord.js';
-import { createEmbed, successEmbed, warningEmbed } from '../../utils/embeds.js';
+import { SlashCommandBuilder, PermissionFlagsBits } from 'discord.js';
 import { logModerationAction } from '../../utils/moderation.js';
 import { logger } from '../../utils/logger.js';
 import { ModerationService } from '../../services/moderation/moderationService.js';
 import { ZentixBotError, replyUserError, ErrorTypes } from '../../utils/errorHandler.js';
 
 import { InteractionHelper } from '../../utils/interactionHelper.js';
+import { createV2Container, v2Message } from '../../utils/componentsV2.js';
+
 export default {
     data: new SlashCommandBuilder()
         .setName("massban")
@@ -170,15 +171,10 @@ export default {
                 });
             }
 
-            const embed = results.successful.length > 0 ? successEmbed : warningEmbed;
+            const color = results.successful.length > 0 ? 'success' : 'warning';
             
             return await InteractionHelper.safeEditReply(interaction, {
-                embeds: [
-                    embed(
-                        `🔨 Mass Ban Completed`,
-                        description
-                    )
-                ]
+                ...v2Message([createV2Container({ title: 'Mass Ban Completed', description, color })])
             });
 
         } catch (error) {

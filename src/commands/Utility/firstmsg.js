@@ -1,5 +1,5 @@
 import { SlashCommandBuilder, PermissionFlagsBits } from 'discord.js';
-import { successEmbed } from '../../utils/embeds.js';
+import { v2Success, v2Message } from '../../utils/componentsV2.js';
 import { InteractionHelper } from '../../utils/interactionHelper.js';
 import { replyUserError, ErrorTypes } from '../../utils/errorHandler.js';
 import { logger } from '../../utils/logger.js';
@@ -58,21 +58,17 @@ export default {
                 channelId: interaction.channelId,
                 guildId: interaction.guildId
             });
-            return await InteractionHelper.safeEditReply(interaction, {
-                embeds: [successEmbed('First Message', "No messages found in this channel!")],
-            });
+            return await InteractionHelper.safeEditReply(interaction, v2Message([v2Success('First Message', "No messages found in this channel!")]));
         }
 
         const messageLink = `https://discord.com/channels/${interaction.guildId}/${interaction.channelId}/${firstMessage.id}`;
 
-        await InteractionHelper.safeEditReply(interaction, {
-            embeds: [
-                successEmbed(
-                    `First Message in #${plainText(String(channel.name ?? 'this channel'), 100)}`,
-                    `Message Link: ${messageLink}`
-                ),
-            ],
-        });
+        await InteractionHelper.safeEditReply(interaction, v2Message([
+            v2Success(
+                `First Message in #${plainText(String(channel.name ?? 'this channel'), 100)}`,
+                `Message Link: ${messageLink}`,
+            ),
+        ]));
 
         logger.info(`FirstMsg command executed`, {
             userId: interaction.user.id,

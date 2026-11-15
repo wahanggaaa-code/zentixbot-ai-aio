@@ -1,5 +1,5 @@
-import { ComponentType, EmbedBuilder } from 'discord.js';
-import { getColor } from '../config/bot.js';
+import { ComponentType, MessageFlags } from 'discord.js';
+import { createV2Container, v2Message } from './componentsV2.js';
 import { ZentixBotError, ErrorTypes, replyUserError } from './errorHandler.js';
 import { InteractionHelper } from './interactionHelper.js';
 import { logger } from './logger.js';
@@ -45,7 +45,7 @@ export function wrapDashboardHandler(handler, interactionLabel = 'dashboard') {
  */
 export async function startDashboardSession({
     interaction,
-    embeds,
+    container,
     components,
     flags,
     timeoutMs = 600_000,
@@ -55,7 +55,12 @@ export async function startDashboardSession({
     onButton,
     onTimeout,
 }) {
-    await InteractionHelper.safeEditReply(interaction, { embeds, components, flags });
+    if (!container) throw new Error('startDashboardSession requires a Components v2 container');
+    const ephemeral = Boolean(flags && (flags & MessageFlags.Ephemeral));
+    await InteractionHelper.safeEditReply(interaction, {
+        ...v2Message([container, ...components], { ephemeral }),
+        allowedMentions: { parse: [] },
+    });
 
     const replyMessage = await interaction.fetchReply().catch(() => null);
     const replyMessageId = replyMessage?.id;
@@ -100,17 +105,14 @@ export async function startDashboardSession({
                 return;
             }
 
-            const timeoutEmbed = new EmbedBuilder()
-                .setTitle('Dashboard Timed Out')
-                .setDescription(
-                    'This dashboard has been closed due to inactivity. Please run the command again to continue.',
-                )
-                .setColor(getColor('error'));
+            const timeoutContainer = createV2Container({
+                title: 'Dashboard Timed Out',
+                description: 'This dashboard has been closed due to inactivity. Please run the command again to continue.',
+                color: 'error',
+            });
 
             await InteractionHelper.safeEditReply(interaction, {
-                embeds: [timeoutEmbed],
-                components: [],
-                flags,
+                ...v2Message([timeoutContainer]),
             }).catch(() => {});
         });
     }

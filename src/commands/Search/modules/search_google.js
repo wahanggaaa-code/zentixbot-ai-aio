@@ -1,4 +1,4 @@
-import { createEmbed } from '../../../utils/embeds.js';
+import { createV2Container, v2Message } from '../../../utils/componentsV2.js';
 import { logger } from '../../../utils/logger.js';
 import { replyUserError, ErrorTypes } from '../../../utils/errorHandler.js';
 import { InteractionHelper } from '../../../utils/interactionHelper.js';
@@ -21,14 +21,14 @@ export default {
         // query is shown in a code span, so what a member types can never become the text of a link.
         const searchUrl = `https://www.google.com/search?q=${encodeQuery(query)}`;
 
-        const embed = createEmbed({
+        const container = createV2Container({
             title: 'Google Search',
             description: `Search: ${codeSpan(query, MAX_QUERY_LENGTH)}\n[Open this search on Google](${searchUrl})`,
-            color: 'info'
-        })
-        .setFooter({ text: 'Google Search Results' });
+            color: 'info',
+            footer: { text: 'Google Search Results', always: true },
+        });
 
-        await InteractionHelper.safeReply(interaction, { embeds: [embed] });
+        await InteractionHelper.safeReply(interaction, v2Message([container]));
 
         logger.info('Google search link generated', {
             userId: interaction.user.id,

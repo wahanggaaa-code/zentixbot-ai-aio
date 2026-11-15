@@ -1,6 +1,6 @@
-import { botConfig, getColor } from '../../config/bot.js';
+import { botConfig } from '../../config/bot.js';
 import { SlashCommandBuilder, PermissionFlagsBits, ChannelType, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } from 'discord.js';
-import { createEmbed, infoEmbed, successEmbed } from '../../utils/embeds.js';
+import { createV2Container, v2Info, v2Success, v2Message } from '../../utils/componentsV2.js';
 import { getGuildConfig, setGuildConfig } from '../../services/config/guildConfig.js';
 import { withErrorHandling, createError, ErrorTypes, replyUserError } from '../../utils/errorHandler.js';
 import { removeVerification, verifyUser } from '../../services/verificationService.js';
@@ -181,10 +181,10 @@ async function handleSetup(interaction, guild, client) {
 
     await InteractionHelper.safeDefer(interaction);
 
-    const verifyEmbed = createEmbed({
+    const verifyContainer = createV2Container({
         title: "Server Verification",
         description: message,
-        color: getColor('success')
+        color: 'success',
     });
 
     const verifyButton = new ActionRowBuilder().addComponents(
@@ -196,8 +196,8 @@ async function handleSetup(interaction, guild, client) {
     );
 
     const verifyMessage = await verificationChannel.send({
-        embeds: [verifyEmbed],
-        components: [verifyButton]
+        ...v2Message([verifyContainer, verifyButton]),
+        allowedMentions: { parse: [] },
     });
 
     guildConfig.verification = {
@@ -212,14 +212,15 @@ async function handleSetup(interaction, guild, client) {
     await setGuildConfig(client, guild.id, guildConfig);
 
     await InteractionHelper.safeEditReply(interaction, {
-        embeds: [successEmbed(
+        ...v2Message([v2Success(
             'Verification System Updated',
             [
                 `Channel: ${verificationChannel}`,
                 `Verified Role: ${verifiedRole}`,
                 `Button Text: ${buttonText}`
             ].join('\n')
-        )]
+        )]),
+        allowedMentions: { parse: [] },
     });
 }
 
@@ -232,10 +233,7 @@ async function handleRemove(interaction, guild, client) {
     });
 
     if (result.status === 'not_verified') {
-        return await InteractionHelper.safeReply(interaction, {
-            embeds: [infoEmbed('Not Verified', `${targetUser.tag} does not currently have the verified role.`)],
-            flags: MessageFlags.Ephemeral
-        });
+        return await InteractionHelper.safeReply(interaction, v2Message([v2Info('Not Verified', `${targetUser.tag} does not currently have the verified role.`)], { ephemeral: true }));
     }
 
     logger.info('Verification removed via command', {
@@ -244,7 +242,5 @@ async function handleRemove(interaction, guild, client) {
         moderatorId: interaction.user.id
     });
 
-    return await InteractionHelper.safeReply(interaction, {
-        embeds: [successEmbed('Verification Removed', `Verification removed from ${targetUser.tag}.`)]
-    });
+    return await InteractionHelper.safeReply(interaction, { ...v2Message([v2Success('Verification Removed', `Verification removed from ${targetUser.tag}.`)]), allowedMentions: { parse: [] } });
 }

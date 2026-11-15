@@ -1,11 +1,12 @@
 import { SlashCommandBuilder, PermissionFlagsBits, PermissionsBitField, ChannelType, MessageFlags } from 'discord.js';
-import { createEmbed, successEmbed } from '../../utils/embeds.js';
+
 import { logEvent } from '../../utils/moderation.js';
 import { logger } from '../../utils/logger.js';
-import { getColor } from '../../config/bot.js';
 
 import { InteractionHelper } from '../../utils/interactionHelper.js';
 import { replyUserError, ErrorTypes } from '../../utils/errorHandler.js';
+import { createV2Container, v2Message } from '../../utils/componentsV2.js';
+
 export default {
     data: new SlashCommandBuilder()
     .setName("purge")
@@ -62,13 +63,7 @@ export default {
       });
 
       await InteractionHelper.safeEditReply(interaction, {
-        embeds: [
-          successEmbed(
-            "Messages Purged",
-            `Deleted ${deletedCount} messages in ${channel}.`,
-          ),
-        ],
-        flags: MessageFlags.Ephemeral,
+        ...v2Message([createV2Container({ title: "Messages Purged", description: `Deleted ${deletedCount} messages in ${channel}.`, color: 'success' })], { ephemeral: true }),
       });
 
       setTimeout(() => {

@@ -1,7 +1,7 @@
 // view.js — how to-do lists look in Discord, and the sentences for refused requests.
 
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
-import { createEmbed } from '../../utils/embeds.js';
+import { createV2Container, v2Message } from '../../utils/componentsV2.js';
 import { plainText } from '../searchLookup.js';
 import { MAX_LISTS_PER_MEMBER, MAX_MEMBERS, MAX_NAME_LENGTH, MAX_TASK_LENGTH, MAX_TASKS, Refusal } from './lists.js';
 
@@ -44,7 +44,7 @@ export function personalEmbed(list, page = 1) {
     const description = list.tasks.length === 0
         ? 'Your to-do list is empty. Add a task with `/todo add`.'
         : taskSection(list, page, { shared: false, more: 'choose another with the `page` option of `/todo list`' });
-    return createEmbed({ title: 'Your To-Do List', description, color: 'success' });
+    return createV2Container({ title: 'Your To-Do List', description, color: 'success' });
 }
 
 function sharedButtons(listId) {
@@ -61,10 +61,14 @@ export function sharedPayload(list, page = 1) {
     const body = list.tasks.length === 0
         ? 'This list is empty. Use the **Add Task** button or `/todo share addtask`.'
         : taskSection(list, page, { shared: true, more: 'choose another with the `page` option of `/todo share view`' });
-    const embed = createEmbed({ title: 'Shared To-Do List', description: `${head}\n\n${body}`, color: 'success' })
-        .addFields({ name: `Members (${list.members.length})`, value: list.members.map((id) => `<@${id}>`).join(', ') });
-    // Mentions in an embed notify nobody; this also keeps it that way if the layout ever changes.
-    return { embeds: [embed], components: [sharedButtons(list.id)], allowedMentions: { parse: [] } };
+    const container = createV2Container({
+        title: 'Shared To-Do List',
+        description: `${head}\n\n${body}`,
+        color: 'success',
+        fields: [{ name: `Members (${list.members.length})`, value: list.members.map((id) => `<@${id}>`).join(', ') }],
+    });
+    // Mentions in the container notify nobody; this also keeps it that way if the layout ever changes.
+    return { ...v2Message([container, sharedButtons(list.id)]), allowedMentions: { parse: [] } };
 }
 
 /** True when `message` is a view of shared list `listId` that this bot posted. */
@@ -83,7 +87,7 @@ export function sharedIndexEmbed(lists, userId) {
             const role = list.creatorId === userId ? 'owner' : `shared by <@${list.creatorId}>`;
             return `**${shown(list.name, 120)}** · \`${list.id}\`\n${open} open of ${list.tasks.length} · ${list.members.length} member${list.members.length === 1 ? '' : 's'} · ${role}`;
         }).join('\n\n');
-    return createEmbed({ title: 'Your Shared Lists', description, color: 'success' });
+    return createV2Container({ title: 'Your Shared Lists', description, color: 'success' });
 }
 
 /** What a member is told when a request is refused. Nothing was changed in any of these cases. */

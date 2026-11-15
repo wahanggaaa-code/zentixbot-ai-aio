@@ -1,6 +1,5 @@
-import { getColor } from '../../config/bot.js';
 import { SlashCommandBuilder, PermissionFlagsBits, PermissionsBitField, ChannelType, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } from 'discord.js';
-import { createEmbed, successEmbed, infoEmbed, warningEmbed } from '../../utils/embeds.js';
+import { createV2Container, v2Message } from '../../utils/componentsV2.js';
 import { getGuildConfig, setGuildConfig } from '../../services/config/guildConfig.js';
 import { InteractionHelper } from '../../utils/interactionHelper.js';
 import { logger } from '../../utils/logger.js';
@@ -136,10 +135,10 @@ const panelMessage = interaction.options.getString("panel_message") || "Click th
             const maxTicketsPerUser = interaction.options.getInteger("max_tickets_per_user") || 3;
 const dmOnClose = interaction.options.getBoolean("dm_on_close") !== false;
 
-            const setupEmbed = createEmbed({ 
-                title: "Support Tickets", 
-description: panelMessage,
-                color: getColor('info')
+            const setupContainer = createV2Container({
+                title: "Support Tickets",
+                description: panelMessage,
+                color: 'info',
             });
 
             const ticketButton = new ActionRowBuilder().addComponents(
@@ -152,8 +151,8 @@ description: panelMessage,
 
             try {
                 const sentPanel = await panelChannel.send({
-                    embeds: [setupEmbed],
-                    components: [ticketButton],
+                    ...v2Message([setupContainer, ticketButton]),
+                    allowedMentions: { parse: [] },
                 });
 
                 if (client.db && interaction.guildId) {
@@ -202,12 +201,11 @@ description: panelMessage,
                 successMessage += `\n\n**Max Tickets Per User:** ${maxTicketsPerUser}\n**DM on Close:** ${dmOnClose ? 'Enabled' : 'Disabled'}`;
 
                 await InteractionHelper.safeEditReply(interaction, {
-                    embeds: [
-                        successEmbed(
-                            "Ticket Panel Set Up",
-                            successMessage,
-                        ),
-                    ],
+                    ...v2Message([createV2Container({
+                        title: "Ticket Panel Set Up",
+                        description: successMessage,
+                        color: 'success',
+                    })]),
                 });
 
                 logger.info('Ticket panel setup completed', {
@@ -222,55 +220,6 @@ description: panelMessage,
                     dmOnClose: dmOnClose,
                     commandName: 'ticket_setup'
                 });
-
-                const logEmbed = createEmbed({
-                    title: "Ticket System Setup (Configuration Log)",
-                    description: `The ticket panel was set up in ${panelChannel} by ${interaction.user}.`,
-                    color: getColor('warning')
-                })
-                    .addFields(
-                        {
-                            name: "Panel Channel",
-                            value: panelChannel.toString(),
-                            inline: true,
-                        },
-                        {
-                            name: "Ticket Category",
-                            value: categoryChannel
-                                ? categoryChannel.toString()
-                                : "None specified.",
-                            inline: true,
-                        },
-                        {
-                            name: "Closed Category",
-                            value: closedCategoryChannel
-                                ? closedCategoryChannel.toString()
-                                : "None specified.",
-                            inline: true,
-                        },
-                        {
-                            name: "Staff Role",
-                            value: staffRole
-                                ? staffRole.toString()
-                                : "None specified.",
-                            inline: true,
-                        },
-                        {
-                            name: "Max Tickets Per User",
-                            value: maxTicketsPerUser.toString(),
-                            inline: true,
-                        },
-                        {
-                            name: "DM on Close",
-                            value: dmOnClose ? 'Enabled' : 'Disabled',
-                            inline: true,
-                        },
-                        {
-                            name: "Moderator",
-                            value: `${interaction.user.tag} (${interaction.user.id})`,
-                            inline: false,
-                        },
-                    );
 
             } catch (error) {
                 logger.error('Ticket setup error', {

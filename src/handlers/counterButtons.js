@@ -1,5 +1,5 @@
 import { PermissionFlagsBits } from 'discord.js';
-import { createEmbed, successEmbed } from '../utils/embeds.js';
+import { createV2Container, v2Success, v2Message } from '../utils/componentsV2.js';
 import { performDeletionByCounterId } from '../commands/ServerStats/modules/serverstats_delete.js';
 import { logger } from '../utils/logger.js';
 import { ErrorTypes, replyUserError, handleInteractionError } from '../utils/errorHandler.js';
@@ -35,14 +35,12 @@ export const counterDeleteActionHandler = {
       }
 
       if (action === 'cancel') {
-        await interaction.editReply({
-          embeds: [createEmbed({
-            title: '❌ Cancelled',
-            description: 'Counter deletion cancelled.',
-            color: 'error'
-          })],
-          components: []
-        }).catch(logger.error);
+        await interaction.editReply(v2Message([createV2Container({
+          title: '❌ Cancelled',
+          description: 'Counter deletion cancelled.',
+          color: 'error',
+          raw: true,
+        })])).catch(logger.error);
         return;
       }
 
@@ -66,10 +64,7 @@ export const counterDeleteActionHandler = {
         return;
       }
 
-      await interaction.editReply({
-        embeds: [successEmbed(message)],
-        components: []
-      }).catch(logger.error);
+      await interaction.editReply(v2Message([v2Success(message)])).catch(logger.error);
     } catch (error) {
       await handleInteractionError(interaction, error, {
         type: 'button',

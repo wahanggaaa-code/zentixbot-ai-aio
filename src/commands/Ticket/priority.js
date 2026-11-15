@@ -1,6 +1,5 @@
-import { getColor } from '../../config/bot.js';
 import { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } from 'discord.js';
-import { successEmbed } from '../../utils/embeds.js';
+import { createV2Container, v2Message } from '../../utils/componentsV2.js';
 import { logger } from '../../utils/logger.js';
 import { replyUserError, ErrorTypes } from '../../utils/errorHandler.js';
 import { InteractionHelper } from '../../utils/interactionHelper.js';
@@ -46,12 +45,11 @@ export default {
         await updateTicketPriority(interaction.channel, priorityLevel, interaction.user);
 
         await InteractionHelper.safeEditReply(interaction, {
-            embeds: [
-                successEmbed(
-                    "Priority Updated",
-                    `Ticket priority set to **${priorityLevel.toUpperCase()}**.`,
-                ),
-            ],
+            ...v2Message([createV2Container({
+                title: "Priority Updated",
+                description: `Ticket priority set to **${priorityLevel.toUpperCase()}**.`,
+                color: 'success',
+            })]),
         });
 
         logger.info('Ticket priority updated successfully', {

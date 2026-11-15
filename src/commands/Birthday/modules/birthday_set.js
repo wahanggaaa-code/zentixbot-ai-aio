@@ -1,4 +1,4 @@
-import { EmbedBuilder } from 'discord.js';
+import { createV2Container, v2Message } from '../../../utils/componentsV2.js';
 import { setBirthday } from '../../../services/birthdayService.js';
 import { isLeapDay, LEAP_DAY_FALLBACK } from '../../../utils/birthdayDates.js';
 import { getMonthName } from '../../../utils/database.js';
@@ -15,16 +15,14 @@ export default {
 
         const result = await setBirthday(client, guildId, userId, month, day);
 
-        const embed = new EmbedBuilder()
-            .setColor(0x00FF00)
-            .setTitle('Birthday Set!')
-            .setDescription(
+        const container = createV2Container({
+            title: 'Birthday Set!',
+            description:
                 `Your birthday has been set to **${result.data.monthName} ${result.data.day}**!`
-                + (isLeapDay({ month, day }) ? `\nIn years without February 29 it is celebrated on **${getMonthName(LEAP_DAY_FALLBACK.month)} ${LEAP_DAY_FALLBACK.day}**.` : '')
-            );
-
-        await InteractionHelper.safeEditReply(interaction, {
-            embeds: [embed]
+                + (isLeapDay({ month, day }) ? `\nIn years without February 29 it is celebrated on **${getMonthName(LEAP_DAY_FALLBACK.month)} ${LEAP_DAY_FALLBACK.day}**.` : ''),
+            color: 'success',
         });
+
+        await InteractionHelper.safeEditReply(interaction, v2Message([container]));
     }
 };

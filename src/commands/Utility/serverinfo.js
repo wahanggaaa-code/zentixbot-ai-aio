@@ -1,5 +1,5 @@
 import { SlashCommandBuilder } from 'discord.js';
-import { createEmbed } from '../../utils/embeds.js';
+import { createV2Container, v2Message } from '../../utils/componentsV2.js';
 import { logger } from '../../utils/logger.js';
 import { replyUserError, ErrorTypes } from '../../utils/errorHandler.js';
 import { InteractionHelper } from '../../utils/interactionHelper.js';
@@ -40,9 +40,11 @@ export default {
     // Threads are cached next to channels but are not channels of the server list.
     const channelCount = guild.channels.cache.filter((channel) => !channel.isThread?.()).size;
 
-    const embed = createEmbed({ title: `Server Info: ${plainText(guild.name, 100)}`, description: `Server ID: ${guild.id}` })
-      .setThumbnail(guild.iconURL({ size: 256 }))
-      .addFields(
+    const container = createV2Container({
+      title: `Server Info: ${plainText(guild.name, 100)}`,
+      description: `Server ID: ${guild.id}`,
+      thumbnail: guild.iconURL({ size: 256 }),
+      fields: [
         { name: "Owner", value: ownerText, inline: true },
         { name: "Members", value: `${guild.memberCount}`, inline: true },
         { name: "Channels", value: `${channelCount}`, inline: true },
@@ -57,9 +59,10 @@ export default {
           value: `<t:${createdTimestamp}:R>`,
           inline: true,
         },
-      );
+      ],
+    });
 
-    await InteractionHelper.safeEditReply(interaction, { embeds: [embed], allowedMentions: { parse: [] } });
+    await InteractionHelper.safeEditReply(interaction, { ...v2Message([container]), allowedMentions: { parse: [] } });
     logger.info(`ServerInfo command executed`, {
       userId: interaction.user.id,
       guildId: guild.id,

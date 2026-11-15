@@ -1,5 +1,5 @@
 import { MessageFlags, PermissionFlagsBits } from 'discord.js';
-import { createEmbed } from '../../../utils/embeds.js';
+import { createV2Container, v2Message } from '../../../utils/componentsV2.js';
 import { getGuildConfig } from '../../../services/config/guildConfig.js';
 import { logEvent, EVENT_TYPES, resolveLogChannel } from '../../../services/loggingService.js';
 import { formatLogLine, resolveUserAuthor } from '../../../utils/logging/logEmbeds.js';
@@ -82,12 +82,10 @@ export default {
             return await replyUserError(interaction, { type: ErrorTypes.CONFIGURATION, message: NOT_DELIVERED });
         }
 
-        await InteractionHelper.safeEditReply(interaction, {
-            embeds: [createEmbed({
-                title: 'Report Submitted',
-                description: `Your report against **${plainText(targetUser.tag, 80)}** has been sent to the moderation team. Thank you!`,
-            })],
-        });
+        await InteractionHelper.safeEditReply(interaction, v2Message([createV2Container({
+            title: 'Report Submitted',
+            description: `Your report against **${plainText(targetUser.tag, 80)}** has been sent to the moderation team. Thank you!`,
+        })]));
 
         logger.info('Report submitted', {
             userId: interaction.user.id,

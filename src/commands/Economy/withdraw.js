@@ -1,9 +1,11 @@
 import { SlashCommandBuilder } from 'discord.js';
-import { createEmbed, errorEmbed, successEmbed, infoEmbed, warningEmbed } from '../../utils/embeds.js';
+
 import { withEconomyTransaction } from '../../services/economy/transaction.js';
 import { withErrorHandling, createError, ErrorTypes } from '../../utils/errorHandler.js';
 
 import { InteractionHelper } from '../../utils/interactionHelper.js';
+import { createV2Container, v2Message } from '../../utils/componentsV2.js';
+
 export default {
     data: new SlashCommandBuilder()
         .setName('withdraw')
@@ -56,23 +58,8 @@ export default {
             });
             const {withdrawAmount,wallet,bank}=result;
 
-            const embed = successEmbed(
-                'Withdrawal Successful',
-                `You successfully withdrew **$${withdrawAmount.toLocaleString()}** from your bank.`
-            )
-                .addFields(
-                    {
-                        name: "New Cash Balance",
-                        value: `$${wallet.toLocaleString()}`,
-                        inline: true,
-                    },
-                    {
-                        name: "New Bank Balance",
-                        value: `$${bank.toLocaleString()}`,
-                        inline: true,
-                    },
-                );
+            const embed = createV2Container({ title: 'Withdrawal Successful', description: `You successfully withdrew **$${withdrawAmount.toLocaleString()}** from your bank.`, color: 'success', fields: [{ name: "New Cash Balance", value: `$${wallet.toLocaleString()}` }, { name: "New Bank Balance", value: `$${bank.toLocaleString()}` }] });
 
-            await InteractionHelper.safeEditReply(interaction, { embeds: [embed] });
+            await InteractionHelper.safeEditReply(interaction, { ...v2Message([embed]) });
     }, { command: 'withdraw' })
 };

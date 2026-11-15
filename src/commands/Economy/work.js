@@ -1,10 +1,12 @@
 import { SlashCommandBuilder } from 'discord.js';
-import { createEmbed, errorEmbed, successEmbed, infoEmbed, warningEmbed } from '../../utils/embeds.js';
+
 import { withEconomyTransaction } from '../../services/economy/transaction.js';
 import { withErrorHandling, createError, ErrorTypes } from '../../utils/errorHandler.js';
 import { logger } from '../../utils/logger.js';
 import { InteractionHelper } from '../../utils/interactionHelper.js';
 import { botConfig } from '../../config/bot.js';
+import { createV2Container, v2Message } from '../../utils/componentsV2.js';
+
 
 const WORK_COOLDOWN = botConfig.economy?.cooldowns?.work ?? 30 * 60 * 1000;
 const MIN_WORK_AMOUNT = botConfig.economy?.workMin ?? 10;
@@ -89,27 +91,8 @@ export default {
                 timestamp: new Date().toISOString()
             });
 
-            const embed = successEmbed(
-                "💼 Work Complete!",
-                `You worked as a **${job}** and earned **$${earned.toLocaleString()}**!${multiplierMessage}`
-            )
-                .addFields(
-                    {
-                        name: "New Balance",
-                        value: `$${newWallet.toLocaleString()}`,
-                        inline: true,
-                    },
-                    {
-                        name: "Next Work",
-                        value: `<t:${Math.floor((now + WORK_COOLDOWN) / 1000)}:R>`,
-                        inline: true,
-                    }
-                )
-                .setFooter({
-                    text: `Requested by ${interaction.user.tag}`,
-                    iconURL: interaction.user.displayAvatarURL(),
-                });
+            const embed = createV2Container({ title: "💼 Work Complete!", description: `You worked as a **${job}** and earned **$${earned.toLocaleString()}**!${multiplierMessage}`, color: 'success', fields: [{ name: "New Balance", value: `$${newWallet.toLocaleString()}` }, { name: "Next Work", value: `<t:${Math.floor((now + WORK_COOLDOWN) / 1000)}:R>` }], footer: { text: `Requested by ${interaction.user.tag}`, always: true } });
 
-            await InteractionHelper.safeEditReply(interaction, { embeds: [embed] });
+            await InteractionHelper.safeEditReply(interaction, { ...v2Message([embed]) });
     }, { command: 'work' })
 };

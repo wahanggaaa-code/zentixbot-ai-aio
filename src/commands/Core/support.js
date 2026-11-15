@@ -1,5 +1,5 @@
-import { SlashCommandBuilder, ButtonBuilder, ButtonStyle, ActionRowBuilder, MessageFlags } from 'discord.js';
-import { createEmbed } from '../../utils/embeds.js';
+import { SlashCommandBuilder, ButtonBuilder, ButtonStyle, ActionRowBuilder } from 'discord.js';
+import { createV2Container, v2Message } from '../../utils/componentsV2.js';
 import { logger } from '../../utils/logger.js';
 
 import { InteractionHelper } from '../../utils/interactionHelper.js';
@@ -15,10 +15,7 @@ export default {
       const ownerUrl = ownerProfileUrl();
       if (!ownerUrl) {
         return await InteractionHelper.safeReply(interaction, {
-          embeds: [
-            createEmbed({ title: "Need Help?", description: "The bot owner's contact has not been set up yet. Ask a server admin for help." }),
-          ],
-          flags: MessageFlags.Ephemeral,
+          ...v2Message([createV2Container({ title: "Need Help?", description: "The bot owner's contact has not been set up yet. Ask a server admin for help.", color: 'info' })], { ephemeral: true }),
         });
       }
 
@@ -30,19 +27,14 @@ export default {
       const actionRow = new ActionRowBuilder().addComponents(supportButton);
 
       await InteractionHelper.safeReply(interaction, {
-        embeds: [
-          createEmbed({ title: "Need Help?", description: "Contact the bot owner on Discord for help, to report a bug, or to suggest a feature." }),
-        ],
-        components: [actionRow],
-        flags: MessageFlags.Ephemeral,
+        ...v2Message([createV2Container({ title: "Need Help?", description: "Contact the bot owner on Discord for help, to report a bug, or to suggest a feature.", color: 'info' }), actionRow], { ephemeral: true }),
       });
     } catch (error) {
       logger.error('Support command error:', error);
       
       try {
         return await InteractionHelper.safeReply(interaction, {
-          embeds: [createEmbed({ title: 'System Error', description: 'Could not display support information.', color: 'error' })],
-          flags: MessageFlags.Ephemeral,
+          ...v2Message([createV2Container({ title: 'System Error', description: 'Could not display support information.', color: 'error' })], { ephemeral: true }),
         });
       } catch (replyError) {
         logger.error('Failed to send error reply:', replyError);

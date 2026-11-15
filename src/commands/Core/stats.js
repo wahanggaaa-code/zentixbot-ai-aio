@@ -1,5 +1,5 @@
-import { SlashCommandBuilder, version, MessageFlags } from 'discord.js';
-import { createEmbed } from '../../utils/embeds.js';
+import { SlashCommandBuilder, version } from 'discord.js';
+import { createV2Container, v2Message } from '../../utils/componentsV2.js';
 import { logger } from '../../utils/logger.js';
 
 import { InteractionHelper } from '../../utils/interactionHelper.js';
@@ -19,24 +19,27 @@ export default {
       );
       const nodeVersion = process.version;
 
-      const embed = createEmbed({ title: "System Statistics", description: "Real-time performance metrics." }).addFields(
-        { name: "Servers", value: `${totalGuilds}`, inline: true },
-        { name: "Users", value: `${totalMembers}`, inline: true },
-        { name: "Node.js", value: `${nodeVersion}`, inline: true },
-        { name: "Discord.js", value: `v${version}`, inline: true },
-        {
-          name: "Memory Usage",
-          value: `${(process.memoryUsage().heapUsed / 1024 / 1024).toFixed(2)} MB`,
-          inline: true,
-        },
-      );
+      const container = createV2Container({
+        title: "System Statistics",
+        description: "Real-time performance metrics.",
+        color: "primary",
+        fields: [
+          { name: "Servers", value: `${totalGuilds}` },
+          { name: "Users", value: `${totalMembers}` },
+          { name: "Node.js", value: `${nodeVersion}` },
+          { name: "Discord.js", value: `v${version}` },
+          {
+            name: "Memory Usage",
+            value: `${(process.memoryUsage().heapUsed / 1024 / 1024).toFixed(2)} MB`,
+          },
+        ],
+      });
 
-      await InteractionHelper.safeEditReply(interaction, { embeds: [embed] });
+      await InteractionHelper.safeEditReply(interaction, v2Message([container]));
     } catch (error) {
       logger.error('Stats command error:', error);
       return InteractionHelper.safeEditReply(interaction, {
-        embeds: [createEmbed({ title: 'System Error', description: 'Could not fetch system statistics.', color: 'error' })],
-        flags: MessageFlags.Ephemeral,
+        ...v2Message([createV2Container({ title: 'System Error', description: 'Could not fetch system statistics.', color: 'error' })], { ephemeral: true }),
       });
     }
   },

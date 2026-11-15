@@ -1,11 +1,11 @@
-import { createEmbed } from '../../utils/embeds.js';
 import { createButton, getPaginationRow } from '../../utils/components.js';
 import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { Collection, ActionRowBuilder, MessageFlags } from 'discord.js';
+import { Collection, ActionRowBuilder } from 'discord.js';
 import { logger } from '../../utils/logger.js';
 import { handleInteractionError } from '../../utils/errorHandler.js';
+import { createV2Container, v2Text, v2Separator, v2Flags } from '../../utils/componentsV2.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -14,7 +14,6 @@ const BACK_BUTTON_ID = "help-back-to-main";
 const ALL_COMMANDS_ID = "help-all-commands";
 const PAGINATION_PREFIX = "help-page";
 const CATEGORY_SELECT_ID = "help-category-select";
-const FOOTER_TEXT = "Made with ❤️";
 const SUBCOMMAND_TYPE = 1;
 const SUBCOMMAND_GROUP_TYPE = 2;
 
@@ -169,11 +168,12 @@ async function createCategoryCommandsMenu(category, client) {
         logger.error('Error fetching registered commands:', error);
     }
 
-    const embed = createEmbed({
+    const container = createV2Container({
         title: `${icon} ${categoryName} Commands`,
         description: categoryCommands.length > 0
-            ? `Click any command mention below to use it.`
-            : `No commands found in the **${categoryName}** category.`
+            ? 'Click any command mention below to use it.'
+            : `No commands found in the **${categoryName}** category.`,
+        color: 'primary',
     });
 
     if (categoryCommands.length > 0) {
@@ -189,11 +189,8 @@ async function createCategoryCommandsMenu(category, client) {
 
         const maxLength = 1000;
         if (commandMentions.length <= maxLength) {
-            embed.addFields({
-                name: "Commands",
-                value: commandMentions,
-                inline: false,
-            });
+            container.addSeparatorComponents(v2Separator({ divider: true, spacing: 1 }));
+            container.addTextDisplayComponents(v2Text(`**Commands**\n${commandMentions}`));
         } else {
             const chunks = [];
             let currentChunk = "";
@@ -209,18 +206,12 @@ async function createCategoryCommandsMenu(category, client) {
             }
             if (currentChunk) chunks.push(currentChunk);
 
+            container.addSeparatorComponents(v2Separator({ divider: true, spacing: 1 }));
             chunks.forEach((chunk, index) => {
-                embed.addFields({
-                    name: `Commands (Part ${index + 1})`,
-                    value: chunk,
-                    inline: false,
-                });
+                container.addTextDisplayComponents(v2Text(`**Commands (Part ${index + 1})**\n${chunk}`));
             });
         }
     }
-
-    embed.setFooter({ text: FOOTER_TEXT });
-    embed.setTimestamp();
 
     const backButton = createButton(
         BACK_BUTTON_ID,
@@ -233,8 +224,8 @@ async function createCategoryCommandsMenu(category, client) {
     const buttonRow = new ActionRowBuilder().addComponents(backButton);
 
     return {
-        embeds: [embed],
-        components: [buttonRow],
+        components: [container, buttonRow],
+        flags: v2Flags(),
     };
 }
 
@@ -306,13 +297,11 @@ export async function createAllCommandsMenu(page = 1, client) {
     const endIndex = startIndex + commandsPerPage;
     const pageCommands = allCommands.slice(startIndex, endIndex);
 
-    const embed = createEmbed({
-        title: "📋 All Commands",
-        description: `Browse every available command in one list. Use the page buttons below to move through the full set.`
+    const container = createV2Container({
+        title: "All Commands",
+        description: 'Browse every available command in one list. Use the page buttons below to move through the full set.',
+        color: 'primary',
     });
-
-    embed.setFooter({ text: FOOTER_TEXT });
-    embed.setTimestamp();
 
     if (pageCommands.length > 0) {
         const commandMentions = pageCommands.map((cmd) => {
@@ -326,6 +315,7 @@ export async function createAllCommandsMenu(page = 1, client) {
         const columnCount = pageCommands.length > 20 ? 3 : (pageCommands.length > 10 ? 2 : 1);
         const chunkSize = Math.ceil(commandMentions.length / columnCount);
 
+        container.addSeparatorComponents(v2Separator({ divider: true, spacing: 1 }));
         for (let i = 0; i < columnCount; i++) {
             const chunk = commandMentions
                 .slice(i * chunkSize, (i + 1) * chunkSize)
@@ -333,11 +323,8 @@ export async function createAllCommandsMenu(page = 1, client) {
 
             if (!chunk) continue;
 
-            embed.addFields({
-                name: i === 0 ? `Commands (Page ${page})` : "Commands (cont.)",
-                value: chunk,
-                inline: columnCount > 1,
-            });
+            const name = i === 0 ? `Commands (Page ${page})` : "Commands (cont.)";
+            container.addTextDisplayComponents(v2Text(`**${name}**\n${chunk}`));
         }
     }
 
@@ -364,8 +351,8 @@ export async function createAllCommandsMenu(page = 1, client) {
     components.push(buttonRow);
 
     return {
-        embeds: [embed],
-        components,
+        components: [container, ...components],
+        flags: v2Flags(),
         currentPage: page,
         totalPages,
     };
@@ -382,16 +369,16 @@ export const helpCategorySelectMenu = {
             const selectedCategory = interaction.values[0];
 
             if (selectedCategory === ALL_COMMANDS_ID) {
-                const { embeds, components } = await createAllCommandsMenu(1, client);
+                const { components, flags } = await createAllCommandsMenu(1, client);
                 await interaction.editReply({
-                    embeds,
                     components,
+                    flags,
                 });
             } else {
-                const { embeds, components } = await createCategoryCommandsMenu(selectedCategory, client);
+                const { components, flags } = await createCategoryCommandsMenu(selectedCategory, client);
                 await interaction.editReply({
-                    embeds,
                     components,
+                    flags,
                 });
             }
         } catch (error) {

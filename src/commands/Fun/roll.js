@@ -1,5 +1,5 @@
 import { SlashCommandBuilder } from 'discord.js';
-import { successEmbed } from '../../utils/embeds.js';
+import { v2Message, createV2Container } from '../../utils/componentsV2.js';
 import { logger } from '../../utils/logger.js';
 import { ZentixBotError, ErrorTypes } from '../../utils/errorHandler.js';
 
@@ -70,12 +70,14 @@ export default {
       numDice > 1 ? `**Rolls:** ${rolls.join(" + ")}\n` : "";
     const modifierText = modifier === 0 ? "" : ` ${modifier > 0 ? "+" : "-"} ${Math.abs(modifier)}`;
 
-    const embed = successEmbed(
-      `🎲 Rolling ${numDice}d${numSides}${modifier === 0 ? "" : `${modifier > 0 ? "+" : "-"}${Math.abs(modifier)}`}`,
-      `${resultsDetail}**Total Roll:** ${totalRoll}${modifierText} = **${finalTotal}**`,
-    );
+    const container = createV2Container({
+      title: `🎲 Rolling ${numDice}d${numSides}${modifier === 0 ? "" : `${modifier > 0 ? "+" : "-"}${Math.abs(modifier)}`}`,
+      description: `${resultsDetail}**Total Roll:** ${totalRoll}${modifierText} = **${finalTotal}**`,
+      color: 'success',
+      raw: true,
+    });
 
-    await InteractionHelper.safeEditReply(interaction, { embeds: [embed] });
+    await InteractionHelper.safeEditReply(interaction, v2Message([container]));
     logger.debug(`Roll command executed by user ${interaction.user.id} with notation ${notation} in guild ${interaction.guildId}`);
   },
 };

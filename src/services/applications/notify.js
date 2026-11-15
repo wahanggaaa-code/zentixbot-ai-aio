@@ -8,7 +8,9 @@ import { logger } from '../../utils/logger.js';
 import { getGuildConfig } from '../config/guildConfig.js';
 import { EVENT_TYPES, isEventEnabled, logEvent, resolveApplicationLogChannel } from '../loggingService.js';
 import { formatLogLine, resolveUserAuthor } from '../../utils/logging/logEmbeds.js';
+import { buildStandardLogContainer, buildLogDescription } from '../../utils/logging/logEmbeds.js';
 import { noteApplication } from './store.js';
+import { v2Message } from '../../utils/componentsV2.js';
 import { applicantDm, logEntryButtons, shown, statusLabel, statusOf } from './view.js';
 
 /**
@@ -58,18 +60,40 @@ export async function postSubmissionLog(client, guild, application, form, settin
     }
 }
 
-async function editLogEntry(guild, application, text) {
+async function editLogEntry(client, guild, application, text) {
     if (!application.logMessageId || !application.logChannelId) return false;
     const channel = guild.channels.cache.get(application.logChannelId);
     const message = await channel?.messages?.fetch(application.logMessageId);
-    const embed = message?.embeds?.[0];
-    if (!embed) return false;
-    const next = EmbedBuilder.from(embed).setColor(getColor(statusOf(application).color));
-    const fields = embed.fields ?? [];
-    const at = fields.findIndex((field) => field.name === 'Status');
-    if (at === -1) next.addFields({ name: 'Status', value: text, inline: true });
-    else next.spliceFields(at, 1, { name: 'Status', value: text, inline: true });
-    await message.edit({ embeds: [next], components: [] });
+    if (!message) return false;
+    // Entries posted before the v2 migration are classic embeds: patch them in place.
+    const legacy = message?.embeds?.[0];
+    if (legacy) {
+        const next = EmbedBuilder.from(legacy).setColor(getColor(statusOf(application).color));
+        const fields = legacy.fields ?? [];
+        const at = fields.findIndex((field) => field.name === 'Status');
+        if (at === -1) next.addFields({ name: 'Status', value: text, inline: true });
+        else next.spliceFields(at, 1, { name: 'Status', value: text, inline: true });
+        await message.edit({ embeds: [next], components: [] });
+        return true;
+    }
+    // v2 entries: rebuild the submission entry with the decision as its status, keeping the Review button.
+    const author = await resolveUserAuthor(client, application.userId).catch(() => null);
+    const container = buildStandardLogContainer({
+        color: getColor(statusOf(application).color),
+        title: 'Application Submitted',
+        description: buildLogDescription({
+            lines: [
+                formatLogLine('Applicant', `<@${application.userId}>`),
+                formatLogLine('Application', shown(application.roleName, 80)),
+                formatLogLine('Role', `<@&${application.roleId}>`),
+                formatLogLine('Application ID', `\`${application.id}\``),
+            ],
+            quoted: true,
+        }),
+        inlineFields: [{ name: 'Status', value: text }],
+        author,
+    });
+    await message.edit({ ...v2Message([container, ...logEntryButtons(application.id)]), allowedMentions: { parse: [] } });
     return true;
 }
 
@@ -81,7 +105,7 @@ export async function recordDecisionInLog(client, guild, outcome, settings, form
     const { application } = outcome;
     const text = `${statusLabel(application)} · by <@${application.reviewer}>`;
     try {
-        if (await editLogEntry(guild, application, text)) return true;
+        if (await editLogEntry(client, guild, application, text)) return true;
     } catch (error) {
         logger.warn('Could not update the log entry of an application', { applicationId: application.id, error: error?.message });
     }
@@ -116,7 +140,7 @@ export async function recordDecisionInLog(client, guild, outcome, settings, form
 export async function tellApplicant(client, guild, outcome) {
     try {
         const user = await client.users.fetch(outcome.application.userId);
-        await user.send({ embeds: [applicantDm(guild, outcome)] });
+        await user.send({ ...v2Message([applicantDm(guild, outcome)]), allowedMentions: { parse: [] } });
         return true;
     } catch (error) {
         logger.info('Applicant could not be told by direct message', { applicationId: outcome.application.id, code: error?.code });

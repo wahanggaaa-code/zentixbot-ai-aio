@@ -16,7 +16,7 @@ import {
     ChannelType,
 } from 'discord.js';
 import { InteractionHelper } from '../../utils/interactionHelper.js';
-import { createEmbed, successEmbed, infoEmbed, warningEmbed, buildUserErrorEmbed } from '../../utils/embeds.js';
+import { createV2Container, v2Info, v2Success, v2Warning, v2Message } from '../../utils/componentsV2.js';
 import { replyUserError, ErrorTypes } from '../../utils/errorHandler.js';
 import { getGuildConfig, setConfigValue } from '../../services/config/guildConfig.js';
 import ConfigService from '../../services/config/configService.js';
@@ -27,6 +27,9 @@ const DASHBOARD_CUSTOM_ID = 'config_select';
 const WIZARD_BUTTON_ID = 'config_wizard';
 const activeWizardSessions = new Set();
 
+const dmPayload = (container) => ({ ...v2Message([container]), allowedMentions: { parse: [] } });
+const dashboardPayload = (container, components) => ({ ...v2Message([container, ...components]), allowedMentions: { parse: [] } });
+
 const DM_DISABLED_HELP = [
     '1. Right-click this server\'s name (mobile: tap the server name at the top).',
     '2. Open **Privacy Settings**.',
@@ -36,11 +39,10 @@ const DM_DISABLED_HELP = [
 
 async function notifyWizardStarted(buttonInteraction) {
     await buttonInteraction.followUp({
-        embeds: [infoEmbed(
+        ...v2Message([v2Info(
             'Setup Wizard Started',
             'Check your DMs — I sent you the first setup question there.\n\nAnswer each question in that DM. Type `skip` to keep the current value.',
-        )],
-        flags: MessageFlags.Ephemeral,
+        )], { ephemeral: true }),
     }).catch(() => {});
 }
 
@@ -90,50 +92,44 @@ function getThemeColorLines() {
     ].join('\n');
 }
 
-function buildDashboardEmbed(config, guild) {
+function buildDashboardContainer(config, guild) {
     const setupDone = config.setupWizardCompleted;
 
-    return createEmbed({
+    return createV2Container({
         title: '⚙️ Server Configuration',
         description: `Core settings for **${guild.name}**. Pick an option below or run the setup wizard.`,
         color: 'info',
+        raw: true,
         fields: [
             {
                 name: '⌨️ Server Prefix',
                 value: `\`${config.prefix || getCommandPrefix()}\``,
-                inline: true,
             },
             {
                 name: '🛡️ Moderator Role',
                 value: formatRoleMention(guild, config.modRole),
-                inline: true,
             },
             {
                 name: '📋 Log Channel',
                 value: formatChannelMention(guild, config.logging?.channels?.audit),
-                inline: true,
             },
             {
                 name: '💚 Bot Status',
                 value: getBotPresenceText(),
-                inline: false,
             },
             {
                 name: '🎨 Embed Theme',
                 value: `${getThemeColorLines()}\n-# Colors are set in bot config and apply globally.`,
-                inline: false,
             },
             {
                 name: '⚡ Command Access',
                 value: 'Use `/commands dashboard` to enable or disable commands and subcommands.',
-                inline: false,
             },
             {
                 name: `${setupDone ? '✅' : '📝'} Setup`,
                 value: setupDone
                     ? 'Setup wizard completed — re-run anytime to update settings.'
                     : 'Run the setup wizard to configure your server quickly.',
-                inline: false,
             },
         ],
         footer: 'Dashboard closes after 10 minutes of inactivity',
@@ -191,13 +187,11 @@ function extractId(value) {
 }
 
 async function askQuestion(dmChannel, userId, prompt, stepNumber, totalSteps) {
-    await dmChannel.send({
-        embeds: [createEmbed({
-            title: `Setup Question ${stepNumber}/${totalSteps}`,
-            description: prompt,
-            color: 'primary',
-        })],
-    });
+    await dmChannel.send(dmPayload(createV2Container({
+        title: `Setup Question ${stepNumber}/${totalSteps}`,
+        description: prompt,
+        color: 'primary',
+    })));
 
     const collected = await dmChannel.awaitMessages({
         filter: (message) => message.author.id === userId && !message.author.bot,
@@ -206,17 +200,17 @@ async function askQuestion(dmChannel, userId, prompt, stepNumber, totalSteps) {
     }).catch(() => null);
 
     if (!collected || !collected.size) {
-        await dmChannel.send({
-            embeds: [buildUserErrorEmbed(ErrorTypes.RATE_LIMIT, 'You did not answer in time. Run the setup wizard again when ready.')],
-        });
+        await dmChannel.send(dmPayload(createV2Container({
+            title: 'Too Fast',
+            description: 'You did not answer in time. Run the setup wizard again when ready.',
+            color: 'warning',
+        })));
         return null;
     }
 
     const answer = collected.first().content.trim();
     if (answer.toLowerCase() === 'cancel') {
-        await dmChannel.send({
-            embeds: [infoEmbed('Setup Cancelled', 'Setup wizard stopped. Your saved answers are still applied.')],
-        });
+        await dmChannel.send(dmPayload(v2Info('Setup Cancelled', 'Setup wizard stopped. Your saved answers are still applied.')));
         return { cancelled: true };
     }
 
@@ -264,19 +258,16 @@ async function validateGuildRoleId(guild, roleId) {
 }
 
 async function refreshDashboard(rootInteraction, config, guild) {
-    const embed = buildDashboardEmbed(config, guild);
+    const container = buildDashboardContainer(config, guild);
     const components = [buildButtonRow(config, guild.id), buildSettingsSelect(guild.id)];
-    await InteractionHelper.safeEditReply(rootInteraction, { embeds: [embed], components }).catch(() => {});
+    await InteractionHelper.safeEditReply(rootInteraction, dashboardPayload(container, components)).catch(() => {});
 }
 
 async function runSetupWizard(buttonInteraction, config, guild, client, rootInteraction) {
     const user = buttonInteraction.user;
 
     if (activeWizardSessions.has(user.id)) {
-        await buttonInteraction.followUp({
-            embeds: [warningEmbed('Setup Already Running', 'You already have a setup wizard open in your DMs. Reply there to continue, or type `cancel` to stop it.')],
-            flags: MessageFlags.Ephemeral,
-        }).catch(() => {});
+        await buttonInteraction.followUp(v2Message([v2Warning('Setup Already Running', 'You already have a setup wizard open in your DMs. Reply there to continue, or type `cancel` to stop it.')], { ephemeral: true })).catch(() => {});
         return;
     }
 
@@ -344,13 +335,12 @@ async function runSetupWizard(buttonInteraction, config, guild, client, rootInte
 
     try {
         try {
-            await dmChannel.send({
-                embeds: [createEmbed({
-                    title: '📝 Setup Wizard',
-                    description: 'Answer each question in this DM.\n\n• Type `skip` to keep the current value\n• Type `cancel` to stop the wizard',
-                    color: 'info',
-                })],
-            });
+            await dmChannel.send(dmPayload(createV2Container({
+                title: '📝 Setup Wizard',
+                description: 'Answer each question in this DM.\n\n• Type `skip` to keep the current value\n• Type `cancel` to stop the wizard',
+                color: 'info',
+                raw: true,
+            })));
         } catch (error) {
             logger.warn('Failed to send setup wizard DM', { userId: user.id, error: error.message });
             await notifyWizardDmBlocked(buttonInteraction);
@@ -388,15 +378,11 @@ async function runSetupWizard(buttonInteraction, config, guild, client, rootInte
                     const value = await prompt.parse(result.answer);
 
                     if (value === undefined) {
-                        await dmChannel.send({
-                            embeds: [infoEmbed('Skipped', prompt.skipMessage)],
-                        });
+                        await dmChannel.send(dmPayload(v2Info('Skipped', prompt.skipMessage)));
                     } else {
                         await ConfigService.updateSetting(client, guild.id, prompt.key, value, user.id);
                         changes[prompt.key] = value;
-                        await dmChannel.send({
-                            embeds: [successEmbed('Saved', formatSavedAck(prompt.key, value, guild))],
-                        });
+                        await dmChannel.send(dmPayload(v2Success('Saved', formatSavedAck(prompt.key, value, guild))));
 
                         try {
                             const updatedConfig = await getGuildConfig(client, guild.id);
@@ -409,9 +395,11 @@ async function runSetupWizard(buttonInteraction, config, guild, client, rootInte
                     answered = true;
                 } catch (error) {
                     errors.push(`• ${prompt.key}: ${error.message}`);
-                    await dmChannel.send({
-                        embeds: [buildUserErrorEmbed(ErrorTypes.VALIDATION, `${error.message}\n\nPlease reply again with a valid answer, \`skip\`, or \`cancel\`.`)],
-                    });
+                    await dmChannel.send(dmPayload(createV2Container({
+                        title: 'Invalid Input',
+                        description: `${error.message}\n\nPlease reply again with a valid answer, \`skip\`, or \`cancel\`.`,
+                        color: 'error',
+                    })));
                 }
             }
 
@@ -440,18 +428,17 @@ async function runSetupWizard(buttonInteraction, config, guild, client, rootInte
                 ? `Updated **${Object.keys(changes).length}** setting(s).${errors.length > 0 ? ' Some answers needed retries.' : ''}`
                 : 'No changes were applied.');
 
-        const summaryEmbed = createEmbed({
+        const summaryContainer = createV2Container({
             title: wizardCancelled ? `⚠️ ${summaryTitle}` : `✅ ${summaryTitle}`,
             description: summaryBody,
             color: wizardCancelled ? 'warning' : (errors.length > 0 ? 'warning' : 'success'),
+            raw: true,
+            fields: errors.length > 0
+                ? [{ name: 'Issues', value: [...new Set(errors)].join('\n').slice(0, 1024) }]
+                : [],
         });
 
-        if (errors.length > 0) {
-            const uniqueErrors = [...new Set(errors)];
-            summaryEmbed.addFields({ name: 'Issues', value: uniqueErrors.join('\n').slice(0, 1024) });
-        }
-
-        await dmChannel.send({ embeds: [summaryEmbed] });
+        await dmChannel.send(dmPayload(summaryContainer));
 
         try {
             const updatedConfig = await getGuildConfig(client, guild.id);
@@ -587,8 +574,8 @@ async function handleSettingModalSubmit(selectInteraction, rootInteraction, sett
         await ConfigService.updateSetting(client, guildId, setting, value, submitted.user.id);
 
         await submitted.reply({
-            embeds: [successEmbed('Configuration Updated', buildSettingSuccessMessage(setting, value, submitted.guild))],
-            flags: MessageFlags.Ephemeral,
+            ...v2Message([v2Success('Configuration Updated', buildSettingSuccessMessage(setting, value, submitted.guild))], { ephemeral: true }),
+            allowedMentions: { parse: [] },
         });
 
         const updatedConfig = await getGuildConfig(client, guildId);
@@ -626,10 +613,10 @@ export default {
             }
 
             const guildConfig = await getGuildConfig(interaction.client, interaction.guildId);
-            const embed = buildDashboardEmbed(guildConfig, interaction.guild);
+            const container = buildDashboardContainer(guildConfig, interaction.guild);
             const components = [buildButtonRow(guildConfig, interaction.guildId), buildSettingsSelect(interaction.guildId)];
 
-            await InteractionHelper.safeEditReply(interaction, { embeds: [embed], components });
+            await InteractionHelper.safeEditReply(interaction, dashboardPayload(container, components));
 
             const replyMessage = await interaction.fetchReply().catch(() => null);
             if (!replyMessage) {

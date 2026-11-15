@@ -1,6 +1,5 @@
-import { getColor } from '../../config/bot.js';
 import { SlashCommandBuilder, PermissionFlagsBits, ChannelType, MessageFlags } from 'discord.js';
-import { successEmbed } from '../../utils/embeds.js';
+import { createV2Container, v2Message } from '../../utils/componentsV2.js';
 import { logger } from '../../utils/logger.js';
 import { replyUserError, ErrorTypes } from '../../utils/errorHandler.js';
 import { InteractionHelper } from '../../utils/interactionHelper.js';
@@ -40,12 +39,11 @@ export default {
         await closeTicket(interaction.channel, interaction.user, reason);
 
         await InteractionHelper.safeEditReply(interaction, {
-            embeds: [
-                successEmbed(
-                    "Ticket Closed!",
-                    "This ticket has been closed successfully.",
-                ),
-            ],
+            ...v2Message([createV2Container({
+                title: "Ticket Closed!",
+                description: "This ticket has been closed successfully.",
+                color: 'success',
+            })]),
         });
 
         logger.info('Ticket closed successfully', {

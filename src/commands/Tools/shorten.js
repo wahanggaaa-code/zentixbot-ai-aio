@@ -1,5 +1,5 @@
 import { SlashCommandBuilder, MessageFlags } from 'discord.js';
-import { createEmbed } from '../../utils/embeds.js';
+import { createV2Container, v2Message } from '../../utils/componentsV2.js';
 import { logger } from '../../utils/logger.js';
 import { replyUserError, ErrorTypes } from '../../utils/errorHandler.js';
 import { InteractionHelper } from '../../utils/interactionHelper.js';
@@ -87,8 +87,6 @@ export default {
             return refuse(refusal ?? lookupFailureMessage(null, SERVICE), refusal ? ErrorTypes.VALIDATION : ErrorTypes.NETWORK);
         }
 
-        await InteractionHelper.safeEditReply(interaction, {
-            embeds: [createEmbed({ title: 'URL Shortened', description: `Short link: ${link}\nPoints to: ${codeSpan(url.href, 300)}`, color: 'success' })],
-        });
+        await InteractionHelper.safeEditReply(interaction, v2Message([createV2Container({ title: 'URL Shortened', description: `Short link: ${link}\nPoints to: ${codeSpan(url.href, 300)}`, color: 'success' })]));
     },
 };

@@ -1,5 +1,6 @@
 import { getColor } from '../../config/bot.js';
-import { SlashCommandBuilder, PermissionFlagsBits, ChannelType, EmbedBuilder, MessageFlags } from 'discord.js';
+import { SlashCommandBuilder, PermissionFlagsBits, ChannelType, MessageFlags, MediaGalleryBuilder, MediaGalleryItemBuilder } from 'discord.js';
+import { createV2Container, v2Message } from '../../utils/componentsV2.js';
 import { getWelcomeConfigForEditing, updateWelcomeConfig } from '../../utils/database.js';
 import { formatWelcomeMessage, truncateForEmbedField } from '../../utils/welcome.js';
 import { logger } from '../../utils/logger.js';
@@ -100,22 +101,28 @@ export default {
                     guild
                 });
 
-                const embed = new EmbedBuilder()
-                    .setColor(getColor('success'))
-                    .setTitle('Goodbye System Configured')
-                    .setDescription(`Goodbye messages will now be sent to ${channel}`)
-                    .addFields(
+                const previewContainer = createV2Container({
+                    title: 'Goodbye System Configured',
+                    description: `Goodbye messages will now be sent to ${channel}\n\nTip: Use /greet dashboard to customize goodbye settings.`,
+                    color: 'success',
+                    fields: [
                         { name: 'Message Preview', value: truncateForEmbedField(previewMessage) },
                         { name: 'Ping User', value: ping ? 'Yes' : 'No' },
-                        { name: 'Status', value: 'Enabled' }
-                    )
-                    .setFooter({ text: 'Tip: Use /greet dashboard to customize goodbye settings' });
+                        { name: 'Status', value: 'Enabled' },
+                    ],
+                });
 
                 if (image) {
-                    embed.setImage(image);
+                    try {
+                        previewContainer.addMediaGalleryComponents(
+                            new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(image)),
+                        );
+                    } catch (imageError) {
+                        logger.warn(`[Goodbye] Skipping invalid image URL in preview: ${imageError?.message}`);
+                    }
                 }
 
-                await InteractionHelper.safeEditReply(interaction, { embeds: [embed] });
+                await InteractionHelper.safeEditReply(interaction, { ...v2Message([previewContainer]) });
             } catch (error) {
                 logger.error(`[Goodbye] Failed to setup goodbye system for guild ${guild.id}:`, error);
                 await replyUserError(interaction, { type: ErrorTypes.UNKNOWN, message: 'An error occurred while configuring the goodbye system. Please try again.' });

@@ -1,8 +1,10 @@
 import { SlashCommandBuilder } from 'discord.js';
-import { createEmbed, successEmbed, infoEmbed, warningEmbed } from '../../utils/embeds.js';
+
 import { withEconomyTransaction } from '../../services/economy/transaction.js';
 import { withErrorHandling, createError, ErrorTypes } from '../../utils/errorHandler.js';
 import { InteractionHelper } from '../../utils/interactionHelper.js';
+import { createV2Container, v2Message } from '../../utils/componentsV2.js';
+
 
 const CRIME_COOLDOWN = 60 * 60 * 1000;
 const JAIL_TIME = 2 * 60 * 60 * 1000;
@@ -92,10 +94,7 @@ export default {
                     userData.wallet = (userData.wallet || 0) + amountEarned;
                 
                 
-                    const embed = successEmbed(
-                        "🕵️ Crime Successful!",
-                        `You successfully committed ${crime.name} and earned **${amountEarned}** coins!`
-                    );
+                    const embed = createV2Container({ title: "🕵️ Crime Successful!", description: `You successfully committed ${crime.name} and earned **${amountEarned}** coins!`, color: 'success' });
                 
                     return embed;
                 } else {
@@ -106,15 +105,12 @@ export default {
                     userData.jailedUntil = now + JAIL_TIME;
                 
                 
-                    const embed = warningEmbed(
-                        "🚔 Crime Failed!",
-                        `You were caught while attempting ${crime.name} and have been sent to jail! ` +
-                        `You were fined ${fine.toLocaleString()} coins and will be in jail for 2 hours.`
-                    );
+                    const embed = createV2Container({ title: "🚔 Crime Failed!", description: `You were caught while attempting ${crime.name} and have been sent to jail! ` +
+                        `You were fined ${fine.toLocaleString()} coins and will be in jail for 2 hours.`, color: 'warning' });
                 
                     return embed;
                 }
             });
-            await InteractionHelper.safeEditReply(interaction, {embeds:[embed]});
+            await InteractionHelper.safeEditReply(interaction, {...v2Message([embed])});
     }, { command: 'crime' })
 };

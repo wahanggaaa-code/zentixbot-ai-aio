@@ -4,6 +4,7 @@ import { withErrorHandling, ErrorTypes, replyUserError } from '../../utils/error
 import { isApplicationId, readAll, readApplication, readConfig } from '../../services/applications/store.js';
 import { openForm } from '../../services/applications/service.js';
 import { applyModal, listEmbed, ownListEmbed, refusalMessage, statusEmbed } from '../../services/applications/view.js';
+import { v2Message } from '../../utils/componentsV2.js';
 import { refuse } from '../../handlers/applicationHandlers.js';
 
 const PRIVATE = MessageFlags.Ephemeral;
@@ -68,7 +69,7 @@ export default {
                 if (!settings.enabled) return await say(interaction, refusalMessage({ code: 'APP_DISABLED' }));
                 const available = openForms(guild, forms);
                 if (available.length === 0) return await say(interaction, 'No applications are currently available.');
-                return await interaction.editReply({ embeds: [listEmbed(guild, available)] });
+                return await interaction.editReply({ ...v2Message([listEmbed(guild, available)]), allowedMentions: { parse: [] } });
             }
 
             // status: a member's own applications stay readable while applications are switched off.
@@ -78,12 +79,12 @@ export default {
                 const application = isApplicationId(id.trim()) ? await readApplication(client, guild.id, id.trim()) : null;
                 // One answer for "no such application" and "not yours": an id must not reveal that it exists.
                 if (!application || application.userId !== interaction.user.id) return await say(interaction, 'Application not found. Use `/apply status` without an ID to see your applications.');
-                return await interaction.editReply({ embeds: [statusEmbed(application)] });
+                return await interaction.editReply(v2Message([statusEmbed(application)]));
             }
             const { applications } = await readAll(client, guild.id);
             const own = applications.filter((application) => application.userId === interaction.user.id);
             if (own.length === 0) return await say(interaction, 'You have not submitted any applications yet.');
-            return await interaction.editReply({ embeds: [ownListEmbed(own)] });
+            return await interaction.editReply(v2Message([ownListEmbed(own)]));
         } catch (error) {
             return await refuse(interaction, error, `apply ${subcommand}`);
         }

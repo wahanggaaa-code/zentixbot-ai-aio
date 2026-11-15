@@ -1,6 +1,6 @@
 import { botConfig, getColor } from '../../../config/bot.js';
 import { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } from 'discord.js';
-import { createEmbed, errorEmbed, successEmbed, infoEmbed } from '../../../utils/embeds.js';
+import { v2Success, v2Message } from '../../../utils/componentsV2.js';
 import { getGuildConfig, setGuildConfig } from '../../../services/config/guildConfig.js';
 import { withErrorHandling, createError, ErrorTypes } from '../../../utils/errorHandler.js';
 import { validateAutoVerifyCriteria } from '../../../services/verificationService.js';
@@ -177,10 +177,11 @@ async function handleSetup(interaction, guild, client) {
         });
 
         await InteractionHelper.safeEditReply(interaction, {
-            embeds: [successEmbed(
+            ...v2Message([v2Success(
                 "Auto-Verification Configured",
                 `Automatic verification has been configured!\n\n**Role:** ${targetRole}\n**Criteria:** ${criteriaDescription}\n\nUsers who meet these criteria will receive this role when they join the server.`
-            )]
+            )]),
+            allowedMentions: { parse: [] },
         });
 
     } catch (error) {

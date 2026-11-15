@@ -1,6 +1,5 @@
-import { getColor } from '../../config/bot.js';
-import { SlashCommandBuilder, PermissionFlagsBits, MessageFlags, ChannelType, ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType, StringSelectMenuBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, EmbedBuilder, LabelBuilder } from 'discord.js';
-import { successEmbed, warningEmbed } from '../../utils/embeds.js';
+import { SlashCommandBuilder, PermissionFlagsBits, MessageFlags, ChannelType, ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType, StringSelectMenuBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, LabelBuilder } from 'discord.js';
+import { createV2Container, v2Success, v2Warning, v2Message } from '../../utils/componentsV2.js';
 import { logger } from '../../utils/logger.js';
 import { ZentixBotError, ErrorTypes, replyUserError } from '../../utils/errorHandler.js';
 import { InteractionHelper } from '../../utils/interactionHelper.js';
@@ -141,6 +140,11 @@ export default {
     }
 };
 
+const jtcPayload = (container, components = [], { ephemeral = false } = {}) => ({
+    ...v2Message([container, ...components], { ephemeral }),
+    allowedMentions: { parse: [] },
+});
+
 async function handleSetupSubcommand(interaction, client) {
     try {
         const category = interaction.options.getChannel('category');
@@ -245,7 +249,7 @@ async function handleSetupSubcommand(interaction, client) {
 
         logger.info(`Successfully created Join to Create system in guild ${guildId}`);
 
-        const responseEmbed = successEmbed(
+        const responseContainer = v2Success(
             '✅ Setup Complete',
             `Created Join to Create channel: ${triggerChannel}\n\n` +
             `**Settings:**\n` +
@@ -256,7 +260,7 @@ async function handleSetupSubcommand(interaction, client) {
             `Temporary channels are created in the same category as this channel and copy that category's permissions.`
         );
 
-        return await InteractionHelper.safeEditReply(interaction, { embeds: [responseEmbed] });
+        return await InteractionHelper.safeEditReply(interaction, jtcPayload(responseContainer));
 
     } catch (error) {
         logger.error('Error in handleSetupSubcommand:', error);
@@ -279,29 +283,27 @@ async function handleConfigSubcommand(interaction, client) {
         const currentConfig = await getChannelConfiguration(client, guildId, triggerChannel.id);
         const channelConfig = currentConfig.channelConfig || {};
 
-        const configEmbed = new EmbedBuilder()
-            .setTitle('Join to Create Configuration')
-            .setDescription(`Configuration for ${triggerChannel}`)
-            .setColor(getColor('info'))
-            .addFields(
+        const configContainer = (footerText) => createV2Container({
+            title: 'Join to Create Configuration',
+            description: `Configuration for ${triggerChannel}`,
+            color: 'info',
+            raw: true,
+            fields: [
                 {
                     name: 'Channel Name Template',
                     value: `\`${channelConfig.nameTemplate || currentConfig.channelNameTemplate || "{username}'s Room"}\``,
-                    inline: false
                 },
                 {
                     name: 'User Limit',
                     value: `${(channelConfig.userLimit ?? currentConfig.userLimit ?? 0) === 0 ? 'Unlimited' : (channelConfig.userLimit ?? currentConfig.userLimit ?? 0) + ' users'}`,
-                    inline: true
                 },
                 {
                     name: 'Bitrate',
                     value: `${(channelConfig.bitrate ?? currentConfig.bitrate ?? 64000) / 1000} kbps`,
-                    inline: true
-                }
-            )
-            .setFooter({ text: 'Use the buttons below to modify settings • Only one trigger channel is supported per guild' })
-            .setTimestamp();
+                },
+            ],
+            footer: { text: footerText ?? 'Use the buttons below to modify settings • Only one trigger channel is supported per guild', always: true },
+        });
 
         const nameButton = new ButtonBuilder()
             .setCustomId(`jtc_config_name_${triggerChannel.id}`)
@@ -325,10 +327,7 @@ async function handleConfigSubcommand(interaction, client) {
 
         const row = new ActionRowBuilder().addComponents(nameButton, limitButton, bitrateButton, deleteButton);
 
-        await InteractionHelper.safeEditReply(interaction, {
-            embeds: [configEmbed],
-            components: [row]
-        });
+        await InteractionHelper.safeEditReply(interaction, jtcPayload(configContainer(), [row]));
 
         const message = await interaction.fetchReply();
 
@@ -393,10 +392,7 @@ async function handleConfigSubcommand(interaction, client) {
                 deleteButton.setDisabled(true)
             );
 
-            message.edit({
-                components: [disabledRow],
-                embeds: [configEmbed.setFooter({ text: 'Configuration session expired. Run the command again to make changes.' })]
-            }).catch(() => {});
+            message.edit(jtcPayload(configContainer('Configuration session expired. Run the command again to make changes.'), [disabledRow])).catch(() => {});
         });
 
     } catch (error) {
@@ -481,10 +477,7 @@ async function handleNameTemplateModal(interaction, triggerChannel, currentConfi
             newTemplate
         });
 
-        await modalSubmission.reply({
-            embeds: [successEmbed('Updated', `Channel name template changed to \`${newTemplate}\``)],
-            flags: MessageFlags.Ephemeral
-        });
+        await modalSubmission.reply(v2Message([v2Success('Updated', `Channel name template changed to \`${newTemplate}\``)], { ephemeral: true }));
 
     } catch (error) {
         if (error.code === 'INTERACTION_COLLECTOR_ERROR') {
@@ -554,10 +547,7 @@ async function handleUserLimitModal(interaction, triggerChannel, currentConfig, 
             userLimit: parseWholeNumber(userInput)
         });
 
-        await modalSubmission.reply({
-            embeds: [successEmbed('Updated', `User limit changed to ${parseWholeNumber(userInput) === 0 ? 'Unlimited' : parseWholeNumber(userInput) + ' users'}`)],
-            flags: MessageFlags.Ephemeral
-        });
+        await modalSubmission.reply(v2Message([v2Success('Updated', `User limit changed to ${parseWholeNumber(userInput) === 0 ? 'Unlimited' : parseWholeNumber(userInput) + ' users'}`)], { ephemeral: true }));
 
     } catch (error) {
         if (error.code === 'INTERACTION_COLLECTOR_ERROR') {
@@ -627,10 +617,7 @@ async function handleBitrateModal(interaction, triggerChannel, currentConfig, cl
             bitrate: parseWholeNumber(userInput)
         });
 
-        await modalSubmission.reply({
-            embeds: [successEmbed('Updated', `Bitrate changed to ${parseWholeNumber(userInput)} kbps`)],
-            flags: MessageFlags.Ephemeral
-        });
+        await modalSubmission.reply(v2Message([v2Success('Updated', `Bitrate changed to ${parseWholeNumber(userInput)} kbps`)], { ephemeral: true }));
 
     } catch (error) {
         if (error.code === 'INTERACTION_COLLECTOR_ERROR') {
@@ -661,11 +648,11 @@ async function handleChannelDeletion(interaction, triggerChannel, currentConfig,
                 .setStyle(ButtonStyle.Secondary)
         );
 
-        await InteractionHelper.safeReply(interaction, {
-            embeds: [warningEmbed('Confirm Deletion', `Are you sure you want to remove **${triggerChannel.name}** from the Join to Create system?\n\nTemporary channels that already exist stay until they are empty. This action cannot be undone.`)],
-            components: [confirmRow],
-            flags: MessageFlags.Ephemeral
-        });
+        await InteractionHelper.safeReply(interaction, jtcPayload(
+            v2Warning('Confirm Deletion', `Are you sure you want to remove **${triggerChannel.name}** from the Join to Create system?\n\nTemporary channels that already exist stay until they are empty. This action cannot be undone.`),
+            [confirmRow],
+            { ephemeral: true },
+        ));
 
         const message = await interaction.fetchReply();
         const deleteCollector = message.createMessageComponentCollector({
@@ -706,16 +693,12 @@ async function handleChannelDeletion(interaction, triggerChannel, currentConfig,
                         
                     }
 
-                    await buttonInteraction.update({
-                        embeds: [successEmbed('Removed', `**${triggerChannel.name}** has been removed from the Join to Create system.`)],
-                        components: []
-                    });
+                    await buttonInteraction.update(
+                        v2Message([v2Success('Removed', `**${triggerChannel.name}** has been removed from the Join to Create system.`)]));
 
                 } else {
-                    await buttonInteraction.update({
-                        embeds: [successEmbed('Cancelled', 'Channel removal has been cancelled.')],
-                        components: []
-                    });
+                    await buttonInteraction.update(
+                        v2Message([v2Success('Cancelled', 'Channel removal has been cancelled.')]));
                 }
             } catch (collectError) {
                 const expected = collectError instanceof ZentixBotError;

@@ -1,14 +1,13 @@
 import {isPostgresGiveawayBackend} from '../../services/storage/postgresGiveawayTransactions.js';
-import { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } from 'discord.js';
-import { errorEmbed, successEmbed } from '../../utils/embeds.js';
+import { SlashCommandBuilder, PermissionFlagsBits } from 'discord.js';
 import { logger } from '../../utils/logger.js';
 import { ZentixBotError, ErrorTypes } from '../../utils/errorHandler.js';
 import { getGuildGiveaways, saveGiveaway, transferGiveawaySnapshot } from '../../utils/giveaways.js';
 import { 
     selectWinners,
-    createGiveawayEmbed, 
-    createGiveawayButtons 
+    buildGiveawayComponents
 } from '../../services/giveawayService.js';
+import { v2Message, createV2Container } from '../../utils/componentsV2.js';
 import { logEvent, EVENT_TYPES } from '../../services/loggingService.js';
 import { InteractionHelper } from '../../utils/interactionHelper.js';
 import {isSQLiteGiveawayBackend} from '../../services/storage/sqliteGiveaways.js';
@@ -129,13 +128,11 @@ export default {
             logger.warn(`Could not find channel for giveaway ${messageId}, but saved new winners to database`);
 
             return InteractionHelper.safeReply(interaction, {
-                embeds: [
-                    successEmbed(
-                        isSQLiteGiveawayBackend(interaction.client) ? "Reroll saved; delivery pending" : "Reroll Complete",
-                        "The new winners were saved, but the channel could not be reached. Inspect Discord before retrying.",
-                    ),
-                ],
-                flags: MessageFlags.Ephemeral,
+                ...v2Message([createV2Container({
+                    title: isSQLiteGiveawayBackend(interaction.client) ? 'Reroll saved; delivery pending' : 'Reroll Complete',
+                    description: 'The new winners were saved, but the channel could not be reached. Inspect Discord before retrying.',
+                    color: 'success',
+                })], { ephemeral: true }),
             });
         }
 
@@ -156,8 +153,7 @@ export default {
 
             if (isSQLiteGiveawayBackend(interaction.client)) {
                 return InteractionHelper.safeReply(interaction, {
-                    embeds:[successEmbed("Reroll saved; delivery pending","The original message could not be reached. Inspect Discord before retrying.")],
-                    flags:MessageFlags.Ephemeral,
+                    ...v2Message([createV2Container({ title: "Reroll saved; delivery pending", description: "The original message could not be reached. Inspect Discord before retrying.", color: 'success' })], { ephemeral: true }),
                 });
             }
             const winnerMentions = newWinners
@@ -213,13 +209,11 @@ export default {
             }
 
             return InteractionHelper.safeReply(interaction, {
-                embeds: [
-                    successEmbed(
-                        "Reroll Complete",
-                        `The new winners have been announced in ${channel}. (Original message not found).`,
-                    ),
-                ],
-                flags: MessageFlags.Ephemeral,
+                ...v2Message([createV2Container({
+                    title: 'Reroll Complete',
+                    description: `The new winners have been announced in ${channel}. (Original message not found).`,
+                    color: 'success',
+                })], { ephemeral: true }),
             });
         }
 
@@ -229,13 +223,10 @@ export default {
             updatedGiveaway,
         );
 
-        const newEmbed = createGiveawayEmbed(updatedGiveaway, "reroll", newWinners);
-        const newRow = createGiveawayButtons(true);
-
         await message.edit({
-            content: "🔄 **GIVEAWAY REROLLED** 🔄",
-            embeds: [newEmbed],
-            components: [newRow],
+            content: null,
+            ...v2Message(buildGiveawayComponents(updatedGiveaway, "reroll", newWinners)),
+            allowedMentions: { parse: [] },
         });
 
         const winnerMentions = newWinners
@@ -295,13 +286,11 @@ export default {
         }
 
         return InteractionHelper.safeReply(interaction, {
-            embeds: [
-                successEmbed(
-                    "Reroll Successful ✅",
-                    `Successfully rerolled the giveaway for **${giveaway.prize}** in ${channel}. Selected ${newWinners.length} new winner(s).`,
-                ),
-            ],
-            flags: MessageFlags.Ephemeral,
+            ...v2Message([createV2Container({
+                title: 'Reroll Successful',
+                description: `Successfully rerolled the giveaway for **${giveaway.prize}** in ${channel}. Selected ${newWinners.length} new winner(s).`,
+                color: 'success',
+            })], { ephemeral: true }),
         });
     },
 };

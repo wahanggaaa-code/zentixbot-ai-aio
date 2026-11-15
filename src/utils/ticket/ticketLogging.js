@@ -3,8 +3,9 @@
 import { ChannelType } from 'discord.js';
 import { getGuildConfig } from '../../services/config/guildConfig.js';
 import { logger } from '../logger.js';
+import { v2Message } from '../componentsV2.js';
 import {
-  buildStandardLogEmbed,
+  buildStandardLogContainer,
   formatRatingStars,
   resolveUserAuthor,
 } from '../logging/logEmbeds.js';
@@ -36,9 +37,12 @@ export async function logTicketEvent({ client, guildId, event }) {
       return;
     }
 
-    const embed = await createTicketLogEmbed(guild, event);
+    const container = await createTicketLogContainer(guild, event);
 
-    const messageOptions = { embeds: [embed] };
+    const messageOptions = {
+      ...v2Message([container]),
+      allowedMentions: { parse: [] },
+    };
 
     if (event.attachments && event.attachments.length > 0) {
       messageOptions.files = event.attachments;
@@ -108,7 +112,7 @@ const TICKET_EVENT_STYLES = {
   feedback: { color: 0x57F287, title: 'Feedback Received' },
 };
 
-async function createTicketLogEmbed(guild, event) {
+async function createTicketLogContainer(guild, event) {
   const style = TICKET_EVENT_STYLES[event.type] || { color: 0x95a5a6, title: 'Ticket Event' };
   const ticketNumber = event.ticketNumber || event.ticketId;
   const ticketRef = ticketNumber ? `#${ticketNumber}` : 'Unknown';
@@ -235,10 +239,9 @@ async function createTicketLogEmbed(guild, event) {
       }
   }
 
-  const titlePrefix = event.type === 'feedback' ? '⭐ ' : '';
-  return buildStandardLogEmbed({
+  return buildStandardLogContainer({
     color: style.color,
-    title: `${titlePrefix}${style.title}`,
+    title: style.title,
     inlineFields,
     fields,
     author,

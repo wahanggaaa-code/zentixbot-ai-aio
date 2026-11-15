@@ -1,9 +1,11 @@
-import { SlashCommandBuilder, EmbedBuilder, MessageFlags } from 'discord.js';
+import { SlashCommandBuilder } from 'discord.js';
 import { logger } from '../../utils/logger.js';
 import { ZentixBotError, ErrorTypes } from '../../utils/errorHandler.js';
 import { getUserLevelData, getLevelingConfig, getXpForLevel } from '../../services/leveling/leveling.js';
 
 import { InteractionHelper } from '../../utils/interactionHelper.js';
+import { createV2Container, v2Message } from '../../utils/componentsV2.js';
+
 export default {
   data: new SlashCommandBuilder()
     .setName('rank')
@@ -23,12 +25,7 @@ export default {
     const levelingConfig = await getLevelingConfig(client, interaction.guildId);
     if (!levelingConfig?.enabled) {
       await InteractionHelper.safeEditReply(interaction, {
-        embeds: [
-          new EmbedBuilder()
-            .setColor('#f1c40f')
-            .setDescription('The leveling system is currently disabled on this server.')
-        ],
-        flags: MessageFlags.Ephemeral
+        ...v2Message([createV2Container({ description: 'The leveling system is currently disabled on this server.', color: '#f1c40f' })], { ephemeral: true }),
       });
       return;
     }
@@ -58,34 +55,9 @@ export default {
     const progress = xpNeeded > 0 ? Math.floor((safeUserData.xp / xpNeeded) * 100) : 0;
     const progressBar = createProgressBar(progress, 20);
 
-    const embed = new EmbedBuilder()
-      .setTitle(`${member.displayName}'s Rank`)
-      .setThumbnail(member.displayAvatarURL({ dynamic: true }))
-      .addFields(
-        {
-          name: 'Level',
-          value: safeUserData.level.toString(),
-          inline: true
-        },
-        {
-          name: 'XP',
-          value: `${safeUserData.xp}/${xpNeeded}`,
-          inline: true
-        },
-        {
-          name: 'Total XP',
-          value: safeUserData.totalXp.toString(),
-          inline: true
-        },
-        {
-          name: `Progress to Level ${safeUserData.level + 1}`,
-          value: `${progressBar} ${progress}%`
-        }
-      )
-      .setColor('#2ecc71')
-      .setTimestamp();
+    const embed = createV2Container({ title: `${member.displayName}'s Rank`, color: '#2ecc71', fields: [{ name: 'Level', value: safeUserData.level.toString() }, { name: 'XP', value: `${safeUserData.xp}/${xpNeeded}` }, { name: 'Total XP', value: safeUserData.totalXp.toString() }, { name: `Progress to Level ${safeUserData.level + 1}`, value: `${progressBar} ${progress}%` }], thumbnail: member.displayAvatarURL({ dynamic: true }) });
 
-    await InteractionHelper.safeEditReply(interaction, { embeds: [embed] });
+    await InteractionHelper.safeEditReply(interaction, { ...v2Message([embed]) });
     logger.debug(`Rank checked for user ${targetUser.id} in guild ${interaction.guildId}`);
   }
 };

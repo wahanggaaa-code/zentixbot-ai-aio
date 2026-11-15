@@ -558,27 +558,26 @@ export async function trackVerificationAttempt(
 
 async function sendAutoVerifyNotification(member, role, guild) {
     try {
-        const { createEmbed } = await import('../utils/embeds.js');
-        
-        const embed = createEmbed({
+        const { createV2Container, v2Message } = await import('../utils/componentsV2.js');
+
+        const container = createV2Container({
             title: "🎉 Welcome to the Server!",
             description: `You have been automatically verified in **${guild.name}**!`,
             fields: [
                 {
                     name: "✅ Role Assigned",
                     value: `You now have the ${role} role!`,
-                    inline: false
                 },
                 {
                     name: "📖 What's Next?",
                     value: "You now have access to all server channels and features. Welcome!",
-                    inline: false
                 }
             ],
-            color: 'success'
+            color: 'success',
+            raw: true,
         });
 
-        await member.send({ embeds: [embed] });
+        await member.send({ ...v2Message([container]), allowedMentions: { parse: [] } });
     } catch (error) {
         logger.debug('Could not send auto-verify DM notification', {
             userId: member.id,

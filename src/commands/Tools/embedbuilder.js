@@ -19,7 +19,7 @@ import {
     RadioGroupBuilder,
 } from 'discord.js';
 import { InteractionHelper } from '../../utils/interactionHelper.js';
-import { successEmbed } from '../../utils/embeds.js';
+import { v2Success, v2Message } from '../../utils/componentsV2.js';
 import { logger } from '../../utils/logger.js';
 import { ZentixBotError, replyUserError, ErrorTypes } from '../../utils/errorHandler.js';
 import { getColor } from '../../config/bot.js';
@@ -96,8 +96,8 @@ const isEmptyEmbed = (state) => !state.title && !state.description && state.fiel
 const EMPTY_PLACEHOLDER = '*(Empty — use the menu below to add content)*';
 
 /**
- * The member's embed as a plain API object, not an EmbedBuilder. The bot's own embeds go through
- * the house style of utils/embeds.js, which removes emoji and extra spaces, drops most footers
+ * The member's embed as a plain API object, not an EmbedBuilder. The bot's own messages go through
+ * the house style of utils/componentsV2.js, which removes emoji and extra spaces, drops most footers
  * and ignores timestamps; a member's embed is shown and posted exactly as written.
  */
 function buildPreviewEmbed(state) {
@@ -1026,8 +1026,8 @@ async function handlePostEmbed(selectInteraction, rootInteraction, state, guild)
             // The embed itself does not say who wrote it; this line does.
             logger.info('Embed posted with the embed builder', { guildId: guild.id, channelId: channel.id, messageId: posted?.id ?? null, userId: chanInter.user.id });
             await chanInter.followUp({
-                embeds: [successEmbed('Embed Sent', `Your embed has been posted to ${channel}.`)],
-                flags: MessageFlags.Ephemeral,
+                ...v2Message([v2Success('Embed Sent', `Your embed has been posted to ${channel}.`)], { ephemeral: true }),
+                allowedMentions: { parse: [] },
             });
         } catch (error) {
             logger.error('Embed builder post failed:', error);

@@ -1,9 +1,11 @@
 import { SlashCommandBuilder } from 'discord.js';
-import { successEmbed, warningEmbed } from '../../utils/embeds.js';
+
 import { withEconomyTransaction } from '../../services/economy/transaction.js';
 import { botConfig } from '../../config/bot.js';
 import { withErrorHandling, createError, ErrorTypes } from '../../utils/errorHandler.js';
 import { InteractionHelper } from '../../utils/interactionHelper.js';
+import { createV2Container, v2Message } from '../../utils/componentsV2.js';
+
 
 const COOLDOWN = 30 * 60 * 1000;
 const MIN_WIN = Number(botConfig?.economy?.begMin) || 50;
@@ -60,12 +62,9 @@ export default {
                         `You found **$${amountWon.toLocaleString()}** under a park bench.`,
                     ];
 
-                    replyEmbed = successEmbed(
-                        'Begging Successful',
-                        successMessages[
+                    replyEmbed = createV2Container({ title: 'Begging Successful', description: successMessages[
                             Math.floor(Math.random() * successMessages.length)
-                        ]
-                    );
+                        ], color: 'success' });
                 } else {
                     const failMessages = [
                         "The police chased you off. You got nothing.",
@@ -74,10 +73,7 @@ export default {
                         "You tried to beg, but you were too embarrassed and gave up.",
                     ];
 
-                    replyEmbed = warningEmbed(
-                        'Insufficient Funds',
-                        failMessages[Math.floor(Math.random() * failMessages.length)]
-                    );
+                    replyEmbed = createV2Container({ title: 'Insufficient Funds', description: failMessages[Math.floor(Math.random() * failMessages.length)], color: 'warning' });
                 }
 
                 userData.wallet = newCash;
@@ -86,6 +82,6 @@ export default {
                 return replyEmbed;
             });
 
-            await InteractionHelper.safeEditReply(interaction, { embeds: [replyEmbed] });
+            await InteractionHelper.safeEditReply(interaction, { ...v2Message([replyEmbed]) });
     }, { command: 'beg' })
 };

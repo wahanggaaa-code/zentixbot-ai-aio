@@ -1,10 +1,12 @@
 import { SlashCommandBuilder } from 'discord.js';
-import { createEmbed } from '../../utils/embeds.js';
+
 import { withErrorHandling, createError, ErrorTypes } from '../../utils/errorHandler.js';
 import { logger } from '../../utils/logger.js';
 import { InteractionHelper } from '../../utils/interactionHelper.js';
 import { getEconomyPrefix } from '../../utils/database.js';
 import { economyPool, listEconomyBalances } from '../../services/economy/accounts.js';
+import { createV2Container, v2Message } from '../../utils/componentsV2.js';
+
 
 export default {
     data: new SlashCommandBuilder()
@@ -89,12 +91,8 @@ export default {
                 ? `${leaderboardEntries.join("\n")}\n\n${rankLine}`
                 : "No economy data is available for this server yet.";
 
-            const embed = createEmbed({
-                title: `Economy Leaderboard`,
-                description,
-                footer: `Your Rank: ${userRank > 0 ?`#${userRank}`: "No ranking data available"}`,
-            });
+            const embed = createV2Container({ title: `Economy Leaderboard`, description: description, footer: { text: `Your Rank: ${userRank > 0 ?`#${userRank}`: "No ranking data available"}`, always: true } });
 
-            await InteractionHelper.safeEditReply(interaction, { embeds: [embed] });
+            await InteractionHelper.safeEditReply(interaction, { ...v2Message([embed]) });
     }, { command: 'eleaderboard' })
 };

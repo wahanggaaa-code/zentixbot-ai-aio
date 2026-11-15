@@ -1,4 +1,4 @@
-import { createEmbed } from '../utils/embeds.js';
+import { createV2Container, v2Message } from '../utils/componentsV2.js';
 import { InteractionHelper } from '../utils/interactionHelper.js';
 import { MessageFlags } from 'discord.js';
 import { logger } from '../utils/logger.js';
@@ -10,7 +10,7 @@ const wipedataConfirmHandler = {
   async execute(interaction) {
     const deferred = await InteractionHelper.safeDefer(interaction, {flags:MessageFlags.Ephemeral});
     if (!deferred) return;
-    await interaction.editReply({content:'Data wipe is temporarily unavailable. No data was deleted. Please contact the server administrator for help.',embeds:[],components:[]});
+    await interaction.editReply(v2Message([createV2Container({ title: '❌ Data Wipe Unavailable', description: 'No data was deleted. Please contact the server administrator for help.', color: 'error', raw: true })]));
   }
 };
 
@@ -18,16 +18,12 @@ const wipedataCancelHandler = {
   name: 'wipedata_no',
   async execute(interaction, client) {
     try {
-      await interaction.update({
-        embeds: [
-          createEmbed({
-            title: '❌ Data Wipe Cancelled',
-            description: 'Your data has been preserved. Your account remains unchanged.',
-            color: 'info'
-          })
-        ],
-        components: []
-      });
+      await interaction.update(v2Message([createV2Container({
+        title: '❌ Data Wipe Cancelled',
+        description: 'Your data has been preserved. Your account remains unchanged.',
+        color: 'info',
+        raw: true,
+      })]));
 
       logger.info(`User ${interaction.user.tag} (${interaction.user.id}) cancelled data wipe in guild ${interaction.guildId}`);
     } catch (error) {

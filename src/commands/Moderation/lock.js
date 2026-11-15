@@ -1,11 +1,12 @@
 import { SlashCommandBuilder, PermissionFlagsBits, PermissionsBitField, ChannelType } from 'discord.js';
-import { createEmbed, successEmbed, infoEmbed, warningEmbed } from '../../utils/embeds.js';
+
 import { logEvent } from '../../utils/moderation.js';
 import { logger } from '../../utils/logger.js';
-import { getColor } from '../../config/bot.js';
 
 import { InteractionHelper } from '../../utils/interactionHelper.js';
 import { replyUserError, ErrorTypes } from '../../utils/errorHandler.js';
+import { createV2Container, v2Message } from '../../utils/componentsV2.js';
+
 export default {
     data: new SlashCommandBuilder()
     .setName("lock")
@@ -57,12 +58,7 @@ export default {
       });
 
       await InteractionHelper.safeEditReply(interaction, {
-        embeds: [
-          successEmbed(
-            `🔒 **Channel Locked**`,
-            `${channel} is now locked down. No one can speak here now.`,
-          ),
-        ],
+        ...v2Message([createV2Container({ title: `🔒 **Channel Locked**`, description: `${channel} is now locked down. No one can speak here now.`, color: 'success' })]),
       });
     } catch (error) {
       logger.error('Lock command error:', error);

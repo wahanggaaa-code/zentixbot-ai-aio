@@ -1,7 +1,7 @@
-import { createEmbed } from '../../utils/embeds.js';
+import { createV2Container, v2Message } from '../../utils/componentsV2.js';
 import { createAllCommandsMenu } from './helpSelectMenus.js';
 import { createInitialHelpMenu } from '../../commands/Core/help.js';
-import { ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } from 'discord.js';
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import { logger } from '../../utils/logger.js';
 
 const BACK_BUTTON_ID = "help-back-to-main";
@@ -16,10 +16,10 @@ export const helpBackButton = {
                 await interaction.deferUpdate();
             }
 
-            const { embeds, components } = await createInitialHelpMenu(client);
+            const { components, flags } = await createInitialHelpMenu(client);
             await interaction.editReply({
-                embeds,
                 components,
+                flags,
             });
         } catch (error) {
             if (error?.code === 40060 || error?.code === 10062) {
@@ -47,28 +47,21 @@ export const helpBugReportButton = {
 
         const bugRow = new ActionRowBuilder().addComponents(githubButton);
 
-        const bugReportEmbed = createEmbed({
-            title: '🐛 Bug Report',
+        const bugReportContainer = createV2Container({
+            title: 'Bug Report',
             description: 'Found a bug? Please report it on our GitHub Issues page!\n\n' +
                 '**When reporting a bug, please include:**\n' +
-                '• 📝 Detailed description of the issue\n' +
-                '• 📋 Steps to reproduce the problem\n' +
-                '• 📸 Screenshots if applicable\n' +
-                '• 💻 Your bot version and environment\n\n' +
+                '• Detailed description of the issue\n' +
+                '• Steps to reproduce the problem\n' +
+                '• Screenshots if applicable\n' +
+                '• Your bot version and environment\n\n' +
                 'This helps us fix issues faster and more effectively!',
-            color: 'error'
+            color: 'error',
         });
-        bugReportEmbed.setFooter({
-            text: 'ZentixBot Bug Reporting System',
-            iconURL: client.user.displayAvatarURL()
-        });
-        bugReportEmbed.setTimestamp();
 
-        await interaction.reply({
-            embeds: [bugReportEmbed],
-            components: [bugRow],
-            flags: MessageFlags.Ephemeral
-        });
+        await interaction.reply(
+            v2Message([bugReportContainer, bugRow], { ephemeral: true }),
+        );
     },
 };
 
@@ -120,8 +113,8 @@ export const helpPaginationButton = {
                     break;
             }
 
-            const { embeds, components } = await createAllCommandsMenu(nextPage, client);
-            await interaction.editReply({ embeds, components });
+            const { components, flags } = await createAllCommandsMenu(nextPage, client);
+            await interaction.editReply({ components, flags });
         } catch (error) {
             if (error?.code === 40060 || error?.code === 10062) {
                 logger.warn('Help pagination interaction already acknowledged or expired.', {

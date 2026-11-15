@@ -1,12 +1,13 @@
-import { getColor } from '../../config/bot.js';
 import { SlashCommandBuilder, PermissionFlagsBits, ChannelType, MessageFlags } from 'discord.js';
-import { createEmbed } from '../../utils/embeds.js';
+
 import { getLevelingConfig, saveLevelingConfig } from '../../services/leveling/leveling.js';
 import { botHasPermission } from '../../utils/permissionGuard.js';
 import { ZentixBotError, ErrorTypes, replyUserError } from '../../utils/errorHandler.js';
 import { InteractionHelper } from '../../utils/interactionHelper.js';
 import { logger } from '../../utils/logger.js';
 import levelDashboard from './modules/level_dashboard.js';
+import { createV2Container, v2Message } from '../../utils/componentsV2.js';
+
 
 export default {
     data: new SlashCommandBuilder()
@@ -131,19 +132,12 @@ export default {
             });
 
             return await InteractionHelper.safeEditReply(interaction, {
-                embeds: [
-                    createEmbed({
-                        title: 'Leveling System Set Up',
-                        description:
-                            `The leveling system is now **enabled** and ready to go.\n\n` +
+                ...v2Message([createV2Container({ title: 'Leveling System Set Up', description: `The leveling system is now **enabled** and ready to go.\n\n` +
                             `**Level-up Channel:** ${channel}\n` +
                             `**XP per Message:** ${xpMin} – ${xpMax}\n` +
                             `**XP Cooldown:** ${xpCooldown}s\n` +
                             `**Level-up Message:** \`${message}\`\n\n` +
-                            `Use \`/level dashboard\` to adjust any of these settings at any time.`,
-                        color: 'success',
-                    }),
-                ],
+                            `Use \`/level dashboard\` to adjust any of these settings at any time.`, color: 'success' })]),
             });
         }
     },

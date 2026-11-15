@@ -14,11 +14,10 @@
 //    (re-exported here) so unknown errors get typed with service/operation context.
 // 3. Background tasks (cron, timers): wrap with handleTaskError / runSafeTask.
 // 4. Set a specific userMessage when you know the cause; use ErrorTypes, don't invent titles.
-// 5. Success/info/warning replies use successEmbed / infoEmbed / warningEmbed.
+// 5. Success/info/warning replies build v2 containers like this file does.
 
 import { logger } from './logger.js';
-import { buildUserErrorEmbed } from './embeds.js';
-import { MessageFlags } from 'discord.js';
+import { createV2Container, v2Message } from './componentsV2.js';
 import { getErrorMetadata, getDefaultErrorCodeByType, resolveErrorCode, ErrorCodes } from './errorRegistry.js';
 import { InteractionHelper } from './interactionHelper.js';
 
@@ -362,6 +361,30 @@ function buildErrorLogData(interaction, error, errorType, context = {}) {
     };
 }
 
+const USER_ERROR_TITLES = {
+    validation: 'Invalid Input',
+    permission: 'Permission Denied',
+    configuration: 'Configuration Error',
+    database: 'Database Error',
+    network: 'Network Error',
+    discord_api: 'Discord API Error',
+    user_input: 'Input Error',
+    rate_limit: 'Too Fast',
+    unknown: 'Something Went Wrong',
+};
+
+const USER_ERROR_COLORS = {
+    rate_limit: 'warning',
+};
+
+function buildUserErrorContainer(errorType, description = '') {
+    const type = errorType || 'unknown';
+    const title = USER_ERROR_TITLES[type] || USER_ERROR_TITLES.unknown;
+    const color = USER_ERROR_COLORS[type] || 'error';
+    const body = description ? String(description).trim() : undefined;
+    return createV2Container({ title, description: body, color });
+}
+
 function logInteractionError(error, errorType, logData) {
     const isUserError = USER_ERROR_TYPES.has(errorType);
     const isExpectedError = Boolean(error?.context?.expected === true || error?.context?.suppressErrorLog === true);
@@ -378,7 +401,7 @@ function logInteractionError(error, errorType, logData) {
     }
 }
 
-async function sendErrorResponse(interaction, embed, context = {}) {
+async function sendErrorResponse(interaction, container, context = {}) {
     try {
         if (!interaction || !interaction.id) {
             logger.warn('Interaction was null or invalid when handling error', {
@@ -408,13 +431,16 @@ async function sendErrorResponse(interaction, embed, context = {}) {
             return false;
         }
 
-        const errorMessage = { embeds: [embed] };
+        const makePayload = (ephemeral) => ({
+            ...v2Message([container], { ephemeral }),
+            allowedMentions: { parse: [] },
+        });
 
         if (interaction._isPrefixCommand) {
             if (coordinator?.hasResponded()) {
-                await coordinator.edit(errorMessage);
+                await coordinator.edit(makePayload(false));
             } else {
-                await coordinator?.respond(errorMessage);
+                await coordinator?.respond(makePayload(false));
             }
             return true;
         }
@@ -423,14 +449,11 @@ async function sendErrorResponse(interaction, embed, context = {}) {
 
         if (interaction.replied) {
             // A visible reply already exists; don't overwrite it — follow up ephemerally.
-            await interaction.followUp({ ...errorMessage, flags: MessageFlags.Ephemeral });
+            await interaction.followUp(makePayload(true));
         } else if (interaction.deferred) {
-            await interaction.editReply(errorMessage);
+            await interaction.editReply(makePayload(false));
         } else {
-            if (useEphemeral) {
-                errorMessage.flags = MessageFlags.Ephemeral;
-            }
-            await interaction.reply(errorMessage);
+            await interaction.reply(makePayload(useEphemeral));
         }
 
         return true;
@@ -486,8 +509,8 @@ export async function replyUserError(interaction, {
 
     logInteractionError(syntheticError, errorType, logData);
 
-    const embed = buildUserErrorEmbed(errorType, userMessage);
-    return sendErrorResponse(interaction, embed, { ...context, traceId, ephemeral, subtype });
+    const container = buildUserErrorContainer(errorType, userMessage);
+    return sendErrorResponse(interaction, container, { ...context, traceId, ephemeral, subtype });
 }
 
 const USER_ERROR_TYPES = new Set([
@@ -517,8 +540,8 @@ export async function handleInteractionError(interaction, error, context = {}) {
         ? userMessage
         : `${userMessage}\n\n-# Ref: \`${buildErrorReference(resolvedErrorCode, traceId)}\``;
 
-    const embed = buildUserErrorEmbed(errorType, description);
-    await sendErrorResponse(interaction, embed, { ...context, traceId });
+    const container = buildUserErrorContainer(errorType, description);
+    await sendErrorResponse(interaction, container, { ...context, traceId });
 }
 
 /**

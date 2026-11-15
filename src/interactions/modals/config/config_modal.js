@@ -1,7 +1,6 @@
-import { successEmbed } from '../../../utils/embeds.js';
+import { v2Success, v2Message } from '../../../utils/componentsV2.js';
 
 import ConfigService from '../../../services/config/configService.js';
-import { MessageFlags } from 'discord.js';
 import { logger } from '../../../utils/logger.js';
 import { ErrorTypes, replyUserError } from '../../../utils/errorHandler.js';
 
@@ -99,8 +98,8 @@ export default {
             await ConfigService.updateSetting(interaction.client, guildId, key, value, interaction.user.id);
 
             await interaction.reply({
-                embeds: [successEmbed('Configuration Updated', buildSuccessMessage(key, value, interaction.guild))],
-                flags: MessageFlags.Ephemeral,
+                ...v2Message([v2Success('Configuration Updated', buildSuccessMessage(key, value, interaction.guild))], { ephemeral: true }),
+                allowedMentions: { parse: [] },
             });
         } catch (error) {
             logger.error('Config modal handler error:', error);

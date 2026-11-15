@@ -5,7 +5,7 @@ import {
   StringSelectMenuBuilder,
   StringSelectMenuOptionBuilder,
 } from 'discord.js';
-import { createEmbed } from '../../../utils/embeds.js';
+import { createV2Container, v2Message } from '../../../utils/componentsV2.js';
 import {
   getCommandAccessSnapshot,
   disableCategory,
@@ -118,12 +118,13 @@ export function buildOverviewEmbed(snapshot, guild) {
     ].join('\n'),
   });
 
-  return createEmbed({
+  return createV2Container({
     title: '⚙️ Command Access',
     description: `Manage slash and prefix commands for **${guild.name}**. Subcommands (e.g. \`birthday list\`) are listed separately.`,
     color: 'info',
-    fields,
-    footer: '🔒 commands & configwizard always stay available',
+    fields: fields.map(({ inline, ...field }) => field),
+    footer: 'commands & configwizard always stay available',
+    raw: true,
   });
 }
 
@@ -173,12 +174,13 @@ export function buildCategoryEmbed(category, guild) {
     ].join('\n'),
   });
 
-  return createEmbed({
+  return createV2Container({
     title: `${category.icon} ${category.displayName}`,
     description: `Command access for **${guild.name}**.`,
     color: category.categoryDisabled ? 'error' : category.disabledCount > 0 ? 'warning' : 'success',
-    fields,
-    footer: '🔒 Protected entries cannot be disabled',
+    fields: fields.map(({ inline, ...field }) => field),
+    footer: 'Protected entries cannot be disabled',
+    raw: true,
   });
 }
 
@@ -267,6 +269,9 @@ export function buildCategoryComponents(guildId, category) {
   return rows;
 }
 
+/** Ready-to-send v2 payload for a dashboard view (container first, then its rows). */
+export const dashboardPayload = (view) => ({ ...v2Message([view.container, ...view.components]), allowedMentions: { parse: [] } });
+
 export async function buildDashboardView(client, guildId, guild, view = 'overview', categoryKey = null) {
   const config = await getGuildConfig(client, guildId);
   const snapshot = getCommandAccessSnapshot(client, config);
@@ -275,20 +280,20 @@ export async function buildDashboardView(client, guildId, guild, view = 'overvie
     const category = snapshot.categories.find((entry) => entry.key === categoryKey);
     if (!category) {
       return {
-        embed: buildOverviewEmbed(snapshot, guild),
+        container: buildOverviewEmbed(snapshot, guild),
         components: buildOverviewComponents(guildId, snapshot),
       };
     }
 
     return {
-      embed: buildCategoryEmbed(category, guild),
+      container: buildCategoryEmbed(category, guild),
       components: buildCategoryComponents(guildId, category),
       categoryKey,
     };
   }
 
   return {
-    embed: buildOverviewEmbed(snapshot, guild),
+    container: buildOverviewEmbed(snapshot, guild),
     components: buildOverviewComponents(guildId, snapshot),
   };
 }
@@ -321,20 +326,20 @@ export async function handleDashboardComponent(interaction, client) {
     }
 
     const view = await buildDashboardView(client, guildId, interaction.guild, 'category', categoryKey);
-    return interaction.update({ embeds: [view.embed], components: view.components });
+    return interaction.update(dashboardPayload(view));
   }
 
   if (action === DASHBOARD_CATEGORY_SELECT) {
     const categoryKey = interaction.values[0];
     const view = await buildDashboardView(client, guildId, interaction.guild, 'category', categoryKey);
-    return interaction.update({ embeds: [view.embed], components: view.components });
+    return interaction.update(dashboardPayload(view));
   }
 
   await interaction.deferUpdate();
 
   if (action === DASHBOARD_REFRESH || action === DASHBOARD_HOME) {
     const view = await buildDashboardView(client, guildId, interaction.guild, 'overview');
-    return interaction.editReply({ embeds: [view.embed], components: view.components });
+    return interaction.editReply(dashboardPayload(view));
   }
 
   if (action === DASHBOARD_TOGGLE_CATEGORY) {
@@ -350,30 +355,30 @@ export async function handleDashboardComponent(interaction, client) {
     }
 
     const view = await buildDashboardView(client, guildId, interaction.guild, 'category', categoryKey);
-    return interaction.editReply({ embeds: [view.embed], components: view.components });
+    return interaction.editReply(dashboardPayload(view));
   }
 
   if (action === DASHBOARD_ENABLE_ALL) {
     await enableCategory(client, guildId, suffix);
     await resetCategoryCommands(client, guildId, suffix);
     const view = await buildDashboardView(client, guildId, interaction.guild, 'category', suffix);
-    return interaction.editReply({ embeds: [view.embed], components: view.components });
+    return interaction.editReply(dashboardPayload(view));
   }
 
   if (action === DASHBOARD_DISABLE_ALL) {
     await disableCategory(client, guildId, suffix);
     const view = await buildDashboardView(client, guildId, interaction.guild, 'category', suffix);
-    return interaction.editReply({ embeds: [view.embed], components: view.components });
+    return interaction.editReply(dashboardPayload(view));
   }
 
   if (action === DASHBOARD_RESET_COMMANDS) {
     await enableCategory(client, guildId, suffix);
     await resetCategoryCommands(client, guildId, suffix);
     const view = await buildDashboardView(client, guildId, interaction.guild, 'category', suffix);
-    return interaction.editReply({ embeds: [view.embed], components: view.components });
+    return interaction.editReply(dashboardPayload(view));
   }
 
-  return interaction.editReply({ content: 'Unknown dashboard action.', embeds: [], components: [] });
+  return interaction.editReply(v2Message([createV2Container({ title: 'Unknown Action', description: 'Unknown dashboard action.', color: 'warning' })]));
 }
 
 export function isCommandAccessCustomId(customIdValue) {

@@ -1,10 +1,12 @@
 import { SlashCommandBuilder } from 'discord.js';
-import { successEmbed } from '../../utils/embeds.js';
+
 import { claimDailyAtomic } from '../../services/economy/daily.js';
 import { getGuildConfig } from '../../services/config/guildConfig.js';
 import { withErrorHandling } from '../../utils/errorHandler.js';
 import { logger } from '../../utils/logger.js';
 import { InteractionHelper } from '../../utils/interactionHelper.js';
+import { createV2Container, v2Message } from '../../utils/componentsV2.js';
+
 
 export default {
     data: new SlashCommandBuilder()
@@ -37,21 +39,10 @@ export default {
                 timestamp: new Date().toISOString()
             });
 
-            const embed = successEmbed(
-                "✅ Daily Claimed!",
-                `You have claimed your daily **$${earned.toLocaleString()}**!${bonusMessage}`
-            )
-                .addFields({
-                    name: "New Cash Balance",
-                    value: `$${result.newWallet.toLocaleString()}`,
-                    inline: true,
-                })
-                .setFooter({
-                    text: hasPremiumRole
+            const embed = createV2Container({ title: "✅ Daily Claimed!", description: `You have claimed your daily **$${earned.toLocaleString()}**!${bonusMessage}`, color: 'success', fields: [{ name: "New Cash Balance", value: `$${result.newWallet.toLocaleString()}` }], footer: { text: hasPremiumRole
                         ? `Next claim in 24 hours. (Premium Active)`
-                        : `Next claim in 24 hours.`,
-                });
+                        : `Next claim in 24 hours.`, always: true } });
 
-            await InteractionHelper.safeEditReply(interaction, { embeds: [embed] });
+            await InteractionHelper.safeEditReply(interaction, { ...v2Message([embed]) });
     }, { command: 'daily' })
 };

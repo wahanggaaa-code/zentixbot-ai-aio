@@ -9,7 +9,7 @@ import {isSQLiteGiveawayBackend,readSQLiteGiveaways,saveSQLiteGiveaway,deleteSQL
 import {transferGiveawaySnapshot} from '../services/storage/giveawaySnapshots.js';
 export {transferGiveawaySnapshot};
 import { 
-    createGiveawayEmbed as createGiveawayEmbedService,
+    createGiveawayContainer as createGiveawayContainerService,
     createGiveawayButtons as createGiveawayButtonsService,
     selectWinners as selectWinnersService
 } from '../services/giveawayService.js';
@@ -135,11 +135,11 @@ export async function deleteGiveaway(client, guildId, messageId) {
     }
 }
 
-export function createGiveawayEmbed(giveaway, status, winners = []) {
+export function createGiveawayContainer(giveaway, status, winners = []) {
     try {
-        return createGiveawayEmbedService(giveaway, status, winners);
+        return createGiveawayContainerService(giveaway, status, winners);
     } catch (error) {
-        logger.error('Error creating giveaway embed:', error);
+        logger.error('Error creating giveaway container:', error);
         throw error;
     }
 }
@@ -169,8 +169,8 @@ export function pickWinners(entrants, count) {
     }
 }
 
-export function giveawayEmbed(giveaway, status, winners = []) {
-    return createGiveawayEmbed(giveaway, status, winners);
+export function giveawayContainer(giveaway, status, winners = []) {
+    return createGiveawayContainer(giveaway, status, winners);
 }
 
 export function giveawayButtons(ended = false) {

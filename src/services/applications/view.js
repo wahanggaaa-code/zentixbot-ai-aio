@@ -7,7 +7,7 @@ import {
     ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelSelectMenuBuilder, ChannelType, CheckboxBuilder, LabelBuilder,
     ModalBuilder, RoleSelectMenuBuilder, StringSelectMenuBuilder, TextDisplayBuilder, TextInputBuilder, TextInputStyle,
 } from 'discord.js';
-import { createEmbed } from '../../utils/embeds.js';
+import { createV2Container, v2Message } from '../../utils/componentsV2.js';
 import { plainText } from '../searchLookup.js';
 import { LIMITS } from './store.js';
 import { checkGrantable, cooldownMs, roleReason } from './service.js';
@@ -73,7 +73,7 @@ export function storageFailureMessage(error) {
 
 export function listEmbed(guild, forms) {
     const lines = forms.map((form, index) => `**${index + 1}. ${shown(form.name, 80)}** · <@&${form.roleId}>\nApply with \`/apply submit\` and choose **${shown(form.name, 80)}**.`);
-    return createEmbed({ title: 'Available Applications', description: `Here are the roles you can apply for:\n\n${lines.join('\n\n')}`.slice(0, 4000) });
+    return createV2Container({ title: 'Available Applications', description: `Here are the roles you can apply for:\n\n${lines.join('\n\n')}`.slice(0, 4000) });
 }
 
 export function applyModal(form, questions, mark) {
@@ -95,7 +95,7 @@ export function applyModal(form, questions, mark) {
 export function submittedEmbed(application) {
     const wait = cooldownMs();
     const next = wait > 0 ? `\nYou can apply again <t:${seconds(application.createdAt + wait)}:R>, once this application has been reviewed.` : '';
-    return createEmbed({
+    return createV2Container({
         title: 'Application Submitted',
         description: `Your application for **${shown(application.roleName, 80)}** has been stored.\n\nApplication ID: \`${application.id}\`\nCheck it with \`/apply status\`.${next}`,
         color: 'success',
@@ -109,7 +109,7 @@ function reviewLine(application) {
 }
 
 export function statusEmbed(application) {
-    return createEmbed({
+    return createV2Container({
         title: `Application - ${shown(application.roleName, 80)}`,
         description: `**Application ID:** \`${application.id}\`\n**Status:** ${statusLabel(application)}\n**Submitted:** <t:${seconds(application.createdAt)}:f>${reviewLine(application)}`,
         color: statusOf(application).color,
@@ -118,15 +118,11 @@ export function statusEmbed(application) {
 
 export function ownListEmbed(applications) {
     const recent = applications.slice(0, 10);
-    const embed = createEmbed({ title: 'Your Applications', description: `Showing ${recent.length} of ${applications.length} application(s), newest first.` });
-    for (const application of recent) {
-        embed.addFields({
-            name: `${shown(application.roleName, 80)} (${statusLabel(application)})`,
-            value: `**ID:** \`${application.id}\`\n**Submitted:** <t:${seconds(application.createdAt)}:d>`,
-            inline: true,
-        });
-    }
-    return embed;
+    const fields = recent.map((application) => ({
+        name: `${shown(application.roleName, 80)} (${statusLabel(application)})`,
+        value: `**ID:** \`${application.id}\`\n**Submitted:** <t:${seconds(application.createdAt)}:d>`,
+    }));
+    return createV2Container({ title: 'Your Applications', description: `Showing ${recent.length} of ${applications.length} application(s), newest first.`, fields });
 }
 
 /* ------------------------------------------------------------------ review */
@@ -138,15 +134,16 @@ function shownAnswer(application, entry) {
 }
 
 export function reviewPayload(application) {
-    const embed = createEmbed({
+    const fields = application.answers.slice(0, LIMITS.questions).map((entry, index) => {
+        const question = application.rawText ? shown(entry.question, 200) : entry.question.slice(0, 200);
+        return { name: `Q${index + 1}: ${question}`.slice(0, 256), value: shownAnswer(application, entry) };
+    });
+    const container = createV2Container({
         title: 'Review Application',
         description: `**User:** <@${application.userId}>\n**Application:** ${shown(application.roleName, 80)} (<@&${application.roleId}>)\n**Application ID:** \`${application.id}\`\n`
             + `**Status:** ${statusLabel(application)}${application.reviewer ? ` · by <@${application.reviewer}>` : ''}\n**Submitted:** <t:${seconds(application.createdAt)}:f>${reviewLine(application)}`,
         color: application.status === 'pending' ? 'info' : statusOf(application).color,
-    });
-    application.answers.slice(0, LIMITS.questions).forEach((entry, index) => {
-        const question = application.rawText ? shown(entry.question, 200) : entry.question.slice(0, 200);
-        embed.addFields({ name: `Q${index + 1}: ${question}`.slice(0, 256), value: shownAnswer(application, entry), inline: false });
+        fields,
     });
     const components = application.status === 'pending'
         ? [new ActionRowBuilder().addComponents(
@@ -154,7 +151,7 @@ export function reviewPayload(application) {
             new ButtonBuilder().setCustomId(`app:decide:deny:${application.id}`).setLabel('Deny').setStyle(ButtonStyle.Danger),
         )]
         : [];
-    return { embeds: [embed], components };
+    return { ...v2Message([container, ...components]), allowedMentions: { parse: [] } };
 }
 
 export function verdictModal(action, id) {
@@ -172,13 +169,13 @@ export function verdictEmbed(outcome, { dmSent }) {
     const who = `<@${application.userId}>`;
     const dm = dmSent ? `${who} was told by direct message.` : `${who} could **not** be told by direct message (direct messages closed or the user is unreachable).`;
     if (application.status === 'denied') {
-        return createEmbed({ title: 'Application denied', description: `The application of ${who} for **${shown(application.roleName, 80)}** has been **denied**.\n${dm}`, color: 'success' });
+        return createV2Container({ title: 'Application denied', description: `The application of ${who} for **${shown(application.roleName, 80)}** has been **denied**.\n${dm}`, color: 'success' });
     }
     if (outcome.role === 'given') {
-        return createEmbed({ title: 'Application approved', description: `The application of ${who} has been **approved** and <@&${application.roleId}> was given.\n${dm}`, color: 'success' });
+        return createV2Container({ title: 'Application approved', description: `The application of ${who} has been **approved** and <@&${application.roleId}> was given.\n${dm}`, color: 'success' });
     }
     const why = outcome.roleError?.code === 50013 ? 'Discord refused: I lack the permission or the role is above mine.' : 'Discord did not accept the request.';
-    return createEmbed({
+    return createV2Container({
         title: 'Approved, but the role was not given',
         description: `The approval of ${who} is stored, but <@&${application.roleId}> could **not** be given. ${why}\nPlease give the role by hand.\n${dm}`,
         color: 'warning',
@@ -192,7 +189,7 @@ export function applicantDm(guild, outcome) {
         ? (outcome.role === 'given' ? '\nYou have been given the role.' : '\nThe role could not be given automatically; the staff has been told to give it to you.')
         : '';
     const note = application.reviewMessage ? `\n**Note:** ${shown(application.reviewMessage, 500)}` : '';
-    return createEmbed({
+    return createV2Container({
         title: `Application ${statusOf(application).label}`,
         description: `Your application for **${shown(application.roleName, 80)}** in **${shown(guild.name, 100)}** has been **${application.status}**.${role}${note}`,
         color: statusOf(application).color,
@@ -200,18 +197,15 @@ export function applicantDm(guild, outcome) {
 }
 
 export function adminListEmbed(applications, { total, filters }) {
-    const embed = createEmbed({
+    const fields = applications.map((application) => ({
+        name: `${shown(application.roleName, 80)} (${statusLabel(application)})`.slice(0, 256),
+        value: `**ID:** \`${application.id}\`\n**User:** <@${application.userId}>\n**Submitted:** <t:${seconds(application.createdAt)}:f>`,
+    }));
+    return createV2Container({
         title: 'Submitted Applications',
         description: `Showing ${applications.length} of ${total} application(s)${filters.length ? ` (${filters.join(', ')})` : ''}, newest first.\nOpen one with \`/app-admin review\`.`,
+        fields,
     });
-    for (const application of applications) {
-        embed.addFields({
-            name: `${shown(application.roleName, 80)} (${statusLabel(application)})`.slice(0, 256),
-            value: `**ID:** \`${application.id}\`\n**User:** <@${application.userId}>\n**Submitted:** <t:${seconds(application.createdAt)}:f>`,
-            inline: true,
-        });
-    }
-    return embed;
 }
 
 /** The button under a log entry that opens the application for whoever may review. */
@@ -239,16 +233,16 @@ export function overviewPayload(guild, { settings, forms }, logging, notice = nu
         const problem = checkGrantable(guild, guild.roles.cache.get(form.roleId));
         return `${index + 1}. **${shown(form.name, 60)}** · <@&${form.roleId}> · ${form.enabled ? 'open' : 'closed'}${problem.ok ? '' : ' · role cannot be given'}`;
     });
-    const embed = createEmbed({
+    const container = createV2Container({
         title: 'Applications Dashboard',
         description: `${notice ? `${notice}\n\n` : ''}Settings for every application of this server. Choose an application below to change its questions or log channel.`,
         color: settings.enabled ? 'success' : 'warning',
         fields: [
-            { name: 'Applications', value: settings.enabled ? '**Enabled**' : '**Disabled** (members cannot apply)', inline: true },
-            { name: 'Retention', value: `Pending: **${settings.pendingDays}d** · Reviewed: **${settings.reviewedDays}d**`, inline: true },
-            { name: 'Manager Roles', value: settings.managerRoles.length ? settings.managerRoles.map((id) => `<@&${id}>`).join(', ') : '`None` (only members with Manage Server can review)', inline: false },
-            { name: 'Log Channel', value: logChannelText(logging.channelId, logging), inline: false },
-            { name: `Applications (${forms.length}/${LIMITS.forms})`, value: (formLines.join('\n') || 'None yet. Use **Add Application**.').slice(0, 1024), inline: false },
+            { name: 'Applications', value: settings.enabled ? '**Enabled**' : '**Disabled** (members cannot apply)' },
+            { name: 'Retention', value: `Pending: **${settings.pendingDays}d** · Reviewed: **${settings.reviewedDays}d**` },
+            { name: 'Manager Roles', value: settings.managerRoles.length ? settings.managerRoles.map((id) => `<@&${id}>`).join(', ') : '`None` (only members with Manage Server can review)' },
+            { name: 'Log Channel', value: logChannelText(logging.channelId, logging) },
+            { name: `Applications (${forms.length}/${LIMITS.forms})`, value: (formLines.join('\n') || 'None yet. Use **Add Application**.').slice(0, 1024) },
         ],
     });
     const rows = [];
@@ -269,29 +263,28 @@ export function overviewPayload(guild, { settings, forms }, logging, notice = nu
         new ButtonBuilder().setCustomId(`app:switch:${settings.enabled ? 'off' : 'on'}`).setLabel(settings.enabled ? 'Disable Applications' : 'Enable Applications').setStyle(settings.enabled ? ButtonStyle.Danger : ButtonStyle.Success),
         new ButtonBuilder().setCustomId('app:new').setLabel('Add Application').setStyle(ButtonStyle.Primary).setDisabled(forms.length >= LIMITS.forms),
     ));
-    return { embeds: [embed], components: rows };
+    return { ...v2Message([container, ...rows]), allowedMentions: { parse: [] } };
 }
 
 /** One form. `questions` are the ones it really asks; `ownQuestions` says whether they are its own. */
 export function formPayload(guild, form, { questions, ownQuestions, pending }, logging, notice = null) {
     const problem = checkGrantable(guild, guild.roles.cache.get(form.roleId));
     const fields = [
-        { name: 'Role', value: `<@&${form.roleId}>`, inline: true },
-        { name: 'Application Status', value: form.enabled ? '**Open**' : '**Closed**', inline: true },
-        { name: 'Pending', value: String(pending), inline: true },
-        { name: ownQuestions ? 'Questions' : 'Questions (defaults)', value: questionList(questions).slice(0, 1024) || 'None', inline: false },
-        { name: form.logChannelId ? 'Log Channel (this application)' : 'Log Channel (server-wide)', value: logChannelText(logging.channelId, logging), inline: false },
+        { name: 'Role', value: `<@&${form.roleId}>` },
+        { name: 'Application Status', value: form.enabled ? '**Open**' : '**Closed**' },
+        { name: 'Pending', value: String(pending) },
+        { name: ownQuestions ? 'Questions' : 'Questions (defaults)', value: questionList(questions).slice(0, 1024) || 'None' },
+        { name: form.logChannelId ? 'Log Channel (this application)' : 'Log Channel (server-wide)', value: logChannelText(logging.channelId, logging) },
     ];
-    if (!problem.ok) fields.push({ name: 'Approvals will be refused', value: roleReason(problem.code), inline: false });
-    const embed = createEmbed({
+    if (!problem.ok) fields.push({ name: 'Approvals will be refused', value: roleReason(problem.code) });
+    const container = createV2Container({
         title: 'Application Dashboard',
         description: `${notice ? `${notice}\n\n` : ''}Configuration for **${shown(form.name, 80)}**`,
         color: problem.ok ? (form.enabled ? 'success' : 'warning') : 'error',
         fields,
     });
     return {
-        embeds: [embed],
-        components: [
+        ...v2Message([container,
             new ActionRowBuilder().addComponents(
                 new StringSelectMenuBuilder().setCustomId(`app:cfg:${form.roleId}`).setPlaceholder('Change this application...').addOptions(
                     { label: 'Edit Questions', value: 'questions', description: 'The questions members answer' },
@@ -304,7 +297,8 @@ export function formPayload(guild, form, { questions, ownQuestions, pending }, l
                 new ButtonBuilder().setCustomId(`app:delete:${form.roleId}`).setLabel('Delete Application').setStyle(ButtonStyle.Danger),
                 new ButtonBuilder().setCustomId('app:home').setLabel('All Applications').setStyle(ButtonStyle.Secondary),
             ),
-        ],
+        ]),
+        allowedMentions: { parse: [] },
     };
 }
 

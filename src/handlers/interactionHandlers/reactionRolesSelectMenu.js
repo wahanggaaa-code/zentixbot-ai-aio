@@ -1,8 +1,8 @@
-import { EmbedBuilder, MessageFlags } from 'discord.js';
+import { MessageFlags } from 'discord.js';
 import { InteractionHelper } from '../../utils/interactionHelper.js';
 import { logger } from '../../utils/logger.js';
 import { handleInteractionError, createError, ErrorTypes } from '../../utils/errorHandler.js';
-import { getColor } from '../../config/bot.js';
+import { createV2Container, v2Message } from '../../utils/componentsV2.js';
 import { logEvent, EVENT_TYPES } from '../../services/loggingService.js';
 import { applyMemberChoice, roleReason } from '../../services/reactionRoles/manage.js';
 
@@ -62,24 +62,26 @@ export async function handleReactionRolesSelectMenu(interaction, client) {
         } catch (error) {
             // The panel may well be active: a database problem is not "no panel".
             logger.error(`[REACTROLES] Could not read panel ${interaction.message.id}:`, error);
-            await interaction.editReply({
-                embeds: [new EmbedBuilder()
-                    .setDescription('❌ Your roles could not be changed right now. Nothing was changed. Please try again in a moment.')
-                    .setColor(getColor('error'))],
-            });
+            await interaction.editReply(v2Message([createV2Container({
+                description: '❌ Your roles could not be changed right now. Nothing was changed. Please try again in a moment.',
+                color: 'error',
+                raw: true,
+            })]));
             return;
         }
 
         if (!outcome) {
             logger.warn(`Reaction role data not found for message ${interaction.message.id} in guild ${interaction.guildId}`);
-            await interaction.editReply({
-                embeds: [new EmbedBuilder().setDescription('❌ This reaction role message is no longer active.').setColor(getColor('error'))],
-            });
+            await interaction.editReply(v2Message([createV2Container({
+                description: '❌ This reaction role message is no longer active.',
+                color: 'error',
+                raw: true,
+            })]));
             return;
         }
 
         const { description, color } = describeChoice(outcome);
-        await interaction.editReply({ embeds: [new EmbedBuilder().setDescription(description).setColor(getColor(color)).setTimestamp()] });
+        await interaction.editReply({ ...v2Message([createV2Container({ description, color, raw: true })]), allowedMentions: { parse: [] } });
 
         if (outcome.added.length > 0 || outcome.removed.length > 0) {
             try {

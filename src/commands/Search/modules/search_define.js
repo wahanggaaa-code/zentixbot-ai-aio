@@ -1,4 +1,4 @@
-import { createEmbed } from '../../../utils/embeds.js';
+import { createV2Container, v2Message } from '../../../utils/componentsV2.js';
 import { logger } from '../../../utils/logger.js';
 import { handleInteractionError, replyUserError, ErrorTypes } from '../../../utils/errorHandler.js';
 import { InteractionHelper } from '../../../utils/interactionHelper.js';
@@ -90,15 +90,15 @@ export default {
             }
 
             const phonetic = plainText(entry.phonetic, 100);
-            const embed = createEmbed({
+            const container = createV2Container({
                 title: plainText(entry.word, 250) || plainText(word, 250),
-                description: phonetic ? `*${phonetic}*` : '',
-                color: 'success'
+                description: phonetic ? `*${phonetic}*` : undefined,
+                color: 'success',
+                fields,
+                footer: { text: 'Powered by Free Dictionary API', always: true },
             });
-            embed.addFields(fields);
-            embed.setFooter({ text: 'Powered by Free Dictionary API' });
 
-            await InteractionHelper.safeEditReply(interaction, { embeds: [embed] });
+            await InteractionHelper.safeEditReply(interaction, v2Message([container]));
 
             logger.info('Dictionary definition retrieved', {
                 userId: interaction.user.id,

@@ -5,13 +5,12 @@
 // panel and reads the stored panel again for every action, so two open
 // dashboards cannot overwrite each other. Each press checks Manage Roles again.
 
-import { getColor } from '../../config/bot.js';
 import {
     SlashCommandBuilder, PermissionFlagsBits, ChannelType, ActionRowBuilder, StringSelectMenuBuilder, StringSelectMenuOptionBuilder,
     RoleSelectMenuBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, ButtonBuilder, ButtonStyle, MessageFlags, ComponentType,
-    EmbedBuilder, LabelBuilder, CheckboxBuilder, TextDisplayBuilder,
+    LabelBuilder, CheckboxBuilder, TextDisplayBuilder,
 } from 'discord.js';
-import { successEmbed, warningEmbed } from '../../utils/embeds.js';
+import { createV2Container, v2Success, v2Warning, v2Message } from '../../utils/componentsV2.js';
 import { logger } from '../../utils/logger.js';
 import { ErrorTypes, replyUserError } from '../../utils/errorHandler.js';
 import { InteractionHelper } from '../../utils/interactionHelper.js';
@@ -19,12 +18,17 @@ import { logEvent, EVENT_TYPES } from '../../services/loggingService.js';
 import { startDashboardSession, wrapDashboardHandler } from '../../utils/dashboardSession.js';
 import {
     addPanelRole, checkActorRole, checkPanelRole, createPanel, deletePanel, editPanelText, inspectPanels, panelErrorMessage,
-    refreshPanelMessage, removePanelRole, repostPanel, roleReason,
+    refreshPanelMessage, removePanelRole, repostPanel, roleReason, shownText,
 } from '../../services/reactionRoles/manage.js';
 import { MAX_DESCRIPTION, MAX_ROLES, MAX_TITLE, readPanel, readPanels } from '../../services/reactionRoles/store.js';
 import { recordPanelChange } from '../../services/reactionRoles/audit.js';
 
 const DASHBOARD_EPHEMERAL = MessageFlags.Ephemeral;
+const notificationPayload = (container) => ({ ...v2Message([container], { ephemeral: true }), allowedMentions: { parse: [] } });
+const dashboardMessage = (view, { ephemeral = true } = {}) => ({
+    ...v2Message([view.container, ...view.components], { ephemeral }),
+    allowedMentions: { parse: [] },
+});
 
 const mayManage = (member) => member?.permissions?.has?.(PermissionFlagsBits.ManageRoles) === true;
 
@@ -62,9 +66,9 @@ function redrawNote(message) {
 }
 
 /** Success when the posted panel shows the change, a warning that says why when it does not. */
-function resultEmbed(title, text, message) {
+function resultContainer(title, text, message) {
     const note = redrawNote(message);
-    return note ? warningEmbed(title, `${text}\n\n⚠️ ${note}`) : successEmbed(title, text);
+    return note ? v2Warning(title, `${text}\n\n${note}`) : v2Success(title, text);
 }
 
 export default {
@@ -156,7 +160,8 @@ export default {
             const { panels } = await readPanels(interaction.client, guild.id);
             const choices = panels.slice(0, 25).map((panel) => {
                 const channel = guild.channels.cache.get(panel.channelId);
-                const title = panel.title ?? channel?.messages?.cache?.get(panel.messageId)?.embeds?.[0]?.title ?? null;
+                const cachedPanel = channel?.messages?.cache?.get(panel.messageId);
+                const title = panel.title ?? (cachedPanel ? shownText(cachedPanel).title : null) ?? null;
                 const place = channel ? `#${channel.name}` : 'channel missing';
                 const count = `${panel.roles.length} role${panel.roles.length === 1 ? '' : 's'}`;
                 return { name: `${title ? `${title} · ` : ''}${place} · ${count}`.slice(0, 100), value: panel.messageId };
@@ -239,11 +244,9 @@ async function handleSetup(interaction) {
     }
 
     const text = `✅ Reaction role panel created in ${channel}!\n\n${message.url}`;
-    await InteractionHelper.safeEditReply(interaction, {
-        embeds: [refused.length
-            ? warningEmbed('Panel created', `${text}\n\n⚠️ These roles were left out:\n${refused.join('\n')}`)
-            : successEmbed('Success', text)],
-    });
+    await InteractionHelper.safeEditReply(interaction, notificationPayload(refused.length
+        ? v2Warning('Panel created', `${text}\n\nThese roles were left out:\n${refused.join('\n')}`)
+        : v2Success('Success', text)));
 }
 
 // ---- dashboard --------------------------------------------------------------------
@@ -263,19 +266,19 @@ function roleLine(state) {
 
 function buildDashboardPayload(panel, guildId) {
     const roleList = panel.roleStates.length ? panel.roleStates.map(roleLine).join('\n').slice(0, 1024) : '`None`';
-    const embed = new EmbedBuilder()
-        .setTitle('Reaction Roles Dashboard')
-        .setDescription(`**Title:** ${panel.title ?? 'Untitled Panel'}\n\nSelect an option below to modify a setting.`)
-        .setColor(getColor('info'))
-        .addFields(
-            { name: 'Panel Status', value: (STATUS_TEXT[panel.status] ?? STATUS_TEXT.unknown)(panel), inline: false },
-            { name: 'Channel', value: panel.channel ? `<#${panel.channel.id}>` : '`Not found`', inline: true },
-            { name: 'Roles', value: `\`${panel.roles.length} / ${MAX_ROLES}\``, inline: true },
-            { name: '\u200B', value: '\u200B', inline: true },
-            { name: 'Role List', value: roleList, inline: false },
-        )
-        .setFooter({ text: 'Dashboard closes after 10 minutes of inactivity' })
-        .setTimestamp();
+    const container = createV2Container({
+        title: 'Reaction Roles Dashboard',
+        description: `**Title:** ${panel.title ?? 'Untitled Panel'}\n\nSelect an option below to modify a setting.`,
+        color: 'info',
+        raw: true,
+        fields: [
+            { name: 'Panel Status', value: (STATUS_TEXT[panel.status] ?? STATUS_TEXT.unknown)(panel) },
+            { name: 'Channel', value: panel.channel ? `<#${panel.channel.id}>` : '`Not found`' },
+            { name: 'Roles', value: `\`${panel.roles.length} / ${MAX_ROLES}\`` },
+            { name: 'Role List', value: roleList },
+        ],
+        footer: 'Dashboard closes after 10 minutes of inactivity',
+    });
 
     const buttons = [];
     if (panel.status === 'message_missing') {
@@ -302,7 +305,7 @@ function buildDashboardPayload(panel, guildId) {
             new StringSelectMenuBuilder().setCustomId(`rr_opts_${guildId}`).setPlaceholder('Select an action...').addOptions(options),
         ));
     }
-    return { embeds: [embed], components };
+    return { container, components };
 }
 
 async function handleDashboard(interaction, selectedPanelId) {
@@ -347,7 +350,7 @@ async function handleDashboard(interaction, selectedPanelId) {
             await closeDashboard(ctx, 'This panel no longer exists. Run `/reactroles dashboard` to manage another panel.');
             return null;
         }
-        await InteractionHelper.safeEditReply(interaction, { ...buildDashboardPayload(current, guildId), flags: DASHBOARD_EPHEMERAL });
+        await InteractionHelper.safeEditReply(interaction, dashboardMessage(buildDashboardPayload(current, guildId)));
         return current;
     };
 
@@ -386,11 +389,8 @@ async function handleDashboard(interaction, selectedPanelId) {
 async function closeDashboard(ctx, text, color = 'info') {
     ctx.session.closed = true;
     ctx.session.stop();
-    await InteractionHelper.safeEditReply(ctx.root, {
-        embeds: [new EmbedBuilder().setTitle('Reaction Roles Dashboard').setDescription(text).setColor(getColor(color))],
-        components: [],
-        flags: DASHBOARD_EPHEMERAL,
-    });
+    await InteractionHelper.safeEditReply(ctx.root,
+        v2Message([createV2Container({ title: 'Reaction Roles Dashboard', description: text, color })], { ephemeral: true }));
 }
 
 /** Wait for one pick on a follow-up prompt of this press. Other dashboards' prompts are not answered here. */
@@ -415,19 +415,18 @@ function collectPick(pressed, ctx, prompt, { componentType, customId }, onPick) 
 
 async function handleAddRole(pressed, ctx) {
     await pressed.deferUpdate();
-    const prompt = await pressed.followUp({
-        embeds: [new EmbedBuilder().setTitle('Add Role').setDescription('Select a role to add to this panel.').setColor(getColor('info'))],
+    const prompt = await pressed.followUp(dashboardMessage({
+        container: createV2Container({ title: 'Add Role', description: 'Select a role to add to this panel.', color: 'info' }),
         components: [new ActionRowBuilder().addComponents(
             new RoleSelectMenuBuilder().setCustomId('rr_add_role_pick').setPlaceholder('Select a role to add...').setMaxValues(1),
         )],
-        flags: MessageFlags.Ephemeral,
-    });
+    }));
     collectPick(pressed, ctx, prompt, { componentType: ComponentType.RoleSelect, customId: 'rr_add_role_pick' }, async (pick) => {
         const role = pick.roles.first();
         try {
             const { panel, message } = await addPanelRole(ctx.client, ctx.guild, ctx.session.messageId, role, { actor: pick.member });
             await recordPanelChange(ctx.client, ctx.guildId, 'role_add', { actorId: pick.user.id, messageId: panel.messageId, channelId: panel.channelId, title: panel.title, roleId: role.id });
-            await pick.followUp({ embeds: [resultEmbed('Role Added', `${role} has been added to the panel.`, message)], flags: MessageFlags.Ephemeral });
+            await pick.followUp({ ...v2Message([resultContainer('Role Added', `${role} has been added to the panel.`, message)], { ephemeral: true }), allowedMentions: { parse: [] } });
         } catch (error) {
             await replyPanelError(pick, error, 'The role could not be added. Nothing was changed.');
         }
@@ -453,19 +452,18 @@ async function handleRemoveRole(pressed, ctx) {
         .setLabel((state.name ?? `Deleted role (${state.id})`).slice(0, 100))
         .setValue(state.id)
         .setEmoji('🎭'));
-    const prompt = await pressed.followUp({
-        embeds: [new EmbedBuilder().setTitle('Remove Role').setDescription('Select the role you want to remove from this panel.').setColor(getColor('info'))],
+    const prompt = await pressed.followUp(dashboardMessage({
+        container: createV2Container({ title: 'Remove Role', description: 'Select the role you want to remove from this panel.', color: 'info' }),
         components: [new ActionRowBuilder().addComponents(
             new StringSelectMenuBuilder().setCustomId('rr_remove_role_pick').setPlaceholder('Select a role to remove...').setMaxValues(1).addOptions(options),
         )],
-        flags: MessageFlags.Ephemeral,
-    });
+    }));
     collectPick(pressed, ctx, prompt, { componentType: ComponentType.StringSelect, customId: 'rr_remove_role_pick' }, async (pick) => {
         const roleId = pick.values[0];
         try {
             const { panel, message } = await removePanelRole(ctx.client, ctx.guild, ctx.session.messageId, roleId);
             await recordPanelChange(ctx.client, ctx.guildId, 'role_remove', { actorId: pick.user.id, messageId: panel.messageId, channelId: panel.channelId, title: panel.title, roleId });
-            await pick.followUp({ embeds: [resultEmbed('Role Removed', `<@&${roleId}> has been removed from the panel.`, message)], flags: MessageFlags.Ephemeral });
+            await pick.followUp({ ...v2Message([resultContainer('Role Removed', `<@&${roleId}> has been removed from the panel.`, message)], { ephemeral: true }), allowedMentions: { parse: [] } });
         } catch (error) {
             await replyPanelError(pick, error, 'The role could not be removed. Nothing was changed.');
         }
@@ -480,8 +478,8 @@ async function handleRepost(pressed, ctx) {
         ctx.session.messageId = panel.messageId;
         await recordPanelChange(ctx.client, ctx.guildId, 'repost', { actorId: pressed.user.id, messageId: panel.messageId, channelId: panel.channelId, title: panel.title, roleIds: panel.roles });
         await pressed.followUp({
-            embeds: [successEmbed('Panel Reposted', `The reaction role panel was posted again in <#${panel.channelId}>.\n${message.url ?? ''}`)],
-            flags: MessageFlags.Ephemeral,
+            ...v2Message([v2Success('Panel Reposted', `The reaction role panel was posted again in <#${panel.channelId}>.\n${message.url ?? ''}`)], { ephemeral: true }),
+            allowedMentions: { parse: [] },
         });
     } catch (error) {
         await replyPanelError(pressed, error, 'The panel could not be reposted. Nothing was changed.');
@@ -493,10 +491,7 @@ async function handleRefresh(pressed, ctx) {
     await pressed.deferUpdate();
     try {
         const { message } = await refreshPanelMessage(ctx.client, ctx.guild, ctx.session.messageId);
-        await pressed.followUp({
-            embeds: [resultEmbed('Panel Refreshed', 'The panel message was drawn again from the stored panel.', message)],
-            flags: MessageFlags.Ephemeral,
-        });
+        await pressed.followUp(v2Message([resultContainer('Panel Refreshed', 'The panel message was drawn again from the stored panel.', message)], { ephemeral: true }));
     } catch (error) {
         await replyPanelError(pressed, error, 'The panel message could not be refreshed.');
     }
@@ -506,10 +501,11 @@ async function handleRefresh(pressed, ctx) {
 /** Stored text of the panel for a modal. A modal must open within 3s: the database and the cache only. */
 async function currentText(ctx) {
     const panel = await readPanel(ctx.client, ctx.guildId, ctx.session.messageId).catch(() => null);
-    const shown = ctx.guild.channels.cache.get(panel?.channelId)?.messages?.cache?.get(panel?.messageId)?.embeds?.[0];
+    const cached = ctx.guild.channels.cache.get(panel?.channelId)?.messages?.cache?.get(panel?.messageId);
+    const shown = cached ? shownText(cached) : {};
     return {
-        title: String(panel?.title ?? shown?.title ?? '').slice(0, MAX_TITLE),
-        description: String(panel?.description ?? shown?.description ?? '').slice(0, MAX_DESCRIPTION),
+        title: String(panel?.title ?? shown.title ?? '').slice(0, MAX_TITLE),
+        description: String(panel?.description ?? shown.description ?? '').slice(0, MAX_DESCRIPTION),
     };
 }
 
@@ -547,10 +543,7 @@ async function handleEditText(pressed, ctx) {
             description: submitted.fields.getTextInputValue('panel_description'),
         });
         await recordPanelChange(ctx.client, ctx.guildId, 'text', { actorId: submitted.user.id, messageId: panel.messageId, channelId: panel.channelId, title: panel.title });
-        await submitted.reply({
-            embeds: [resultEmbed('Panel Updated', 'The title and description have been saved.', message)],
-            flags: MessageFlags.Ephemeral,
-        });
+        await submitted.reply(v2Message([resultContainer('Panel Updated', 'The title and description have been saved.', message)], { ephemeral: true }));
     } catch (error) {
         await replyPanelError(submitted, error, 'The panel text could not be changed. Nothing was changed.');
     }
@@ -607,10 +600,7 @@ async function handleDeletePanel(pressed, ctx) {
     } catch (logErr) {
         logger.warn('Failed to log reaction role deletion:', logErr);
     }
-    await submitted.followUp({
-        embeds: [successEmbed('Panel Deleted', `**${deleted.title ?? name}** has been deleted.`)],
-        flags: MessageFlags.Ephemeral,
-    });
+    await submitted.followUp(v2Message([v2Success('Panel Deleted', `**${deleted.title ?? name}** has been deleted.`)], { ephemeral: true }));
 
     const left = await readPanels(ctx.client, ctx.guildId).then((result) => result.panels.length, () => null);
     await closeDashboard(

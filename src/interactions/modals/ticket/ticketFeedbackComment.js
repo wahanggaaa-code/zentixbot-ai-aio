@@ -1,15 +1,12 @@
-import { EmbedBuilder, MessageFlags } from 'discord.js';
+import { MessageFlags } from 'discord.js';
 import { getTicketData, saveTicketData } from '../../../utils/database.js';
 import { logger } from '../../../utils/logger.js';
-import { getColor } from '../../../config/bot.js';
+import { createV2Container, v2Message } from '../../../utils/componentsV2.js';
 import { logTicketFeedback } from '../../../utils/ticket/ticketLogging.js';
 import { InteractionHelper } from '../../../utils/interactionHelper.js';
 
-function buildEmbed(title, description, color) {
-    return new EmbedBuilder()
-        .setTitle(title)
-        .setDescription(description)
-        .setColor(color);
+function buildContainer(title, description, color) {
+    return createV2Container({ title, description, color });
 }
 
 export default {
@@ -20,12 +17,11 @@ export default {
 
         if (!guildId || !channelId) {
             await InteractionHelper.safeReply(interaction, {
-                embeds: [buildEmbed(
-                    '⚠️ Invalid Feedback Submission',
+                ...v2Message([buildContainer(
+                    'Invalid Feedback Submission',
                     'This feedback form appears to be malformed.',
-                    getColor('error'),
-                )],
-                flags: MessageFlags.Ephemeral,
+                    'error',
+                )], { ephemeral: true }),
             });
             return;
         }
@@ -33,12 +29,11 @@ export default {
         const comment = interaction.fields.getTextInputValue('feedback_comment')?.trim();
         if (!comment) {
             await InteractionHelper.safeReply(interaction, {
-                embeds: [buildEmbed(
-                    '⚠️ Empty Feedback',
+                ...v2Message([buildContainer(
+                    'Empty Feedback',
                     'Please enter a comment before submitting your feedback.',
-                    getColor('warning'),
-                )],
-                flags: MessageFlags.Ephemeral,
+                    'warning',
+                )], { ephemeral: true }),
             });
             return;
         }
@@ -59,22 +54,22 @@ export default {
 
         if (!ticketData) {
             await InteractionHelper.safeEditReply(interaction, {
-                embeds: [buildEmbed(
-                    '⚠️ Ticket Not Found',
+                ...v2Message([buildContainer(
+                    'Ticket Not Found',
                     'Could not find the ticket associated with this feedback.',
-                    getColor('error'),
-                )],
+                    'error',
+                )]),
             });
             return;
         }
 
         if (interaction.user.id !== ticketData.userId) {
             await InteractionHelper.safeEditReply(interaction, {
-                embeds: [buildEmbed(
-                    '❌ Not Allowed',
+                ...v2Message([buildContainer(
+                    'Not Allowed',
                     'Only the ticket creator can submit feedback for this ticket.',
-                    getColor('error'),
-                )],
+                    'error',
+                )]),
             });
             return;
         }
@@ -108,11 +103,11 @@ export default {
         }
 
         await InteractionHelper.safeEditReply(interaction, {
-            embeds: [buildEmbed(
-                '✅ Feedback Submitted',
-                'Your written feedback has been recorded. Thank you for helping us improve!',
-                getColor('success'),
-            )],
+            ...v2Message([buildContainer(
+                    'Feedback Submitted',
+                    'Your written feedback has been recorded. Thank you for helping us improve!',
+                    'success',
+                )]),
         });
 
         logger.info('Ticket feedback comment submitted', {

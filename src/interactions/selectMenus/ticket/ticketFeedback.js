@@ -1,7 +1,6 @@
-import { EmbedBuilder } from 'discord.js';
+import { createV2Container, v2Message } from '../../../utils/componentsV2.js';
 import { getTicketData, saveTicketData } from '../../../utils/database.js';
 import { logger } from '../../../utils/logger.js';
-import { getColor } from '../../../config/bot.js';
 import { logTicketFeedback } from '../../../utils/ticket/ticketLogging.js';
 
 const STAR_LABELS = {
@@ -21,13 +20,11 @@ export default {
 
         if (!guildId || !channelId) {
             await interaction.update({
-                embeds: [
-                    new EmbedBuilder()
-                        .setTitle('⚠️ Invalid Feedback Link')
-                        .setDescription('This feedback link appears to be malformed.')
-                        .setColor(getColor('error')),
-                ],
-                components: [],
+                ...v2Message([createV2Container({
+                    title: 'Invalid Feedback Link',
+                    description: 'This feedback link appears to be malformed.',
+                    color: 'error',
+                })]),
             });
             return;
         }
@@ -41,44 +38,38 @@ export default {
 
         if (!ticketData) {
             await interaction.update({
-                embeds: [
-                    new EmbedBuilder()
-                        .setTitle('⚠️ Ticket Not Found')
-                        .setDescription('Could not find the ticket associated with this survey.')
-                        .setColor(getColor('error')),
-                ],
-                components: [],
+                ...v2Message([createV2Container({
+                    title: 'Ticket Not Found',
+                    description: 'Could not find the ticket associated with this survey.',
+                    color: 'error',
+                })]),
             });
             return;
         }
 
         if (interaction.user.id !== ticketData.userId) {
             await interaction.reply({
-                embeds: [
-                    new EmbedBuilder()
-                        .setTitle('❌ Not Allowed')
-                        .setDescription('Only the ticket creator can submit feedback for this ticket.')
-                        .setColor(getColor('error')),
-                ],
-                ephemeral: true,
+                ...v2Message([createV2Container({
+                    title: 'Not Allowed',
+                    description: 'Only the ticket creator can submit feedback for this ticket.',
+                    color: 'error',
+                })], { ephemeral: true }),
             });
             return;
         }
 
         if (ticketData.feedback?.rating) {
             await interaction.update({
-                embeds: [
-                    new EmbedBuilder()
-                        .setTitle('✅ Already Submitted')
-                        .setDescription(`You already rated this ticket **${STAR_LABELS[String(ticketData.feedback.rating)]}**.\nThank you for your feedback!`)
-                        .setColor(getColor('success')),
-                ],
-                components: [],
+                ...v2Message([createV2Container({
+                    title: 'Already Submitted',
+                    description: `You already rated this ticket **${STAR_LABELS[String(ticketData.feedback.rating)]}**.\nThank you for your feedback!`,
+                    color: 'success',
+                })]),
             });
             return;
         }
 
-        if (!/^[1-5]$/.test(interaction.values[0] || '')) { await interaction.update({content:'Invalid rating.',components:[]}); return; }
+        if (!/^[1-5]$/.test(interaction.values[0] || '')) { await interaction.update(v2Message([createV2Container({ title: 'Invalid Rating', description: 'The selected rating is invalid.', color: 'warning' })])); return; }
         const rating = Number(interaction.values[0]);
         const ratingLabel = STAR_LABELS[String(rating)] ?? `${rating} stars`;
 
@@ -91,7 +82,7 @@ export default {
             await saveTicketData(guildId, channelId, ticketData);
         } catch (err) {
             logger.error('ticketFeedback: failed to save feedback', { guildId, channelId, rating, error: err.message });
-            await interaction.update({ content: 'Feedback could not be saved. Please try again.' });
+            await interaction.update(v2Message([createV2Container({ title: 'Not Saved', description: 'Feedback could not be saved. Please try again.', color: 'error' })]));
             return;
         }
 
@@ -108,16 +99,12 @@ export default {
             logger.warn('ticketFeedback: failed to send log', { guildId, channelId, error: err.message });
         }
 
-        const thankYouEmbed = new EmbedBuilder()
-            .setTitle('✅ Thanks for your feedback!')
-            .setDescription(`You rated your support experience **${ratingLabel}**.\n\nYour feedback has been recorded and helps us improve!`)
-            .setColor(getColor('success'))
-            .setFooter({ text: 'Thank you for using our support system.' })
-            .setTimestamp();
-
         await interaction.update({
-            embeds: [thankYouEmbed],
-            components: [],
+            ...v2Message([createV2Container({
+                title: 'Thanks for your feedback!',
+                description: `You rated your support experience **${ratingLabel}**.\n\nYour feedback has been recorded and helps us improve!\n\nThank you for using our support system.`,
+                color: 'success',
+            })]),
         });
 
         logger.info('Ticket feedback submitted', {

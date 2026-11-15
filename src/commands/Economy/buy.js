@@ -1,10 +1,12 @@
-import { SlashCommandBuilder, MessageFlags } from 'discord.js';
-import { successEmbed } from '../../utils/embeds.js';
+import { SlashCommandBuilder } from 'discord.js';
+
 import { shopItems } from '../../config/shop/items.js';
 import { purchaseInventoryItem } from '../../services/economy/shop.js';
 import { purchasePremiumRole, PREMIUM_ITEM_ID } from '../../services/economy/premiumRole.js';
 import { withErrorHandling, createError, ErrorTypes } from '../../utils/errorHandler.js';
 import { InteractionHelper } from '../../utils/interactionHelper.js';
+import { createV2Container, v2Message } from '../../utils/componentsV2.js';
+
 
 const SHOP_ITEMS = shopItems;
 
@@ -74,11 +76,8 @@ export default {
                 const paid = result.status === 'resumed'
                     ? `Your earlier payment of **$${result.price.toLocaleString()}** for **${item.name}** was still open. You were not charged again.`
                     : `You successfully purchased 1x **${item.name}** for **$${result.price.toLocaleString()}**!`;
-                const embed = successEmbed(
-                    '💰 Purchase Successful',
-                    `${paid}\n\n**👑 The role ${result.role.toString()} has been granted to you!**`,
-                ).addFields({ name: 'New Balance', value: `$${result.wallet.toLocaleString()}`, inline: true });
-                await InteractionHelper.safeEditReply(interaction, { embeds: [embed], flags: [MessageFlags.Ephemeral] });
+                const embed = createV2Container({ title: '💰 Purchase Successful', description: `${paid}\n\n**👑 The role ${result.role.toString()} has been granted to you!**`, color: 'success', fields: [{ name: 'New Balance', value: `$${result.wallet.toLocaleString()}` }] });
+                await InteractionHelper.safeEditReply(interaction, { ...v2Message([embed], { ephemeral: true }) });
                 return;
             }
 
@@ -86,8 +85,7 @@ export default {
             let description = `You successfully purchased ${quantity}x **${item.name}** for **$${totalCost.toLocaleString()}**!`;
             if (item.type === 'upgrade') description += '\n\n**✨ Your upgrade is now active!**';
             else if (item.type === 'tool') description += `\n\n**🛠️ ${item.name} added to your inventory!**`;
-            const embed = successEmbed('💰 Purchase Successful', description)
-                .addFields({ name: 'New Balance', value: `$${wallet.toLocaleString()}`, inline: true });
-            await InteractionHelper.safeEditReply(interaction, { embeds: [embed], flags: [MessageFlags.Ephemeral] });
+            const embed = createV2Container({ title: '💰 Purchase Successful', description: description, color: 'success', fields: [{ name: 'New Balance', value: `$${wallet.toLocaleString()}` }] });
+            await InteractionHelper.safeEditReply(interaction, { ...v2Message([embed], { ephemeral: true }) });
     }, { command: 'buy' })
 };

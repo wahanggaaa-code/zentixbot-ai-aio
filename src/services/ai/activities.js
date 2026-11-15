@@ -4,6 +4,7 @@ import { pgConfig } from '../../config/database/postgres.js';
 import { sqliteBackend } from '../storage/sqlite.js';
 import { createSqliteActivityStore } from './sqliteActivities.js';
 import { logger } from '../../utils/logger.js';
+import { createV2Container, v2Message } from '../../utils/componentsV2.js';
 const error=(message,status=400)=>Object.assign(new Error(message),{status});
 const roundActive=()=>Object.assign(error('Masih ada ronde yang berjalan.',409),{code:'ROUND_ACTIVE'});
 // What is stored may be anything; the schedules only ever work with a plain object.
@@ -71,7 +72,14 @@ export function validateQuiz(raw){
 }
 export function quizPayload(quiz,roundId,{ended=null}={}){
  const choices=quiz.options.map((o,i)=>`**${String.fromCharCode(65+i)}.** ${o}`).join('\n');
- return {embeds:[{title:'✳ AI Activities',description:`${quiz.question}\n\n${choices}${ended?`\n\n${ended} Jawaban: **${String.fromCharCode(65+quiz.answer)}. ${quiz.options[quiz.answer]}**`:''}`,color:0xb0e52c}],components:[...(!ended?[new ActionRowBuilder().addComponents(quiz.options.map((_,i)=>new ButtonBuilder().setCustomId(`ai_quiz:${roundId}:${i}`).setLabel(String.fromCharCode(65+i)).setStyle(ButtonStyle.Secondary)))]:[]),new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('ai_quiz_points:view').setLabel('Poin saya').setStyle(ButtonStyle.Secondary))],allowedMentions:{parse:[]}};
+ const description=`${quiz.question}\n\n${choices}${ended?`\n\n${ended} Jawaban: **${String.fromCharCode(65+quiz.answer)}. ${quiz.options[quiz.answer]}**`:''}`;
+ // raw: emoji-kind questions are emoji by design, so the text displays must keep Extended_Pictographic characters.
+ const container=createV2Container({title:'✳ AI Activities',description,color:0xb0e52c,raw:true});
+ const rows=[
+  ...(!ended?[new ActionRowBuilder().addComponents(quiz.options.map((_,i)=>new ButtonBuilder().setCustomId(`ai_quiz:${roundId}:${i}`).setLabel(String.fromCharCode(65+i)).setStyle(ButtonStyle.Secondary)))]:[]),
+  new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('ai_quiz_points:view').setLabel('Poin saya').setStyle(ButtonStyle.Secondary))
+ ];
+ return {...v2Message([container,...rows]),allowedMentions:{parse:[]}};
 }
 // Asking for "one easy question" again and again gets the same few questions back, so every request names a topic
 // and lists what was asked lately.

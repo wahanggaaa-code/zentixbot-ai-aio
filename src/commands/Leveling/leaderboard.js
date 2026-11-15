@@ -1,9 +1,11 @@
-import { SlashCommandBuilder, EmbedBuilder, MessageFlags } from 'discord.js';
+import { SlashCommandBuilder } from 'discord.js';
 import { logger } from '../../utils/logger.js';
 import { ZentixBotError, ErrorTypes } from '../../utils/errorHandler.js';
 import { getLeaderboard, getLevelingConfig, getXpForLevel } from '../../services/leveling/leveling.js';
 
 import { InteractionHelper } from '../../utils/interactionHelper.js';
+import { createV2Container, v2Message } from '../../utils/componentsV2.js';
+
 export default {
   data: new SlashCommandBuilder()
     .setName('leaderboard')
@@ -18,12 +20,7 @@ export default {
 
     if (!levelingConfig?.enabled) {
       await InteractionHelper.safeEditReply(interaction, {
-        embeds: [
-          new EmbedBuilder()
-            .setColor('#f1c40f')
-            .setDescription('The leveling system is currently disabled on this server.')
-        ],
-        flags: MessageFlags.Ephemeral
+        ...v2Message([createV2Container({ description: 'The leveling system is currently disabled on this server.', color: '#f1c40f' })], { ephemeral: true }),
       });
       return;
     }
@@ -37,12 +34,6 @@ export default {
         'No level data found yet. Start chatting to gain XP!'
       );
     }
-
-    const embed = new EmbedBuilder()
-      .setTitle('Level Leaderboard')
-      .setColor('#2ecc71')
-      .setDescription("Top 10 most active members in this server:")
-      .setTimestamp();
 
     const leaderboardText = await Promise.all(
       leaderboard.map(async (user, index) => {
@@ -64,12 +55,10 @@ export default {
       })
     );
 
-    embed.addFields({
-      name: 'Rankings',
-      value: leaderboardText.join('\n')
-    });
 
-    await InteractionHelper.safeEditReply(interaction, { embeds: [embed] });
+    const embed = createV2Container({ title: 'Level Leaderboard', description: "Top 10 most active members in this server:", color: '#2ecc71', fields: [{ name: 'Rankings', value: leaderboardText.join('\n') }] });
+
+    await InteractionHelper.safeEditReply(interaction, { ...v2Message([embed]) });
     logger.debug(`Leaderboard displayed for guild ${interaction.guildId}`);
   }
 };

@@ -5,7 +5,8 @@ import {
     ButtonStyle,
 } from "discord.js";
 import { InteractionHelper } from '../../utils/interactionHelper.js';
-import { createEmbed } from "../../utils/embeds.js";
+import { createV2Container, v2Text, v2Flags, v2Message } from "../../utils/componentsV2.js";
+import { logger } from '../../utils/logger.js';
 import {
     createSelectMenu,
 } from "../../utils/components.js";
@@ -77,41 +78,34 @@ export async function createInitialHelpMenu(client) {
     ];
 
     const botName = client?.user?.username || "Bot";
-    const embed = createEmbed({
-        title: `📖 ${botName} Help`,
+    const avatarUrl = client?.user?.displayAvatarURL?.({ size: 1024 }) || undefined;
+    const container = createV2Container({
+        title: `${botName} Help`,
         description: 'Set up your server, pick what to enable, then browse commands below.',
         color: 'primary',
-        thumbnail: client.user?.displayAvatarURL?.({ size: 1024 }),
+        thumbnail: avatarUrl,
         fields: [
             {
-                name: '🚀 Getting Started',
+                name: 'Getting Started',
                 value: [
                     '**1. Launch setup** — Run `/configwizard` to configure prefix, mod role, and logs.',
-                    '**2. Enable systems** — Use `/commands dashboard` to turn categories on or off.',                    '**3. Browse commands** — Use the menu below to view categories and commands.',
+                    '**2. Enable systems** — Use `/commands dashboard` to turn categories on or off.',
+                    '**3. Browse commands** — Use the menu below to view categories and commands.',
                 ].join('\n'),
-                inline: false,
             },
             {
-                name: 'ℹ️ How It Works',
+                name: 'How It Works',
                 value: [
                     '• Dashboard commands manage each feature visually',
                     '• Settings are saved per server',
                     '• Slash commands and prefixes both work once enabled',
                 ].join('\n'),
-                inline: false,
-            },
-            {
-                name: '\u200B',
-                value: `-# ${botName} is [open source](https://youtu.be/1jCZX8s3bJE?si=NPOYx-vxVE1I5vJK)`,
-                inline: false,
             },
         ],
     });
-
-    embed.setFooter({ 
-        text: "Made with ❤️" 
-    });
-    embed.setTimestamp();
+    container.addTextDisplayComponents(
+        v2Text(`-# ${botName} is [open source](https://youtu.be/1jCZX8s3bJE?si=NPOYx-vxVE1I5vJK)`),
+    );
 
     const bugReportButton = new ButtonBuilder()
         .setCustomId(BUG_REPORT_BUTTON_ID)
@@ -139,8 +133,8 @@ export async function createInitialHelpMenu(client) {
     ]);
 
     return {
-        embeds: [embed],
-        components: [buttonRow, selectRow],
+        components: [container, buttonRow, selectRow],
+        flags: v2Flags(),
     };
 }
 
@@ -152,14 +146,13 @@ export default {
 
     async execute(interaction, guildConfig, client) {
         
-        const { MessageFlags } = await import('discord.js');
         await InteractionHelper.safeDefer(interaction);
         
-        const { embeds, components } = await createInitialHelpMenu(client);
+        const { components, flags } = await createInitialHelpMenu(client);
 
         await InteractionHelper.safeEditReply(interaction, {
-            embeds,
             components,
+            flags,
         });
 
         setTimeout(async () => {
@@ -168,16 +161,13 @@ export default {
                     return;
                 }
 
-                const closedEmbed = createEmbed({
+                const closedContainer = createV2Container({
                     title: "Help menu closed",
                     description: "Help menu has been closed, use /help again.",
                     color: "secondary",
                 });
 
-                await InteractionHelper.safeEditReply(interaction, {
-                    embeds: [closedEmbed],
-                    components: [],
-                });
+                await InteractionHelper.safeEditReply(interaction, v2Message([closedContainer]));
             } catch (error) {
                 logger.debug('Help menu close edit failed (interaction may have expired):', error?.message);
             }

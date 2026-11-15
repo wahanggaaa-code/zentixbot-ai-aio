@@ -1,6 +1,6 @@
 // leveling.js
 
-import { EmbedBuilder } from 'discord.js';
+import { createV2Container, v2Message } from '../../utils/componentsV2.js';
 import { logger } from '../../utils/logger.js';
 import { getGuildConfig, setGuildConfig } from '../config/guildConfig.js';
 import { ZentixBotError, ErrorTypes } from '../../utils/errorHandler.js';
@@ -148,16 +148,15 @@ export async function getLeaderboard(client, guildId, limit = 10) {
 }
 
 export function createLeaderboardEmbed(leaderboard, guild) {
-  const embed = new EmbedBuilder()
-    .setTitle(`🏆 ${guild.name} Leaderboard`)
-    .setColor('#2ecc71')
-    .setTimestamp();
-    
   if (!leaderboard || leaderboard.length === 0) {
-    embed.setDescription('No users on the leaderboard yet!');
-    return embed;
+    return createV2Container({
+      title: `🏆 ${guild.name} Leaderboard`,
+      description: 'No users on the leaderboard yet!',
+      color: '#2ecc71',
+      raw: true,
+    });
   }
-  
+
   const top3 = leaderboard.slice(0, 3);
   const rest = leaderboard.slice(3);
   
@@ -170,11 +169,12 @@ export function createLeaderboardEmbed(leaderboard, guild) {
     return `**#${user.rank}** ${user.username} - Level ${user.level} (${user.totalXp} XP)`;
   }).join('\n');
   
-  embed.setDescription(
-    `**Top Members**\n${top3Text}${restText ? '\n\n' + restText : ''}`
-  );
-  
-  return embed;
+  return createV2Container({
+    title: `🏆 ${guild.name} Leaderboard`,
+    description: `**Top Members**\n${top3Text}${restText ? '\n\n' + restText : ''}`,
+    color: '#2ecc71',
+    raw: true,
+  });
 }
 
 export async function getLevelingConfig(client, guildId) {

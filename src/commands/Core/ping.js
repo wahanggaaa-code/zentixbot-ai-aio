@@ -1,5 +1,5 @@
-import { SlashCommandBuilder, MessageFlags } from 'discord.js';
-import { createEmbed } from '../../utils/embeds.js';
+import { SlashCommandBuilder } from 'discord.js';
+import { createV2Container, v2Message } from '../../utils/componentsV2.js';
 import { logger } from '../../utils/logger.js';
 import { InteractionHelper } from '../../utils/interactionHelper.js';
 
@@ -16,18 +16,22 @@ export default {
             const latency = Date.now() - startTime;
             const apiLatency = Math.max(0, Math.round(interaction.client.ws.ping));
 
-            const embed = createEmbed({ title: 'Pong!', description: null }).addFields(
-                { name: 'Bot Latency', value: `${latency}ms`, inline: true },
-                { name: 'API Latency', value: `${apiLatency}ms`, inline: true },
-            );
+            const container = createV2Container({
+                title: 'Pong!',
+                color: 'primary',
+                fields: [
+                    { name: 'Bot Latency', value: `${latency}ms` },
+                    { name: 'API Latency', value: `${apiLatency}ms` },
+                ],
+            });
 
-            await pingingMessage.edit({ content: null, embeds: [embed] });
+            await pingingMessage.edit({ content: null, ...v2Message([container]) });
         } catch (error) {
             logger.error('Ping prefix command error:', error);
             if (!interaction.replied && !interaction._replyMessage) {
-                await interaction.channel.send({
-                    embeds: [createEmbed({ title: 'System Error', description: 'Could not determine latency at this time.', color: 'error' })],
-                }).catch(() => {});
+                await interaction.channel.send(
+                    v2Message([createV2Container({ title: 'System Error', description: 'Could not determine latency at this time.', color: 'error' })]),
+                ).catch(() => {});
             }
         }
     },
@@ -57,21 +61,24 @@ export default {
             const apiLatency = Math.max(0, Math.round(interaction.client.ws.ping));
             logger.info(`execute - calculated latency: ${latency}ms, apiLatency: ${apiLatency}ms`);
 
-            const embed = createEmbed({ title: "Pong!", description: null }).addFields(
-                { name: "Bot Latency", value: `${latency}ms`, inline: true },
-                { name: "API Latency", value: `${apiLatency}ms`, inline: true },
-            );
+            const container = createV2Container({
+                title: "Pong!",
+                color: "primary",
+                fields: [
+                    { name: "Bot Latency", value: `${latency}ms` },
+                    { name: "API Latency", value: `${apiLatency}ms` },
+                ],
+            });
 
             await InteractionHelper.safeEditReply(interaction, {
                 content: null,
-                embeds: [embed],
+                ...v2Message([container]),
             });
         } catch (error) {
             logger.error('Ping command error:', error);
             try {
                 return await InteractionHelper.safeReply(interaction, {
-                    embeds: [createEmbed({ title: 'System Error', description: 'Could not determine latency at this time.', color: 'error' })],
-                    flags: MessageFlags.Ephemeral,
+                    ...v2Message([createV2Container({ title: 'System Error', description: 'Could not determine latency at this time.', color: 'error' })], { ephemeral: true }),
                 });
             } catch (replyError) {
                 logger.error('Failed to send error reply:', replyError);

@@ -1,9 +1,11 @@
 import { SlashCommandBuilder, PermissionFlagsBits, ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType, MessageFlags } from 'discord.js';
-import { createEmbed, successEmbed } from '../../utils/embeds.js';
+
 import { getModerationCases } from '../../utils/moderation.js';
 import { logger } from '../../utils/logger.js';
 import { InteractionHelper } from '../../utils/interactionHelper.js';
 import { replyUserError, ErrorTypes } from '../../utils/errorHandler.js';
+import { createV2Container, v2Message } from '../../utils/componentsV2.js';
+
 export default {
     data: new SlashCommandBuilder()
         .setName('cases')
@@ -69,32 +71,26 @@ export default {
             const totalPages = Math.ceil(cases.length / CASES_PER_PAGE);
             let currentPage = 1;
 
-            const createCasesEmbed = (page) => {
+            const createCasesContainer = (page) => {
                 const startIndex = (page - 1) * CASES_PER_PAGE;
                 const endIndex = startIndex + CASES_PER_PAGE;
                 const pageCases = cases.slice(startIndex, endIndex);
 
-                const embed = createEmbed({
-                    title: 'Moderation Cases',
-                    description: `Showing moderation cases for **${interaction.guild.name}**\n\n**Page ${page} of ${totalPages}**`
-                });
-
-                pageCases.forEach(case_ => {
+                const fields = pageCases.map(case_ => {
                     const date = new Date(case_.createdAt).toLocaleDateString();
                     const time = new Date(case_.createdAt).toLocaleTimeString();
-                    
-                    embed.addFields({
+                    return {
                         name: `Case #${case_.caseId} - ${case_.action}`,
                         value: `**Target:** ${case_.target}\n**Moderator:** ${case_.executor}\n**Date:** ${date} at ${time}\n**Reason:** ${case_.reason || 'No reason provided'}`,
-                        inline: false
-                    });
+                    };
                 });
 
-                embed.setFooter({
-                    text: `Total cases: ${cases.length} | Filter: ${filterType}${targetUser ?` | User: ${targetUser.tag}`: ''}`
+                return createV2Container({
+                    title: 'Moderation Cases',
+                    description: `Showing moderation cases for **${interaction.guild.name}**\n\n**Page ${page} of ${totalPages}**`,
+                    fields,
+                    footer: { text: `Total cases: ${cases.length} | Filter: ${filterType}${targetUser ?` | User: ${targetUser.tag}`: ''}`, always: true },
                 });
-
-                return embed;
             };
 
             const createNavigationRow = (page) => {
@@ -122,9 +118,9 @@ export default {
                 return row;
             };
 
-            const message = await interaction.editReply({ 
-                embeds: [createCasesEmbed(currentPage)], 
-                components: [createNavigationRow(currentPage)]
+            const message = await interaction.editReply({
+                ...v2Message([createCasesContainer(currentPage), createNavigationRow(currentPage)]),
+                allowedMentions: { parse: [] }
             });
 
             const collector = message.createMessageComponentCollector({
@@ -152,8 +148,8 @@ time: 120000
                 }
 
                 await interaction.editReply({
-                    embeds: [createCasesEmbed(currentPage)],
-                    components: [createNavigationRow(currentPage)]
+                    ...v2Message([createCasesContainer(currentPage), createNavigationRow(currentPage)]),
+                    allowedMentions: { parse: [] }
                 });
             });
 
@@ -163,7 +159,8 @@ time: 120000
                 
                 try {
                     await message.edit({
-                        components: [disabledRow]
+                        ...v2Message([createCasesContainer(currentPage), disabledRow]),
+                        allowedMentions: { parse: [] }
                     });
                 } catch (error) {
                 }

@@ -1,5 +1,5 @@
-import { SlashCommandBuilder, MessageFlags } from 'discord.js';
-import { createEmbed } from '../../utils/embeds.js';
+import { SlashCommandBuilder } from 'discord.js';
+import { createV2Container, v2Message } from '../../utils/componentsV2.js';
 import { logger } from '../../utils/logger.js';
 
 import { InteractionHelper } from '../../utils/interactionHelper.js';
@@ -22,20 +22,15 @@ export default {
 
       const uptimeStr = `${days}d ${hours}h ${minutes}m ${seconds}s`;
 
-      await InteractionHelper.safeEditReply(interaction, {
-        embeds: [createEmbed({ 
-          title: "System Uptime", 
-          description: `\`\`\`${uptimeStr}\`\`\`` 
-        })],
-      });
+      await InteractionHelper.safeEditReply(interaction, v2Message([createV2Container({
+        title: "System Uptime",
+        description: `\`\`\`${uptimeStr}\`\`\``,
+      })]));
     } catch (error) {
       logger.error('Uptime command error:', error);
       
       try {
-        return await InteractionHelper.safeEditReply(interaction, {
-          embeds: [createEmbed({ title: 'System Error', description: 'Could not compute uptime.', color: 'error' })],
-          flags: MessageFlags.Ephemeral,
-        });
+        return await InteractionHelper.safeEditReply(interaction, v2Message([createV2Container({ title: 'System Error', description: 'Could not compute uptime.', color: 'error' })], { ephemeral: true }));
       } catch (replyError) {
         logger.error('Failed to send error reply:', replyError);
       }
