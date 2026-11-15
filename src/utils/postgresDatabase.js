@@ -57,7 +57,6 @@ const PROTOCOL_ONLY_KEY_TYPES = [
     'counters',
     // Written by src/services/reactionRoles/store.js (per-guild lock, validated panels).
     'reaction_role',
-    'counting_game',
 ];
 // To-do lists have no key type of their own; they are written by src/services/todo/store.js
 // (lock from read to write, failures thrown instead of answered with "no data").

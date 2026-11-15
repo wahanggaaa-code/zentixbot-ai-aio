@@ -12,7 +12,6 @@ import { getCommandPrefix, getBotMessage, isBotOwner, isCommandCategoryEnabled, 
 import { enforceAbuseProtection, formatCooldownDuration } from '../utils/abuseProtection.js';
 import { createV2Container, v2Message } from '../utils/componentsV2.js';
 import { isCommandEnabled } from '../services/commandAccessService.js';
-import { handleCountingMessage } from '../services/countingGame/manage.js';
 
 const MESSAGE_XP_RATE_LIMIT_ATTEMPTS = 12;
 const MESSAGE_XP_RATE_LIMIT_WINDOW_MS = 10000;
@@ -26,11 +25,6 @@ export default {
       if (message.author.bot || !message.guild) return;
 
       logger.debug(`Message received from ${message.author.tag}: ${message.content}`);
-
-      const countingProcessed = await handleCountingMessage(client, message);
-      if (countingProcessed) {
-        return;
-      }
 
       // Interactive AI (mention, reply, joining in, image comments). Not awaited: writing an answer takes
       // seconds and must not hold up commands or XP. It never throws.

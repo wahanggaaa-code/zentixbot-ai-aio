@@ -24,7 +24,6 @@ import { createAIApi } from './aiApi.js';
 import { createSettingsApi } from './settingsApi.js';
 import { createServerStatsApi } from './serverStatsApi.js';
 import { createReactionRolesApi } from './reactionRolesApi.js';
-import { createCountingApi } from './countingApi.js';
 import { createApplicationsApi } from './applicationsApi.js';
 
 const preview = fileURLToPath(new URL('../../dashboard/', import.meta.url));
@@ -222,7 +221,6 @@ export function createDashboardRouter(client, { fetchImpl = globalThis.fetch, en
   router.use('/api/bot', createJoinToCreateSettingsApi(client, {auth, csrf}));
   router.use('/api/bot', createServerStatsApi(client, {auth, csrf}));
   router.use('/api/bot', createReactionRolesApi(client, {auth, csrf}));
-  router.use('/api/bot', createCountingApi(client, {auth, csrf}));
   router.use('/api/bot', createApplicationsApi(client, {auth, csrf}));
   router.use('/api/bot', createModulesApi(client, {auth, csrf}));
   router.use('/api/bot', createOperationsApi(client, {auth, csrf}));

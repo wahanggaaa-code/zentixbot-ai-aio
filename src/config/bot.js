@@ -331,7 +331,7 @@ export const botConfig = {
     // Maximum failed attempts allowed inside the time window below.
     maxVerificationAttempts: 3,
 
-    // Time window for counting attempts (milliseconds).
+    // Time window for verification attempts (milliseconds).
     // 60000 = 1 minute.
     attemptWindow: 60000,
 

@@ -15,7 +15,7 @@ export const DEFAULT_ACTIVITY=Object.freeze({enabled:false,channelId:null,durati
 export const REPEAT_MINUTES=Object.freeze({min:5,max:1440});
 export function validateActivity(v,guild){
  const keys=Object.keys(DEFAULT_ACTIVITY);if(!v||typeof v!=='object'||Array.isArray(v)||keys.length!==Object.keys(v).length||keys.some(k=>!Object.hasOwn(v,k)))throw error('Pengaturan activity tidak valid.');
- if(typeof v.enabled!=='boolean'||typeof v.scheduleEnabled!=='boolean'||!Number.isInteger(v.rewardPoints)||v.rewardPoints<0||v.rewardPoints>1000||!Number.isInteger(v.duration)||v.duration<30||v.duration>300||!['id','en'].includes(v.language)||!['trivia','emoji'].includes(v.kind)||!/^([01]\d|2[0-3]):[0-5]\d$/.test(v.scheduleTime)||!['everyday','weekdays','weekend'].includes(v.scheduleDays)||!['WIB','WITA','WIT'].includes(v.timeZone))throw error('Pengaturan activity tidak valid.');
+ if(typeof v.enabled!=='boolean'||typeof v.scheduleEnabled!=='boolean'||!Number.isInteger(v.rewardPoints)||v.rewardPoints<0||v.rewardPoints>1000||!Number.isInteger(v.duration)||v.duration<30||v.duration>600||!['id','en'].includes(v.language)||!['trivia','emoji'].includes(v.kind)||!/^([01]\d|2[0-3]):[0-5]\d$/.test(v.scheduleTime)||!['everyday','weekdays','weekend'].includes(v.scheduleDays)||!['WIB','WITA','WIT'].includes(v.timeZone))throw error('Pengaturan activity tidak valid.');
  const clock=/^([01]\d|2[0-3]):[0-5]\d$/,gap=n=>Number.isInteger(n)&&n>=REPEAT_MINUTES.min&&n<=REPEAT_MINUTES.max;
  if(typeof v.repeatTrivia!=='boolean'||typeof v.repeatEmoji!=='boolean'||!clock.test(v.repeatFrom)||!clock.test(v.repeatUntil)||!['everyday','weekdays','weekend'].includes(v.repeatDays))throw error('Pengaturan ronde berulang tidak valid.');
  if(!gap(v.repeatTriviaMinutes)||!gap(v.repeatEmojiMinutes))throw error(`Jarak ronde berulang harus ${REPEAT_MINUTES.min} menit sampai 24 jam.`);
@@ -45,41 +45,68 @@ export function createActivityStore(client){
   async status(id,now=Date.now()){const r=await dbPool(client).query(`SELECT value FROM ${table} WHERE key=$1`,[roundKey(id)]);const v=r.rows[0]?.value;if(!v||!['pending','open','expired','solved','closed'].includes(v.state))return {state:'none'};const state=v.state==='open'&&v.expiresAt<=now?'expired':v.state;const quiz=validateQuiz(v.question);return {state,expiresAt:Number.isFinite(v.expiresAt)?v.expiresAt:null,...(quiz?{question:quiz.question,options:quiz.options,...(state!=='open'&&state!=='pending'?{answer:quiz.answer}:{})}:{})};},
   async points(id,userId){if(!/^\d{17,20}$/.test(userId||''))throw error('Anggota tidak valid.');const r=await dbPool(client).query(`SELECT value FROM ${table} WHERE key=$1`,[`ai:activity:points:${id}:${userId}`]);const n=r.rows[0]?.value?.points??0;if(!Number.isSafeInteger(n)||n<0)throw error('Saldo poin tidak valid.',503);return n;},
   reserve(id,roundId,now){return locked(id,v=>{if(['pending','open'].includes(v.state)&&v.expiresAt>now)throw roundActive();return {write:{state:'pending',id:roundId,expiresAt:now+150000},result:true};});},
-  open(id,roundId,question,duration,now,rewardPoints=0){return locked(id,v=>{if(v.state!=='pending'||v.id!==roundId||v.expiresAt<=now)throw error('Reservasi ronde kedaluwarsa.',409);return {write:{state:'open',id:roundId,expiresAt:now+duration*1000,question,answered:[],messageId:null,rewardPoints},result:true}});},
+  open(id,roundId,question,duration,now,rewardPoints=0,kind='trivia'){return locked(id,v=>{if(v.state!=='pending'||v.id!==roundId||v.expiresAt<=now)throw error('Reservasi ronde kedaluwarsa.',409);return {write:{state:'open',id:roundId,expiresAt:now+duration*1000,question,answered:[],messageId:null,rewardPoints,kind:kind==='emoji'?'emoji':'trivia'},result:true}});},
   attach(id,roundId,messageId){return locked(id,v=>{if(v.state!=='open'||v.id!==roundId)throw error('Ronde sudah berubah.',409);return {write:{...v,messageId},result:true}});},
   cancel(id,roundId){return locked(id,v=>v.id===roundId?{write:{state:'closed'},result:true}:{result:false});},
   answer(id,roundId,messageId,userId,choice,now){return locked(id,async(v,conn)=>{
    if(v.id!==roundId||v.messageId!==messageId||v.state!=='open')return {result:{status:'closed'}};
-   if(v.expiresAt<=now)return {write:{...v,state:'expired'},result:{status:'expired',question:v.question}};
+   if(v.expiresAt<=now)return {write:{...v,state:'expired'},result:{status:'expired',question:{...v.question,kind:v.kind??'trivia'}}};
    if(!Array.isArray(v.answered)||v.answered.length>=1000)return {result:{status:'full'}};
    if(v.answered.includes(userId))return {result:{status:'answered'}};
    const answered=[...v.answered,userId];if(choice===v.question.answer){
     const reward=v.rewardPoints??0;if(!Number.isInteger(reward)||reward<0||reward>1000||!/^\d{17,20}$/.test(userId||''))throw error('Data hadiah tidak valid.',503);let points=null;
     if(reward){const k=`ai:activity:points:${id}:${userId}`;await conn.query(`INSERT INTO ${table} (key,value) VALUES ($1,'{}'::jsonb) ON CONFLICT (key) DO NOTHING`,[k]);const row=await conn.query(`SELECT value FROM ${table} WHERE key=$1 FOR UPDATE`,[k]);const before=row.rows[0].value.points??0;points=before+reward;if(!Number.isSafeInteger(before)||before<0||!Number.isSafeInteger(points))throw error('Saldo poin tidak valid.',503);await conn.query(`UPDATE ${table} SET value=$2::jsonb WHERE key=$1`,[k,JSON.stringify({points})]);}
-    return {write:{...v,state:'solved',answered},result:{status:'correct',question:v.question,reward,points}};}
+    return {write:{...v,state:'solved',answered},result:{status:'correct',question:{...v.question,kind:v.kind??'trivia'},reward,points}};}
 
    return {write:{...v,answered},result:{status:'wrong'}};
   });},
-  expire(id,roundId,now){return locked(id,v=>v.id===roundId&&v.state==='open'&&v.expiresAt<=now?{write:{...v,state:'expired'},result:v.question}:{result:null});}
+  expire(id,roundId,now){return locked(id,v=>v.id===roundId&&v.state==='open'&&v.expiresAt<=now?{write:{...v,state:'expired'},result:{...v.question,kind:v.kind??'trivia'}}:{result:null});}
  };
 }
-const FALLBACK={question:'Planet mana yang dikenal sebagai planet merah?',options:['Venus','Mars','Jupiter','Merkurius'],answer:1};
+const FALLBACK={question:'Planet mana yang dikenal sebagai planet merah?',options:['Venus','Mars','Jupiter','Merkurius'],answer:1,explanation:'Mars dikenal sebagai planet merah karena permukaannya berkarat.'};
 export function validateQuiz(raw){
- if(!raw||typeof raw!=='object'||Array.isArray(raw)||Object.keys(raw).sort().join(',')!=='answer,options,question')return null;
+ const KEYS=new Set(['answer','options','question','explanation','clue']);
+ if(!raw||typeof raw!=='object'||Array.isArray(raw)||!Object.keys(raw).every(k=>KEYS.has(k)))return null;
  const valid=(s,max)=>typeof s==='string'&&s.trim().length>0&&s.length<=max&&!/https?:\/\/|www\.|discord\.gg|<@|@(everyone|here)/i.test(s);
  if(!valid(raw.question,300)||!Array.isArray(raw.options)||raw.options.length!==4||raw.options.some(x=>!valid(x,80))||new Set(raw.options.map(x=>x.trim().toLowerCase())).size!==4||!Number.isInteger(raw.answer)||raw.answer<0||raw.answer>3)return null;
- return {question:raw.question.trim(),options:raw.options.map(x=>x.trim()),answer:raw.answer};
+ const quiz={question:raw.question.trim(),options:raw.options.map(x=>x.trim()),answer:raw.answer};
+ // Optional garnish from the AI: kept when usable, dropped otherwise.
+ if(raw.explanation!==undefined&&valid(raw.explanation,240))quiz.explanation=raw.explanation.trim();
+ if(raw.clue!==undefined&&valid(raw.clue,64))quiz.clue=raw.clue.trim();
+ return quiz;
 }
-export function quizPayload(quiz,roundId,{ended=null}={}){
+/** The model loves putting the correct answer first; reorder with Fisher-Yates so the position is not a hint. `random` is injectable for tests. */
+export function shuffleQuiz(quiz,random=Math.random){
+ const order=[0,1,2,3];
+ for(let i=order.length-1;i>0;i--){const j=Math.floor(random()*(i+1));[order[i],order[j]]=[order[j],order[i]];}
+ return {...quiz,options:order.map(i=>quiz.options[i]),answer:order.indexOf(quiz.answer)};
+}
+export const ACTIVITY_TITLES=Object.freeze({trivia:'🧩 Tebak-Tebakan',emoji:'abc Tebak Emoji'});
+export function quizPayload(quiz,roundId,{state='open',minutes=null,winner=null}={}){
+ const kind=quiz?.kind==='emoji'?'emoji':'trivia',ended=state!=='open';
+ const correctLabel=`${String.fromCharCode(65+quiz.answer)}. ${quiz.options[quiz.answer]}`;
  const choices=quiz.options.map((o,i)=>`**${String.fromCharCode(65+i)}.** ${o}`).join('\n');
- const description=`${quiz.question}\n\n${choices}${ended?`\n\n${ended} Jawaban: **${String.fromCharCode(65+quiz.answer)}. ${quiz.options[quiz.answer]}**`:''}`;
- // raw: emoji-kind questions are emoji by design, so the text displays must keep Extended_Pictographic characters.
- const container=createV2Container({title:'✳ AI Activities',description,color:0xb0e52c,raw:true});
- const rows=[
-  ...(!ended?[new ActionRowBuilder().addComponents(quiz.options.map((_,i)=>new ButtonBuilder().setCustomId(`ai_quiz:${roundId}:${i}`).setLabel(String.fromCharCode(65+i)).setStyle(ButtonStyle.Secondary)))]:[]),
-  new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('ai_quiz_points:view').setLabel('Poin saya').setStyle(ButtonStyle.Secondary))
- ];
- return {...v2Message([container,...rows]),allowedMentions:{parse:[]}};
+ const segments=[quiz.question];
+ if(quiz.clue)segments.push(`**Clue:** ${quiz.clue}`);
+ segments.push(choices);
+ if(ended){
+  // Reference behaviour: the round turns green with a winner, red when nobody answered.
+  if(state==='solved')segments.push(winner?`🎉 Ronde selesai! <@${winner.id}> menjawab dengan benar${winner.reward>0?` dan mendapatkan **${winner.reward} Activity Points**`:''}!\nJawaban yang benar adalah **${correctLabel}**.`:`🎉 Ronde selesai! Jawaban yang benar adalah **${correctLabel}**.`);
+  else segments.push(`⏰ Waktu habis! Tidak ada yang berhasil menjawab.\nJawaban yang benar adalah **${correctLabel}**.`);
+  if(quiz.explanation)segments.push(`💡 Penjelasan: ${quiz.explanation}`);
+ }else if(Number.isFinite(minutes)){
+  segments.push(`⏳ Berakhir dalam ${minutes} menit`);
+ }
+ const container=createV2Container({title:ACTIVITY_TITLES[kind],description:segments.join('\n\n'),color:ended?(state==='solved'?'#2ecc71':'#e74c3c'):'#336699',raw:true});
+ // The choices stay visible (disabled) once the round ends, the correct one in green, like the reference.
+ const choiceRow=new ActionRowBuilder().addComponents(quiz.options.map((_,i)=>{
+  const button=new ButtonBuilder().setCustomId(`ai_quiz:${roundId}:${i}`).setLabel(String.fromCharCode(65+i)).setStyle(ended&&i===quiz.answer?ButtonStyle.Success:ButtonStyle.Secondary);
+  if(ended)button.setDisabled(true);
+  return button;
+ }));
+ const rows=[choiceRow,new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('ai_quiz_points:view').setLabel('Poin saya').setStyle(ButtonStyle.Secondary))];
+ const mentions=state==='solved'&&winner?{parse:[],users:[winner.id]}:{parse:[]};
+ return {...v2Message([container,...rows]),allowedMentions:mentions};
 }
 // Asking for "one easy question" again and again gets the same few questions back, so every request names a topic
 // and lists what was asked lately.
@@ -92,7 +119,8 @@ export function quizPrompt({kind,language,recent=[],random=Math.random}){
  const topics=TOPICS[kind],topic=topics[Math.min(topics.length-1,Math.floor(random()*topics.length))];
  // The newest questions first, within a budget that keeps the request well under the 4000 characters allowed.
  const earlier=[];let size=0;for(const q of [...recent].reverse()){const text=String(q).slice(0,120);if(earlier.length>=15||size+text.length>1500)break;earlier.unshift(text);size+=text.length;}
- return `Generate one easy ${kind==='emoji'?'emoji guessing puzzle, where the question contains emoji representing a familiar object or phrase':'factual general-knowledge multiple choice question'} in ${language==='id'?'Indonesian':'English'}. Topic: ${topic}.${earlier.length?` It must be different from these earlier ones: ${JSON.stringify(earlier)}.`:''} Respond with only JSON object with keys question (string), options (array of exactly 4 short strings), answer (correct index 0 to 3). No URLs or mentions.`;
+ const extra=kind==='emoji'?', clue (a short hint, required)':'';
+ return `Generate one easy ${kind==='emoji'?'emoji guessing puzzle, where the question contains emoji representing a familiar object or phrase':'factual general-knowledge multiple choice question'} in ${language==='id'?'Indonesian':'English'}. Topic: ${topic}.${earlier.length?` It must be different from these earlier ones: ${JSON.stringify(earlier)}.`:''} Respond with only JSON object with keys question (string), options (array of exactly 4 short strings), answer (correct index 0 to 3)${extra} and explanation (one short sentence explaining the answer). The position of the correct option varies between rounds; never default to the same index. No URLs or mentions.`;
 }
 /** The quiz in a provider's answer. Models often wrap the JSON in a code fence or a sentence. */
 export function parseQuiz(text){
@@ -102,8 +130,8 @@ export function parseQuiz(text){
 }
 const sameQuestion=q=>String(q).toLowerCase().replace(/[^\p{L}\p{N}\p{Extended_Pictographic}]+/gu,' ').trim();
 const FALLBACKS={
- trivia:{id:FALLBACK,en:{question:'Which planet is known as the Red Planet?',options:['Venus','Mars','Jupiter','Mercury'],answer:1}},
- emoji:{id:{question:'Tebak kata: ☀️🌻',options:['Bunga matahari','Bulan','Laut','Awan'],answer:0},en:{question:'Guess the word: ☀️🌻',options:['Sunflower','Moon','Ocean','Cloud'],answer:0}},
+ trivia:{id:{...FALLBACK,explanation:'Mars dikenal sebagai planet merah karena permukaannya berkarat.'},en:{question:'Which planet is known as the Red Planet?',options:['Venus','Mars','Jupiter','Mercury'],answer:1,explanation:'Mars is called the Red Planet after the iron oxide dusting its surface.'}},
+ emoji:{id:{question:'Tebak kata: ☀️🌻',options:['Bunga matahari','Bulan','Laut','Awan'],answer:0,explanation:'☀️ dan 🌻 melambangkan bunga matahari.',clue:'Bunga kuning yang tinggi'},en:{question:'Guess the word: ☀️🌻',options:['Sunflower','Moon','Ocean','Cloud'],answer:0,explanation:'The sun and the sunflower emoji hint at a sunflower.',clue:'A tall yellow flower'}},
 };
 /**
  * Starts one round in the configured channel.
@@ -120,18 +148,18 @@ export async function startActivity({client,guild,actorId,store=createActivitySt
   let question=null,source='ai',reason='AI tidak memberi soal.';
   for(let attempt=0;attempt<(requireAI?2:1)&&!question;attempt++){
    try{const r=await foundation.generate({guildId:guild.id,userId:actorId,consent:true,kind:'activity',prompt:quizPrompt({kind:game,language:cfg.language,recent,random})});const quiz=parseQuiz(r.text);
-    if(!quiz)reason='AI tidak memberi soal dengan format yang benar.';else if(requireAI&&asked.has(sameQuestion(quiz.question)))reason='AI mengulang soal yang baru saja dipakai.';else question=quiz;
+    if(!quiz)reason='AI tidak memberi soal dengan format yang benar.';else if(requireAI&&asked.has(sameQuestion(quiz.question)))reason='AI mengulang soal yang baru saja dipakai.';else question=shuffleQuiz(quiz,random);
    }catch(e){
     // The AI layer refuses with a code, a status and a text written for the owner (daily limit reached, AI switched
     // off, providers down). Anything else (a database driver's error, a bug) is not shown.
     reason=typeof e?.code==='string'&&Number.isInteger(e?.status)&&e.message?String(e.message).slice(0,200):'AI tidak dapat dihubungi.';break;}
   }
-  if(!question){if(requireAI)throw Object.assign(error(reason,503),{code:'NO_QUESTION'});question=FALLBACKS[game][cfg.language==='en'?'en':'id'];source='fallback';}
-  await store.open(guild.id,roundId,question,cfg.duration,Date.now(),cfg.rewardPoints);const channel=guild.channels.cache.get(cfg.channelId);sendAttempted=true;let message;
-  try{message=await channel.send(quizPayload(question,roundId));}catch{throw error('Hasil pengiriman ronde tidak pasti; periksa channel sebelum mencoba lagi.',409)}
+  if(!question){if(requireAI)throw Object.assign(error(reason,503),{code:'NO_QUESTION'});question=shuffleQuiz(FALLBACKS[game][cfg.language==='en'?'en':'id'],random);source='fallback';}
+  await store.open(guild.id,roundId,question,cfg.duration,Date.now(),cfg.rewardPoints,game);const channel=guild.channels.cache.get(cfg.channelId);sendAttempted=true;let message;
+  try{message=await channel.send(quizPayload({...question,kind:game},roundId,{minutes:Math.max(1,Math.round(cfg.duration/60))}));}catch{throw error('Hasil pengiriman ronde tidak pasti; periksa channel sebelum mencoba lagi.',409)}
   try{await store.attach(guild.id,roundId,message.id);}catch{throw error('Ronde terkirim tetapi status gagal disimpan; periksa channel sebelum mencoba lagi.',409)}
   if(source==='ai')await rememberQuestion(store,guild.id,game,question.question);
-  const timer=setTimeout(async()=>{try{const expired=await store.expire(guild.id,roundId,Date.now());if(expired)await message.edit(quizPayload(expired,roundId,{ended:'Waktu habis.'}));}catch{}},cfg.duration*1000+100);timer.unref?.();
+  const timer=setTimeout(async()=>{try{const expired=await store.expire(guild.id,roundId,Date.now());if(expired)await message.edit(quizPayload(expired,roundId,{state:'expired'}));}catch{}},cfg.duration*1000+100);timer.unref?.();
   return {messageId:message.id,source,kind:game};
  }catch(e){if(!sendAttempted)await store.cancel(guild.id,roundId).catch(()=>{});throw e;}
 }
@@ -210,6 +238,21 @@ export function repeatNext(cfg,kind,now=new Date()){
  }
  return null;
 }
+/** The most recent slot of `kind` whose late window has ended, or null when the game does not repeat. */
+export function repeatExpired(cfg,kind,now=new Date()){
+ const {on,every}=repeatRule(cfg,kind);if(!on)return null;
+ const {from,span}=repeatWindow(cfg),local=localTime(cfg,now),midnight=Date.UTC(local.getUTCFullYear(),local.getUTCMonth(),local.getUTCDate()),grace=Math.min(SCHEDULE_LATE_MINUTES,every)*MINUTE;
+ // Yesterday (or earlier, for a week) may still hold the most recent expired slot; the window is symmetric with repeatNext.
+ for(let day=0;day>=-8;day--){
+  const opened=new Date(midnight+day*DAY_MINUTES*MINUTE+from*MINUTE);if(!dayAllowed(cfg.repeatDays,opened))continue;
+  const start=Math.min(Math.floor(span/every)*every,Math.floor((local.getTime()-opened.getTime())/(every*MINUTE))*every);
+  if(start<0)continue;
+  for(let at=opened.getTime()+start*MINUTE;at>=opened.getTime();at-=every*MINUTE){
+   if(at+grace<=local.getTime())return slotOf(cfg,new Date(at));
+  }
+ }
+ return null;
+}
 /** How many rounds of `kind` one day of active hours holds. */
 export const repeatPerDay=(cfg,kind)=>{const {on,every}=repeatRule(cfg,kind);return on?Math.floor(repeatWindow(cfg).span/every)+1:0;};
 const DAY_NAMES=['Min','Sen','Sel','Rab','Kam','Jum','Sab'],MONTH_NAMES=['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
@@ -231,9 +274,29 @@ export function activityPlan(cfg,now=new Date(),state={}){
 const claimSlot=(store,guildId,kind,slot)=>store.updateSchedule(guildId,v=>v.slots?.[kind]===slot?{result:false}:{write:{...v,slots:{...v.slots,[kind]:slot}},result:true});
 const releaseSlot=(store,guildId,kind,slot)=>store.updateSchedule(guildId,v=>{if(v.slots?.[kind]!==slot)return {result:false};const {[kind]:_,...slots}=v.slots;return {write:{...v,slots},result:true};});
 const noteSlot=(store,guildId,kind,entry)=>store.updateSchedule(guildId,v=>({write:{...v,last:{...v.last,[kind]:entry}},result:true})).catch(()=>{});
+/**
+ * Notes the newest expired slot of each game as skipped when it never opened, so the dashboard can say why a round
+ * the settings promise did not appear. A slot that was claimed and sent, or claimed and noted before the AI refused,
+ * carries its mark already; one that was released (another round was open) or never tried (the bot was down) has
+ * neither, and those are the ones recorded here. Slot names are local clock strings, so they order chronologically:
+ * the slot is written only when it is newer than everything recorded for the game, which never drops a newer note
+ * (a real send or a skip with its reason) in favour of an older silence.
+ */
+const recordMissedSlots=async(store,guildId,cfg,now)=>{
+ if(!store.updateSchedule)return;
+ let state={};try{state=(await store.readSchedule(guildId))??{};}catch{return;}
+ for(const kind of REPEAT_KINDS){
+  const prev=repeatExpired(cfg,kind,now);if(!prev)continue;
+  if((state.slots?.[kind]??'')>=prev.slot||(state.last?.[kind]?.slot??'')>=prev.slot)continue;
+  await noteSlot(store,guildId,kind,{slot:prev.slot,result:'skipped',reason:'Ronde tidak terbuka: ronde lain masih berjalan, atau bot tidak sempat jalan.',at:now.getTime()});
+ }
+};
 /** Starts the repeating round that is due, if any: at most one a minute, because only one round can be open. */
 export async function runRepeatActivity(client,{store=createActivityStore(client),now=new Date(),start=startActivity,cfg=null,log=logger}={}){
  const guild=client.guilds?.cache.get(client.homeGuildId);if(!guild)return false;cfg??=await store.read(guild.id);
+ // A slot whose grace has ended without its round opening is recorded before anything else runs, so it is noted
+ // even on a tick where another game is sent or nothing is due at all.
+ await recordMissedSlots(store,guild.id,cfg,now);
  // When both games are due in the same minute the rarer one goes first; the other follows once that round is over.
  const due=REPEAT_KINDS.map(kind=>({kind,every:repeatRule(cfg,kind).every,slot:repeatDue(cfg,kind,now)?.slot})).filter(x=>x.slot).sort((a,b)=>b.every-a.every);
  if(!due.length||!store.updateSchedule)return false;
