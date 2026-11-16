@@ -10,6 +10,7 @@ import { callbackProblem, loginProblemPage } from './loginProblem.js';
 import { linkToken, loginFormPage, tokenLoginStatus, tokenMatches, tokenOffMessage, TOKEN_SESSION_MS } from './tokenLogin.js';
 import { noticePage } from './loginPage.js';
 import { createBotApiRouter } from './botApi.js';
+import { createSelfRolesApi } from './selfRolesApi.js';
 import { createGoodbyeApi } from './goodbyeApi.js';
 import { createBirthdayApi } from './birthdayApi.js';
 import { createCoreApi } from './coreApi.js';
@@ -23,7 +24,6 @@ import { createSystemUsageApi } from './systemUsageApi.js';
 import { createAIApi } from './aiApi.js';
 import { createSettingsApi } from './settingsApi.js';
 import { createServerStatsApi } from './serverStatsApi.js';
-import { createReactionRolesApi } from './reactionRolesApi.js';
 import { createSocialAlertsApi } from './socialAlertsApi.js';
 
 const preview = fileURLToPath(new URL('../../dashboard/', import.meta.url));
@@ -220,7 +220,7 @@ export function createDashboardRouter(client, { fetchImpl = globalThis.fetch, en
   router.use('/api/bot', createJoinToCreateApi(client, {auth}));
   router.use('/api/bot', createJoinToCreateSettingsApi(client, {auth, csrf}));
   router.use('/api/bot', createServerStatsApi(client, {auth, csrf}));
-  router.use('/api/bot', createReactionRolesApi(client, {auth, csrf}));
+  router.use('/api/bot', createSelfRolesApi(client, { auth, csrf }));
   router.use('/api/bot', createSocialAlertsApi(client, {auth, csrf}));
   router.use('/api/bot', createModulesApi(client, {auth, csrf}));
   router.use('/api/bot', createOperationsApi(client, {auth, csrf}));

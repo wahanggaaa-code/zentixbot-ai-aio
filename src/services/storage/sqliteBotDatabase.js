@@ -15,7 +15,7 @@ export function readSQLiteBotValue(tx,key,def=null){const canonical=checkKey(key
 }
 // Data with its own transactional writer (the same list as PROTOCOL_ONLY_KEY_TYPES in
 // postgresDatabase.js). set, delete, increment and decrement refuse these; reads stay available.
-const STORE_ONLY_TYPES=['welcome_config','jointocreate_config','jointocreate_channels','counters','reaction_role','social_alert'];
+const STORE_ONLY_TYPES=['welcome_config','jointocreate_config','jointocreate_channels','counters','reaction_role','self_role','self_role_banner','social_alert'];
 const STORE_ONLY_PATTERN=/^(?:todo_|shared_todo_|user_shared_lists_)/;
 function nonEconomy(key){const canonical=checkKey(key);if(applicationKey(canonical))throw failure('Gunakan penyimpanan aplikasi.','APPLICATION_WRITE_DISABLED');if(STORE_ONLY_PATTERN.test(canonical)||STORE_ONLY_TYPES.includes(parseKey(canonical).type))throw failure('Gunakan penyimpanan fitur ini.','CONFIG_WRITE_DISABLED');if(parseKey(canonical).type==='afk_status')throw failure('Operasi AFK SQLite belum tersedia.','AFK_WRITE_DISABLED');if(parseKey(canonical).type==='warnings'||/^guild:[^:]+:warning-sequence:[^:]+$/.test(canonical))throw failure('Gunakan transaksi peringatan.','WARNING_WRITE_DISABLED');if(parseKey(canonical).type==='ticket')throw failure('Gunakan snapshot tiket.','TICKET_WRITE_DISABLED');if(parseKey(canonical).type==='user_level')throw failure('Gunakan transaksi leveling.','LEVEL_WRITE_DISABLED');if(['guild_birthdays','birthday_left'].includes(parseKey(canonical).type))throw failure('Gunakan transaksi ulang tahun.','BIRTHDAY_WRITE_DISABLED');if(parseKey(canonical).type==='guild_giveaways')throw failure('Gunakan transaksi giveaway.','GIVEAWAY_WRITE_DISABLED');if(parseKey(canonical).type==='guild_config')throw failure('Gunakan transaksi konfigurasi guild.','CONFIG_WRITE_DISABLED');if(parseKey(canonical).type==='economy')throw failure('Penulisan ekonomi lama dinonaktifkan; gunakan transaksi ekonomi.','ECONOMY_LEGACY_WRITE_DISABLED');return canonical}
 function ttlToExpiry(key,ttl){if(ttl===null||ttl===undefined||ttl===0)return null;if(typeof ttl!=='number'||!Number.isFinite(ttl)||ttl<0)throw failure('TTL tidak valid.');const parsed=parseKey(key);if(parsed.type!=='cache'&&!isTempBackedType(parsed.type))return null;const value=Date.now()+ttl*1000;if(!Number.isSafeInteger(value))throw failure('TTL di luar batas.');return value;}
@@ -33,7 +33,7 @@ function listCandidates(wanted){
  const match=wanted.match(/^guild:([^:]+):/);if(!match)return [''];const guild=match[1],root=`guild:${guild}:`;
  const pairs=[
   [`${root}economy:`,`economy:${guild}:`],[`${root}leveling:users:`,`${guild}:leveling:users:`],
-  [`${root}warnings:`,`moderation:warnings:${guild}:`],[`${root}reaction_roles:`,`reaction_roles:${guild}:`],
+  [`${root}warnings:`,`moderation:warnings:${guild}:`],[`${root}reaction_roles:`,`reaction_roles:${guild}:`],[`${root}self_role:`,`${root}reaction_roles:`],[`${root}self_role:`,`reaction_roles:${guild}:`],
   [`${root}birthdays`,`birthdays:${guild}`],[`${root}birthdays:tracking`,`bday-role-tracking-${guild}`],
   [`${root}usernotes:`,`moderation_user_notes_${guild}_`],[`${root}usernotes:list`,`moderation_user_notes_list_${guild}`],
   [`${root}counters`,`counters:${guild}`],

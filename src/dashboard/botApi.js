@@ -6,6 +6,7 @@ import { normalizeWelcomeConfig } from '../utils/database.js';
 import { unwrapReplitData } from '../utils/database/guildConfigStorage.js';
 import { buildWelcomePayload } from '../services/welcomePayload.js';
 import { assertOnboardingCompatible, assertOnboardingShape } from '../services/config/onboardingConflict.js';
+import { logger } from '../utils/logger.js';
 
 function persistentPool(client) {
   const db = client.db;
@@ -16,7 +17,8 @@ function createStore(client) {
   const t = pgConfig.tables;
   return {
     async read(id) {
-      const sqlite=sqliteBackend(client);if(sqlite)return {welcome:unwrapReplitData(sqlite.botGet(`guild:${id}:welcome`)||{}),guild:unwrapReplitData(sqlite.botGet(`guild:${id}:config`)||{})};
+      const sqlite=sqliteBackend(client);
+      if(sqlite) return {welcome:unwrapReplitData(sqlite.botGet(`guild:${id}:welcome`)||{}),guild:unwrapReplitData(sqlite.botGet(`guild:${id}:config`)||{})};
       const pool = persistentPool(client);
       const [welcome,guild] = await Promise.all([
         pool.query(`SELECT config FROM ${t.welcome_configs} WHERE guild_id = $1`,[id]),
@@ -25,9 +27,13 @@ function createStore(client) {
       return {welcome:unwrapReplitData(welcome.rows[0]?.config || {}), guild:unwrapReplitData(guild.rows[0]?.config || {})};
     },
     async update(id, patch) {
-      const sqlite=sqliteBackend(client);if(sqlite)return sqlite.transaction(tx=>{
-        const raw=tx.botGet(`guild:${id}:welcome`)||{};if(raw.ok!==undefined&&raw.value!==undefined)throw new Error('Format welcome lama perlu dimigrasikan sebelum diubah.');
-        const merged={...raw,...patch,welcomeEmbed:{...(raw.welcomeEmbed||{}),...patch.welcomeEmbed}};tx.botSet(`guild:${id}:welcome`,merged);return normalizeWelcomeConfig(merged);
+      const sqlite=sqliteBackend(client);
+      if(sqlite) return sqlite.transaction(tx => {
+        const raw = tx.botGet(`guild:${id}:welcome`) || {};
+        if (raw.ok !== undefined && raw.value !== undefined) throw new Error('Format welcome lama perlu dimigrasikan sebelum diubah.');
+        const merged = { ...raw, ...patch, welcomeEmbed: { ...(raw.welcomeEmbed || {}), ...patch.welcomeEmbed } };
+        tx.botSet(`guild:${id}:welcome`, merged);
+        return normalizeWelcomeConfig(merged);
       });
       const pool = persistentPool(client); const db = await pool.connect();
       try {
@@ -50,6 +56,7 @@ function createStore(client) {
     }
   };
 }
+
 const allowed = ['enabled','channelId','welcomeMessage','welcomePing','welcomeImage','roleIds','welcomeEmbed'];
 // Autoroles can be several (multi-select); the runtime assigns every listed role.
 export const MAX_AUTOROLES = 5;
@@ -78,12 +85,14 @@ function validate(body,guild) {
 }
 export function createBotApiRouter(client, {auth, csrf, store = createStore(client)}) {
   const router=express.Router();
+
+  // Welcome API
   router.use(express.json({limit:'16kb'}));
-  router.get('/overview',auth,(req,res)=>{
+  router.get('/overview',auth,(req,res)=> {
     const ping=client.ws?.ping;
     res.json({guild:{id:req.guild.id,name:req.guild.name,memberCount:Number.isFinite(req.guild.memberCount)?req.guild.memberCount:null},online:client.isReady(),ping:Number.isFinite(ping)&&ping>=0?Math.round(ping):null,uptime:Number.isFinite(client.uptime)?client.uptime:null,database:client.db?.getStatus?.().isDegraded===false && !!client.db.db?.isAvailable?.()?'connected':'unavailable'});
   });
-  router.get('/welcome',auth,async(req,res)=>{
+  router.get('/welcome',auth,async(req,res)=> {
     try {
       const data=await store.read(req.guild.id), welcome=normalizeWelcomeConfig(data.welcome);
       const channels=[...req.guild.channels.cache.values()].filter(c=>c.type===ChannelType.GuildText).map(c=>({id:c.id,name:c.name}));
@@ -92,12 +101,12 @@ export function createBotApiRouter(client, {auth, csrf, store = createStore(clie
       res.json({welcome,channels,roles});
     } catch {res.status(503).json({error:'Tidak dapat membaca database persisten.'});}
   });
-  router.patch('/welcome',auth,csrf,async(req,res)=>{
+  router.patch('/welcome',auth,csrf,async(req,res)=> {
     let data; try{data=validate(req.body,req.guild);} catch(e){return res.status(400).json({error:e.message});}
     try {const welcome=await store.update(req.guild.id,data);res.json({ok:true,welcome});}
     catch(e){res.status(e.status || 503).json({error:e.status?e.message:'Gagal menyimpan ke database persisten.'});}
   });
-  router.post('/welcome/test',auth,csrf,async(req,res)=>{
+  router.post('/welcome/test',auth,csrf,async(req,res)=> {
     if (req.body?.confirmed!==true || Object.keys(req.body).length!==1) return res.status(400).json({error:'Konfirmasi pengiriman diperlukan.'});
     try {
       const {welcome:raw}=await store.read(req.guild.id), config=normalizeWelcomeConfig(raw);
@@ -109,5 +118,13 @@ export function createBotApiRouter(client, {auth, csrf, store = createStore(clie
       res.json({ok:true});
     } catch {res.status(503).json({error:'Gagal mengirim pesan percobaan atau membaca database.'});}
   });
+
+
+  router.use((error, req, res, next) => {
+    logger.error('Bot API error:', error);
+    if (res.headersSent) return next(error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  });
+
   return router;
 }

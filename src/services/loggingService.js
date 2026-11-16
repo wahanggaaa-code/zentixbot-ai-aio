@@ -49,6 +49,12 @@ const EVENT_TYPES = {
   REACTION_ROLE_DELETE: 'reactionrole.delete',
   REACTION_ROLE_UPDATE: 'reactionrole.update',
 
+  SELF_ROLE_ADD: 'selfrole.add',
+  SELF_ROLE_REMOVE: 'selfrole.remove',
+  SELF_ROLE_CREATE: 'selfrole.create',
+  SELF_ROLE_DELETE: 'selfrole.delete',
+  SELF_ROLE_UPDATE: 'selfrole.update',
+
   GIVEAWAY_CREATE: 'giveaway.create',
   GIVEAWAY_WINNER: 'giveaway.winner',
   GIVEAWAY_REROLL: 'giveaway.reroll',
@@ -92,6 +98,11 @@ const EVENT_COLORS = {
   'reactionrole.create': 0x3498db,
   'reactionrole.delete': 0x8b0000,
   'reactionrole.update': 0xFFA500,
+  'selfrole.add': 0x2ecc71,
+  'selfrole.remove': 0xe74c3c,
+  'selfrole.create': 0x3498db,
+  'selfrole.delete': 0x8b0000,
+  'selfrole.update': 0xFFA500,
   'giveaway.create': 0x57F287,
   'giveaway.winner': 0xFEE75C,
   'giveaway.reroll': 0x3498DB,
@@ -132,6 +143,11 @@ const EVENT_ICONS = {
   'reactionrole.create': '🎭',
   'reactionrole.delete': '🗑️',
   'reactionrole.update': '🔄',
+  'selfrole.add': '✅',
+  'selfrole.remove': '❌',
+  'selfrole.create': '🎭',
+  'selfrole.delete': '🗑️',
+  'selfrole.update': '🔄',
   'giveaway.create': '🎁',
   'giveaway.winner': '🎉',
   'giveaway.reroll': '🔄',
@@ -476,3 +492,45 @@ export function resolveApplicationLogChannel(config, roleSettings = {}, appSetti
 }
 
 export { EVENT_TYPES, EVENT_COLORS, EVENT_ICONS, LOG_DESTINATIONS };
+
+const PANEL_CHANGE_ACTIONS = {
+  create: [EVENT_TYPES.SELF_ROLE_CREATE, 'Self-Role Panel Created'],
+  repost: [EVENT_TYPES.SELF_ROLE_CREATE, 'Self-Role Panel Reposted'],
+  delete: [EVENT_TYPES.SELF_ROLE_DELETE, 'Self-Role Panel Deleted'],
+  add: [EVENT_TYPES.SELF_ROLE_UPDATE, 'Role Added To Self-Role Panel'],
+  remove: [EVENT_TYPES.SELF_ROLE_UPDATE, 'Role Removed From Self-Role Panel'],
+  update: [EVENT_TYPES.SELF_ROLE_UPDATE, 'Self-Role Panel Changed'],
+};
+const SID = (value) => typeof value === 'string' && /^\d{17,20}$/.test(value);
+
+/**
+ * Best effort: the change itself has already happened, so this never throws.
+ * `details`: `{actorId, source, messageId, channelId?, title?, roleIds?, roleId?}`.
+ */
+export async function recordPanelChange(client, guildId, action, details = {}) {
+  const known = PANEL_CHANGE_ACTIONS[action];
+  if (!known) return null;
+  try {
+    const roleIds = (Array.isArray(details.roleIds) ? details.roleIds : []).filter(SID);
+    return await logEvent({
+      client,
+      guildId,
+      eventType: known[0],
+      data: {
+        title: known[1],
+        lines: [
+          `**Source:** ${details.source === 'dashboard' ? 'web dashboard' : String(details.source ?? 'panel')}`,
+          ...(SID(details.actorId) ? [`**By:** <@${details.actorId}> (${details.actorId})`] : []),
+          ...(SID(details.messageId) ? [`**Message:** ${details.messageId}`] : []),
+          ...(SID(details.channelId) ? [`**Channel:** <#${details.channelId}>`] : []),
+          ...(details.title ? [`**Panel:** ${String(details.title).slice(0, 256)}`] : []),
+          ...(SID(details.roleId) ? [`**Role:** <@&${details.roleId}> (${details.roleId})`] : []),
+          ...(roleIds.length ? [`**Roles:** ${roleIds.map((id) => `<@&${id}>`).join(', ').slice(0, 900)}`] : []),
+        ],
+      },
+    });
+  } catch (error) {
+    logger.warn(`Could not write the self-role panel log entry for ${action}: ${error?.message ?? error}`);
+    return null;
+  }
+}

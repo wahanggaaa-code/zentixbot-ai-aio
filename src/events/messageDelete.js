@@ -1,7 +1,7 @@
 import { Events } from 'discord.js';
 import { logEvent, EVENT_TYPES } from '../services/loggingService.js';
 import { logger } from '../utils/logger.js';
-import { readPanel } from '../services/reactionRoles/store.js';
+import { readPanel } from '../services/selfRoles/store.js';
 import { formatLogLine } from '../utils/logging/logEmbeds.js';
 
 const MAX_LOGGED_MESSAGE_CONTENT_LENGTH = 1024;
@@ -21,13 +21,13 @@ async function notePanelMessageDeleted(message) {
     await logEvent({
       client,
       guildId: message.guild.id,
-      eventType: EVENT_TYPES.REACTION_ROLE_DELETE,
+      eventType: EVENT_TYPES.SELF_ROLE_DELETE,
       data: {
-        title: 'Reaction Role Panel Message Deleted',
+        title: 'Self-Role Panel Message Deleted',
         lines: [
           formatLogLine('Channel', message.channel ? `${message.channel.name} ${message.channel.toString()}` : 'Unknown'),
           formatLogLine('Message ID', `\`${message.id}\``),
-          formatLogLine('Next step', 'Use /reactroles dashboard to repost or delete the panel'),
+          formatLogLine('Next step', 'Use the dashboard Self-Role page to repost or delete the panel'),
         ],
         quoted: true,
       },

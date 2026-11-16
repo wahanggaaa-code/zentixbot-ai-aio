@@ -98,6 +98,18 @@ export function getReactionRolesPrefix(guildId) {
     return `guild:${guildId}:reaction_roles:`;
 }
 
+export function getSelfRoleKey(guildId, messageId) {
+    return `guild:${guildId}:self_role:${messageId}`;
+}
+
+export function getSelfRolePrefix(guildId) {
+    return `guild:${guildId}:self_role:`;
+}
+
+export function getSelfRoleBannerPrefix(guildId) {
+    return `guild:${guildId}:self_role_banner:`;
+}
+
 export function getSocialAlertsPrefix(guildId) {
     return `guild:${guildId}:social_alerts:`;
 }
@@ -194,6 +206,7 @@ export function getLegacyVariantsForCanonical(canonicalKey) {
     if ((match = canonicalKey.match(/^guild:([^:]+):usernotes:list$/))) return [`moderation_user_notes_list_${match[1]}`, `moderation_user_notes_${match[1]}_list`];
     if ((match = canonicalKey.match(/^guild:([^:]+):usernotes:([^:]+)$/))) return [`moderation_user_notes_${match[1]}_${match[2]}`];
     if ((match = canonicalKey.match(/^guild:([^:]+):reaction_roles:([^:]+)$/))) return [`reaction_roles:${match[1]}:${match[2]}`];
+    if ((match = canonicalKey.match(/^guild:([^:]+):self_role:([^:]+)$/))) return [`guild:${match[1]}:reaction_roles:${match[2]}`, `reaction_roles:${match[1]}:${match[2]}`];
     if ((match = canonicalKey.match(/^guild:([^:]+):counters$/))) return [`counters:${match[1]}`];
     if ((match = canonicalKey.match(/^guild:([^:]+):birthdays:tracking$/))) return [`bday-role-tracking-${match[1]}`];
     return [];

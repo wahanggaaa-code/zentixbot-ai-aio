@@ -4,7 +4,7 @@ import { getGuildConfig, setGuildConfig } from './config/guildConfig.js';
 import {
     getTicketPanelStatus,
 } from '../utils/panelStatus.js';
-import { summarizePanels } from './reactionRoles/manage.js';
+import { summarizePanels } from './selfRoles/manage.js';
 
 export async function reconcileTicketPanels(client) {
     const summary = {
@@ -53,11 +53,11 @@ export async function reconcileTicketPanels(client) {
 }
 
 /**
- * Count the stored reaction role panels by what Discord shows for them.
+ * Count the stored self-role panels by what Discord shows for them.
  * Reads only. A record is never moved to another message here: with two panels
  * in one channel that used to overwrite the second panel with the first one's roles.
  */
-export async function reconcileReactionRolePanelHealth(client) {
+export async function reconcileSelfRolePanelHealth(client) {
     const summary = {
         scannedGuilds: 0,
         scannedPanels: 0,
@@ -83,14 +83,14 @@ export async function reconcileReactionRolePanelHealth(client) {
             summary.uncheckedPanels += panels.unknown;
             summary.unreadableRecords += panels.unreadable;
             if (panels.messageMissing > 0) {
-                logger.warn(`Reaction role panel message missing for guild ${guild.id} (${panels.messageMissing}) — repost from /reactroles dashboard`);
+                logger.warn(`Self-role panel message missing for guild ${guild.id} (${panels.messageMissing}) — repost from the dashboard Self-Role page`);
             }
             if (panels.channelMissing > 0) {
-                logger.warn(`Reaction role panel channel missing for guild ${guild.id} (${panels.channelMissing})`);
+                logger.warn(`Self-role panel channel missing for guild ${guild.id} (${panels.channelMissing})`);
             }
         } catch (error) {
             summary.errors += 1;
-            logger.warn(`Reaction role panel health check failed for guild ${guild.id}:`, error.message);
+            logger.warn(`Self-role panel health check failed for guild ${guild.id}:`, error.message);
         }
     }
 

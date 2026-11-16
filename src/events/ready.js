@@ -2,7 +2,7 @@ import { Events } from "discord.js";
 import { logger, startupLog } from "../utils/logger.js";
 import { describeCheck, describeServer } from "../utils/startupReport.js";
 import config from "../config/application.js";
-import { reconcileTicketPanels, reconcileReactionRolePanelHealth } from "../services/panelHealthService.js";
+import { reconcileTicketPanels, reconcileSelfRolePanelHealth } from "../services/panelHealthService.js";
 import { reconcileLevelRoles } from "../services/leveling/levelRoleSyncService.js";
 import { initRiffyAfterReady } from "../services/music/riffySetup.js";
 import { reconcileJoinToCreate } from "../services/joinToCreateRuntime.js";
@@ -49,11 +49,11 @@ export default {
       ]);
 
       // Reads only: a panel whose message is missing stays stored so that it can be reposted.
-      const reactionRoles = await reconcileReactionRolePanelHealth(client);
-      report('reaction role panels', [
-        ['stored', reactionRoles.scannedPanels], ['healthy', reactionRoles.healthyPanels], ['message missing', reactionRoles.deletedPanels],
-        ['channel missing', reactionRoles.missingChannels], ['not checkable', reactionRoles.uncheckedPanels],
-        ['unreadable records', reactionRoles.unreadableRecords], ['errors', reactionRoles.errors],
+      const selfRoles = await reconcileSelfRolePanelHealth(client);
+      report('self-role panels', [
+        ['stored', selfRoles.scannedPanels], ['healthy', selfRoles.healthyPanels], ['message missing', selfRoles.deletedPanels],
+        ['channel missing', selfRoles.missingChannels], ['not checkable', selfRoles.uncheckedPanels],
+        ['unreadable records', selfRoles.unreadableRecords], ['errors', selfRoles.errors],
       ]);
 
       const levelRoles = await reconcileLevelRoles(client, client.homeGuildId);

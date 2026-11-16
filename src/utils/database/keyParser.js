@@ -4,6 +4,8 @@ import {
     getUserLevelPrefix,
     getWarningsPrefix,
     getReactionRolesPrefix,
+    getSelfRolePrefix,
+    getSelfRoleBannerPrefix,
     getApplicationsPrefix,
     getTicketCounterKey,
     getServerCountersKey,
@@ -18,6 +20,8 @@ const TEMP_BACKED_TYPES = new Set([
     'usernotes',
     'usernotes_list',
     'reaction_role',
+    'self_role',
+    'self_role_banner',
     'application',
     'application_roles',
     'application_settings',
@@ -108,6 +112,12 @@ export function parseKey(key) {
         }
         if (parts[2] === 'reaction_roles' && parts[3]) {
             return { type: 'reaction_role', guildId, messageId: parts[3], fullKey };
+        }
+        if (parts[2] === 'self_role' && parts[3]) {
+            return { type: 'self_role', guildId, messageId: parts[3], fullKey };
+        }
+        if (parts[2] === 'self_role_banner' && parts[3]) {
+            return { type: 'self_role_banner', guildId, panelId: parts[3], fullKey };
         }
         if (parts[2] === 'social_alerts' && parts[3]) {
             return { type: 'social_alert', guildId, alertId: parts[3], fullKey };
@@ -270,6 +280,18 @@ export function getStructuredListPlan(prefix, tables) {
         return plan;
     }
 
+    match = normalizedPrefix.match(/^guild:([^:]+):self_role:$/);
+    if (match) {
+        plan.tempPrefixes = [getSelfRolePrefix(match[1]), getReactionRolesPrefix(match[1]), `reaction_roles:${match[1]}:`];
+        return plan;
+    }
+
+    match = normalizedPrefix.match(/^guild:([^:]+):self_role_banner:$/);
+    if (match) {
+        plan.tempPrefixes = [getSelfRoleBannerPrefix(match[1])];
+        return plan;
+    }
+
     match = normalizedPrefix.match(/^guild:([^:]+):applications:$/);
     if (match) {
         plan.tempPrefixes = [getApplicationsPrefix(match[1])];
@@ -285,6 +307,8 @@ export function getStructuredListPlan(prefix, tables) {
             `moderation:warnings:${match[1]}:`,
             getReactionRolesPrefix(match[1]),
             `reaction_roles:${match[1]}:`,
+            getSelfRolePrefix(match[1]),
+            getSelfRoleBannerPrefix(match[1]),
             getEconomyPrefix(match[1]),
             `economy:${match[1]}:`,
             getUserLevelPrefix(match[1]),
