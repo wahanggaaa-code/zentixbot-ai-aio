@@ -28,7 +28,7 @@ const BOT_PERMISSIONS = [
     ['AttachFiles', 'Melampirkan file', 'tiket'],
     ['ReadMessageHistory', 'Membaca riwayat pesan', 'tiket'],
     ['ManageMessages', 'Mengelola pesan', 'moderation'],
-    ['ManageRoles', 'Mengelola peran', 'autorole, verification, reaction role'],
+    ['ManageRoles', 'Mengelola peran', 'autorole, reaction role'],
     ['ManageChannels', 'Mengelola channel', 'tiket, Join to Create, server stats'],
     ['MoveMembers', 'Memindahkan anggota', 'Join to Create'],
     ['KickMembers', 'Mengeluarkan anggota', 'moderation'],

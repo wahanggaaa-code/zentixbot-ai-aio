@@ -136,37 +136,6 @@ export async function storeModerationCase({ guildId, caseId, caseData }) {
   }
 }
 
-export async function getModerationCases(guildId, filters = {}) {
-  try {
-    const { userId, moderatorId, action, limit = 50, offset = 0 } = filters;
-    
-    const allCases = [];
-    
-    const caseListKey = `moderation_cases_list_${guildId}`;
-    const caseList = await getFromDb(caseListKey, []);
-    
-    let filteredCases = caseList;
-    
-    if (userId) {
-      filteredCases = filteredCases.filter(case_ => case_.targetUserId === userId);
-    }
-    
-    if (moderatorId) {
-      filteredCases = filteredCases.filter(case_ => case_.moderatorId === moderatorId);
-    }
-    
-    if (action) {
-      filteredCases = filteredCases.filter(case_ => case_.action === action);
-    }
-    
-    filteredCases.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-    
-    return filteredCases.slice(offset, offset + limit);
-  } catch (error) {
-    logger.error("Error getting moderation cases:", error);
-    return [];
-  }
-}
 
 export async function logModerationAction({ client, guild, event }) {
   const caseId = await generateCaseId(client, guild.id);

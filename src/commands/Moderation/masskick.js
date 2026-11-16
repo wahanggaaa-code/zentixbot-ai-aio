@@ -1,4 +1,4 @@
-import { SlashCommandBuilder, PermissionFlagsBits } from 'discord.js';
+import { SlashCommandBuilder } from 'discord.js';
 import { logModerationAction } from '../../utils/moderation.js';
 import { logger } from '../../utils/logger.js';
 import { ModerationService } from '../../services/moderation/moderationService.js';
@@ -21,8 +21,7 @@ export default {
             option.setName("reason")
                 .setDescription("Reason for the mass kick")
                 .setRequired(false)
-        )
-        .setDefaultMemberPermissions(PermissionFlagsBits.KickMembers),
+        ),
     category: "moderation",
     abuseProtection: { maxAttempts: 3, windowMs: 60_000 },
 

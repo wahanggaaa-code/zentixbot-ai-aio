@@ -2,7 +2,7 @@ import { Events } from "discord.js";
 import { logger, startupLog } from "../utils/logger.js";
 import { describeCheck, describeServer } from "../utils/startupReport.js";
 import config from "../config/application.js";
-import { reconcileTicketPanels, reconcileVerificationPanels, reconcileReactionRolePanelHealth } from "../services/panelHealthService.js";
+import { reconcileTicketPanels, reconcileReactionRolePanelHealth } from "../services/panelHealthService.js";
 import { reconcileLevelRoles } from "../services/leveling/levelRoleSyncService.js";
 import { initRiffyAfterReady } from "../services/music/riffySetup.js";
 import { reconcileJoinToCreate } from "../services/joinToCreateRuntime.js";
@@ -36,12 +36,6 @@ export default {
       report('ticket panels', [
         ['healthy', tickets.healthyPanels], ['deleted', tickets.deletedPanels], ['channel missing', tickets.missingChannels],
         ['recovered', tickets.recoveredIds], ['errors', tickets.errors],
-      ]);
-
-      const verification = await reconcileVerificationPanels(client);
-      report('verification panels', [
-        ['healthy', verification.healthyPanels], ['deleted', verification.deletedPanels], ['channel missing', verification.missingChannels],
-        ['recovered', verification.recoveredIds], ['errors', verification.errors],
       ]);
 
       // Reads only: a panel whose message is missing stays stored so that it can be reposted.

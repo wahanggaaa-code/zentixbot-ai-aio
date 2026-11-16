@@ -26,9 +26,7 @@ const HELP_MENU_TIMEOUT_MS = 5 * 60 * 1000;
 const CATEGORY_ICONS = {
     Core: "ℹ️",
     Moderation: "🛡️",
-    Economy: "💰",
     Music: "🎵",
-    Fun: "🎮",
     Leveling: "📊",
     Utility: "🔧",
     Ticket: "🎫",
@@ -38,10 +36,8 @@ const CATEGORY_ICONS = {
     Tools: "🛠️",
     Search: "🔍",
     "Reaction Roles": "🎭",
-    Community: "👥",
     Birthday: "🎂",
     "Join To Create": "🔌",
-    Verification: "✅",
 };
 
 function formatCategoryName(rawCategory) {

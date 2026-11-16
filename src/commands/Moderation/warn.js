@@ -1,4 +1,4 @@
-import { SlashCommandBuilder, PermissionFlagsBits, PermissionsBitField, ChannelType } from 'discord.js';
+import { SlashCommandBuilder, PermissionsBitField, ChannelType } from 'discord.js';
 
 import { logModerationAction } from '../../utils/moderation.js';
 import { logger } from '../../utils/logger.js';
@@ -23,8 +23,7 @@ export default {
                 .setName("reason")
                 .setRequired(true)
                 .setDescription("Reason for the warning"),
-        )
-        .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers),
+        ),
     category: "moderation",
 
     async execute(interaction, config, client) {

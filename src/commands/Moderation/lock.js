@@ -12,8 +12,7 @@ export default {
     .setName("lock")
     .setDescription(
       "Locks the current channel (prevents @everyone from sending messages).",
-    )
-.setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels),
+    ),
   category: "moderation",
 
   async execute(interaction, config, client) {

@@ -30,30 +30,28 @@ export default {
 
         if (welcomeConfig?.roleIds && welcomeConfig.roleIds.length > 0) {
             const delay = welcomeConfig.autoRoleDelay || 0;
-            const singleRoleId = welcomeConfig.roleIds[0];
-            
-            if (delay > 0) {
-                const timeout = setTimeout(async () => {
-                    const role = guild.roles.cache.get(singleRoleId);
+            const roleIds = [...new Set(welcomeConfig.roleIds)];
+            const assignAll = async () => {
+                for (const roleId of roleIds) {
+                    const role = guild.roles.cache.get(roleId);
                     if (role) {
                         await assignRoleSafely(member, role);
+                    } else {
+                        logger.warn(`[Welcome] Autorole ${roleId} not found in guild ${guild.id}`);
                     }
-                }, delay * 1000);
+                }
+            };
+
+            if (delay > 0) {
+                const timeout = setTimeout(() => { assignAll().catch((error) => logger.warn('[Welcome] Autorole assignment failed:', error)); }, delay * 1000);
                 if (typeof timeout.unref === 'function') {
                     timeout.unref();
                 }
             } else {
-                const role = guild.roles.cache.get(singleRoleId);
-                if (role) {
-                    await assignRoleSafely(member, role);
-                }
+                await assignAll();
             }
         }
         
-        if (config?.verification?.enabled || config?.verification?.autoVerify?.enabled) {
-            await handleVerification(member, guild, config.verification, member.client);
-        }
-
         try {
             await logEvent({
                 client: member.client,
@@ -106,38 +104,6 @@ export default {
     }
   }
 };
-
-async function handleVerification(member, guild, verificationConfig, client) {
-    const { autoVerifyOnJoin } = await import('../services/verificationService.js');
-    
-    try {
-        const result = await autoVerifyOnJoin(client, guild, member, verificationConfig);
-        
-        if (result.autoVerified) {
-            logger.info('User auto-verified on join', {
-                guildId: guild.id,
-                userId: member.id,
-                userTag: member.user.tag,
-                roleName: result.roleName,
-                criteria: result.criteria
-            });
-        } else {
-            logger.debug('User not auto-verified on join', {
-                guildId: guild.id,
-                userId: member.id,
-                reason: result.reason
-            });
-        }
-
-    } catch (error) {
-        logger.error('Error in auto-verification for member', {
-            guildId: guild.id,
-            userId: member.id,
-            userTag: member.user.tag,
-            error: error.message
-        });
-    }
-}
 
 async function assignRoleSafely(member, role) {
     try {

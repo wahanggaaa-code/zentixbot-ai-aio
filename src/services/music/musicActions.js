@@ -35,24 +35,6 @@ export function assertLavalinkNodeAvailable(client) {
     }
 }
 
-function assertBotVoicePermissions(channel) {
-    if (!channel) {
-        throw new ZentixBotError(
-            'Voice channel unavailable',
-            ErrorTypes.CONFIGURATION,
-            'Could not access that voice channel.',
-        );
-    }
-
-    if (!botHasPermission(channel, [PermissionFlagsBits.Connect, PermissionFlagsBits.Speak])) {
-        throw new ZentixBotError(
-            'Missing voice permissions',
-            ErrorTypes.PERMISSION,
-            'I need **Connect** and **Speak** permissions in your voice channel.',
-        );
-    }
-}
-
 async function waitForPlayerConnection(player) {
     if (player.connected) {
         return;
@@ -124,6 +106,24 @@ export function assertCanControl(member, player) {
     }
 }
 
+function assertBotVoicePermissions(channel) {
+    if (!channel) {
+        throw new ZentixBotError(
+            'Voice channel unavailable',
+            ErrorTypes.CONFIGURATION,
+            'Could not access that voice channel.',
+        );
+    }
+
+    if (!botHasPermission(channel, [PermissionFlagsBits.Connect, PermissionFlagsBits.Speak])) {
+        throw new ZentixBotError(
+            'Missing voice permissions',
+            ErrorTypes.PERMISSION,
+            'I need **Connect** and **Speak** permissions in your voice channel.',
+        );
+    }
+}
+
 export async function ensurePlayer(client, interaction) {
     assertRiffyAvailable(client);
     assertLavalinkNodeAvailable(client);
@@ -134,6 +134,7 @@ export async function ensurePlayer(client, interaction) {
     let player = getPlayer(client, guildId);
 
     if (!player) {
+        assertBotVoicePermissions(interaction.member.voice.channel);
         player = client.riffy.createConnection({
             guildId,
             voiceChannel: interaction.member.voice.channel.id,
@@ -156,43 +157,6 @@ function isDuplicateTrack(player, track) {
         return true;
     }
     return player.queue.some((existing) => existing.info?.uri === uri);
-}
-
-export async function joinVoiceChannel(client, interaction) {
-    assertRiffyAvailable(client);
-    assertInVoice(interaction.member);
-
-    const guildId = interaction.guild.id;
-    const guildData = getGuildMusicData(guildId);
-    const channel = interaction.member.voice.channel;
-    assertBotVoicePermissions(channel);
-    let player = getPlayer(client, guildId);
-
-    if (player && player.voiceChannel !== channel.id) {
-        try {
-            player.destroy();
-        } catch {
-            // player may already be gone
-        }
-        player = null;
-    }
-
-    if (!player) {
-        player = client.riffy.createConnection({
-            guildId,
-            voiceChannel: channel.id,
-            textChannel: interaction.channel.id,
-            deaf: true,
-        });
-        guildData.playerChannelId = interaction.channel.id;
-    }
-
-    player.setVolume(guildData.volume);
-
-    return v2Success(
-        'Joined Voice Channel',
-        `Connected to **${channel.name}**. Use /play to start music, or /music for playback controls.`,
-    );
 }
 
 export async function playQuery(client, interaction, query) {

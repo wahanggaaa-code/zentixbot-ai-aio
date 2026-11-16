@@ -8,7 +8,7 @@ import { addXp } from './xpSystem.js';
 import { getUserLevelKey } from '../../utils/database/keys.js';
 import {isSQLiteLevelBackend,readSQLiteLevel,deleteSQLiteLevel} from './sqliteLevels.js';
 import { Mutex } from '../../utils/mutex.js';
-import { atomicLevelMutator, postgresLevelPool, readPostgresLevel, deletePostgresLevel } from './postgresLevels.js';
+import { postgresLevelPool, readPostgresLevel, deletePostgresLevel } from './postgresLevels.js';
 
 const BASE_XP = 100;
 const XP_MULTIPLIER = 1.5;
@@ -17,7 +17,7 @@ const MIN_LEVEL = 0;
 
 /**
  * Every writer of one member's level record in this process takes this lock:
- * XP from messages, /leveladd, /levelremove, /levelset and the web dashboard.
+ * XP from messages and the web dashboard.
  * It is a process lock, not a database lock.
  */
 export function getLevelLockKey(guildId, userId) {
@@ -352,161 +352,6 @@ export async function saveLevelingConfig(client, guildId, config) {
       `Failed to save config: ${error.message}`,
       ErrorTypes.DATABASE,
       'Could not save configuration at this time.'
-    );
-  }
-}
-
-export async function addLevels(client, guildId, userId, levels) {
-  try {
-    const levelingConfig = await getLevelingConfig(client, guildId);
-    if (!levelingConfig?.enabled) {
-      throw new ZentixBotError(
-        'Leveling system is disabled on this server',
-        ErrorTypes.CONFIGURATION,
-        'The leveling system is currently disabled on this server.'
-      );
-    }
-
-    if (!Number.isInteger(levels) || levels <= 0) {
-      throw new ZentixBotError(
-        `Invalid level amount: ${levels}`,
-        ErrorTypes.VALIDATION,
-        'You must add a positive number of levels.'
-      );
-    }
-
-    const mutateLevel = atomicLevelMutator(client);
-    if (mutateLevel) return await mutateLevel(guildId, userId, data => {
-      const newLevel=data.level+levels;
-      if (!Number.isSafeInteger(newLevel) || newLevel>MAX_LEVEL) throw new ZentixBotError('Maximum level exceeded',ErrorTypes.VALIDATION,`Maximum level is ${MAX_LEVEL}.`);
-      data.level=newLevel;data.xp=0;data.totalXp=calculateTotalXp(newLevel,0);
-      return {result:{...data}};
-    });
-    const userData = await Mutex.runExclusive(getLevelLockKey(guildId, userId), async () => {
-      const current = await getUserLevelData(client, guildId, userId);
-      const newLevel = current.level + levels;
-
-      if (newLevel > MAX_LEVEL) {
-        throw new ZentixBotError(
-          `Level ${newLevel} exceeds maximum level ${MAX_LEVEL}`,
-          ErrorTypes.VALIDATION,
-          `Maximum level is ${MAX_LEVEL}.`
-        );
-      }
-
-      current.level = newLevel;
-      current.xp = 0;
-      current.totalXp = calculateTotalXp(newLevel, 0);
-
-      await saveUserLevelData(client, guildId, userId, current);
-      return current;
-    });
-
-    logger.info(`Added ${levels} levels to user ${userId} in guild ${guildId}`);
-    return userData;
-  } catch (error) {
-    logger.error(`Error adding levels for user ${userId}:`, error);
-    if (error instanceof ZentixBotError) throw error;
-    throw new ZentixBotError(
-      `Failed to add levels: ${error.message}`,
-      ErrorTypes.DATABASE,
-      'Could not add levels at this time.'
-    );
-  }
-}
-
-export async function removeLevels(client, guildId, userId, levels) {
-  try {
-    const levelingConfig = await getLevelingConfig(client, guildId);
-    if (!levelingConfig?.enabled) {
-      throw new ZentixBotError(
-        'Leveling system is disabled on this server',
-        ErrorTypes.CONFIGURATION,
-        'The leveling system is currently disabled on this server.'
-      );
-    }
-
-    if (!Number.isInteger(levels) || levels <= 0) {
-      throw new ZentixBotError(
-        `Invalid level amount: ${levels}`,
-        ErrorTypes.VALIDATION,
-        'You must remove a positive number of levels.'
-      );
-    }
-
-    const mutateLevel = atomicLevelMutator(client);
-    if (mutateLevel) return await mutateLevel(guildId, userId, data => {
-      const newLevel=Math.max(MIN_LEVEL,data.level-levels);data.level=newLevel;data.xp=0;data.totalXp=calculateTotalXp(newLevel,0);
-      return {result:{...data}};
-    });
-    const userData = await Mutex.runExclusive(getLevelLockKey(guildId, userId), async () => {
-      const current = await getUserLevelData(client, guildId, userId);
-      const newLevel = Math.max(MIN_LEVEL, current.level - levels);
-
-      current.level = newLevel;
-      current.xp = 0;
-      current.totalXp = calculateTotalXp(newLevel, 0);
-
-      await saveUserLevelData(client, guildId, userId, current);
-      return current;
-    });
-
-    logger.info(`Removed ${levels} levels from user ${userId} in guild ${guildId}`);
-    return userData;
-  } catch (error) {
-    logger.error(`Error removing levels for user ${userId}:`, error);
-    if (error instanceof ZentixBotError) throw error;
-    throw new ZentixBotError(
-      `Failed to remove levels: ${error.message}`,
-      ErrorTypes.DATABASE,
-      'Could not remove levels at this time.'
-    );
-  }
-}
-
-export async function setUserLevel(client, guildId, userId, level) {
-  try {
-    const levelingConfig = await getLevelingConfig(client, guildId);
-    if (!levelingConfig?.enabled) {
-      throw new ZentixBotError(
-        'Leveling system is disabled on this server',
-        ErrorTypes.CONFIGURATION,
-        'The leveling system is currently disabled on this server.'
-      );
-    }
-
-    if (!Number.isInteger(level) || level < MIN_LEVEL || level > MAX_LEVEL) {
-      throw new ZentixBotError(
-        `Invalid level: ${level}`,
-        ErrorTypes.VALIDATION,
-        `Level must be between ${MIN_LEVEL} and ${MAX_LEVEL}.`
-      );
-    }
-
-    const mutateLevel = atomicLevelMutator(client);
-    if (mutateLevel) return await mutateLevel(guildId, userId, data => {
-      data.level=level;data.xp=0;data.totalXp=calculateTotalXp(level,0);return {result:{...data}};
-    });
-    const userData = await Mutex.runExclusive(getLevelLockKey(guildId, userId), async () => {
-      const current = await getUserLevelData(client, guildId, userId);
-
-      current.level = level;
-      current.xp = 0;
-      current.totalXp = calculateTotalXp(level, 0);
-
-      await saveUserLevelData(client, guildId, userId, current);
-      return current;
-    });
-
-    logger.info(`Set level for user ${userId} to ${level} in guild ${guildId}`);
-    return userData;
-  } catch (error) {
-    logger.error(`Error setting level for user ${userId}:`, error);
-    if (error instanceof ZentixBotError) throw error;
-    throw new ZentixBotError(
-      `Failed to set level: ${error.message}`,
-      ErrorTypes.DATABASE,
-      'Could not set level at this time.'
     );
   }
 }

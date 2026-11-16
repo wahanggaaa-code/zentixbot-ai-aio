@@ -736,8 +736,8 @@ rank: 0
     }
 }
 
-// Role applications are read and written by src/services/applications/store.js
-// (one lock per server from read to write, failures thrown instead of answered with "no data").
+// Role applications were read and written by src/services/applications/store.js, which is gone with
+// the feature. Any stored rows stay untouched.
 
 function generateCaseId() {
     return `${Date.now().toString(36)}-${Math.random().toString(36).substr(2, 4)}`;

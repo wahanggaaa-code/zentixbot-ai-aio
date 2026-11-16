@@ -4,10 +4,7 @@
 
 export const CATEGORY_ICONS = {
   Birthday: '🎂',
-  Community: '👥',
   Core: 'ℹ️',
-  Economy: '💰',
-  Fun: '🎮',
   Giveaway: '🎉',
   JoinToCreate: '🔌',
   Leveling: '📊',
@@ -16,11 +13,9 @@ export const CATEGORY_ICONS = {
   Music: '🎵',
   Reaction_roles: '🎭',
   Search: '🔍',
-  ServerStats: '📈',
   Ticket: '🎫',
   Tools: '🛠️',
   Utility: '🔧',
-  Verification: '✅',
   Welcome: '👋',
 };
 

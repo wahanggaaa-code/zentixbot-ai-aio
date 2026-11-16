@@ -10,7 +10,6 @@ import {ModerationService} from '../services/moderation/moderationService.js';
 import {WarningService} from '../services/moderation/warningService.js';
 import {logModerationAction} from '../utils/moderation.js';
 import {closeTicket,reopenTicket,claimTicket} from '../services/ticket.js';
-import {getMaxBankCapacity} from '../utils/economy.js';
 import {calculateTotalXp, getLevelingConfig, getLevelLockKey} from '../services/leveling/leveling.js';
 import {syncMemberRewardRoles} from '../services/leveling/rewardRoles.js';
 import { Mutex } from '../utils/mutex.js';
@@ -109,39 +108,27 @@ export function createOperationsApi(client,{auth,csrf}) {
  router.get('/leaderboard',auth,async(req,res)=>{try{const sqlite=sqliteBackend(client);if(sqlite)return res.json({leaderboard:sqliteLeaderboard(sqlite,req.guild.id)});const r=await pool(client).query(`SELECT user_id,level,total_xp FROM ${tables.user_levels} WHERE guild_id=$1 AND total_xp>0 ORDER BY total_xp DESC LIMIT 50`,[req.guild.id]);res.json({leaderboard:r.rows.map(x=>({userId:x.user_id,level:x.level,totalXp:Number(x.total_xp)}))});}catch(e){fail(res,e)}});
  router.get('/members/:id',auth,async(req,res)=>{try{
   if(!idRe.test(req.params.id))throw bad('ID anggota tidak valid.');const member=await req.guild.members.fetch({user:req.params.id,force:true}).catch(()=>null);if(!member)throw bad('Anggota tidak ditemukan.',404);
-  const sqlite=sqliteBackend(client);if(sqlite){const view={botGet:sqlite.botGet,get:sqlite.get,getAccount:sqlite.getAccount},eco=readSQLiteBotValue(view,`guild:${req.guild.id}:economy:${member.id}`),lvl=readSQLiteBotValue(view,`guild:${req.guild.id}:leveling:users:${member.id}`);return res.json({member:{id:member.id,name:member.user.tag},economy:eco?{wallet:Number(eco.wallet??eco.balance??0),bank:Number(eco.bank??0),bankCapacity:getMaxBankCapacity(eco)}:null,level:lvl?{level:lvl.level??0,xp:Number(lvl.xp??0),totalXp:Number(lvl.totalXp??0)}:null});}
-  const db=pool(client);const [eco,lvl]=await Promise.all([db.query(`SELECT balance,bank,data FROM ${tables.economy} WHERE guild_id=$1 AND user_id=$2`,[req.guild.id,member.id]),db.query(`SELECT xp,level,total_xp FROM ${tables.user_levels} WHERE guild_id=$1 AND user_id=$2`,[req.guild.id,member.id])]);
-  const row=eco.rows[0];res.json({member:{id:member.id,name:member.user.tag},economy:row?{wallet:Number(row.data?.wallet??row.balance),bank:Number(row.data?.bank??row.bank),bankCapacity:getMaxBankCapacity(row.data||{})}:null,level:lvl.rows[0]?{level:lvl.rows[0].level,xp:Number(lvl.rows[0].xp),totalXp:Number(lvl.rows[0].total_xp)}:null});
+  const sqlite=sqliteBackend(client);if(sqlite){const lvl=readSQLiteBotValue({botGet:sqlite.botGet,get:sqlite.get},`guild:${req.guild.id}:leveling:users:${member.id}`);return res.json({member:{id:member.id,name:member.user.tag},level:lvl?{level:lvl.level??0,xp:Number(lvl.xp??0),totalXp:Number(lvl.totalXp??0)}:null});}
+  const db=pool(client);const lvl=await db.query(`SELECT xp,level,total_xp FROM ${tables.user_levels} WHERE guild_id=$1 AND user_id=$2`,[req.guild.id,member.id]);
+  res.json({member:{id:member.id,name:member.user.tag},level:lvl.rows[0]?{level:lvl.rows[0].level,xp:Number(lvl.rows[0].xp),totalXp:Number(lvl.rows[0].total_xp)}:null});
  }catch(e){fail(res,e)}});
  router.post('/members/:id',auth,csrf,async(req,res)=>{try{
-  const b=req.body;if(!idRe.test(req.params.id)||!b||b.confirmed!==true||!['wallet','bank','level'].includes(b.type)||!Number.isSafeInteger(b.value)||b.value<0||!Number.isSafeInteger(b.expected)||b.expected<0||Object.keys(b).some(k=>!['type','value','expected','confirmed'].includes(k)))throw bad('Data atau konfirmasi tidak valid.');
-  if((b.type==='level'&&b.value>1000)||(['wallet','bank'].includes(b.type)&&b.value>1000000000000))throw bad('Nilai di luar batas.');
+  const b=req.body;if(!idRe.test(req.params.id)||!b||b.confirmed!==true||b.type!=='level'||!Number.isSafeInteger(b.value)||b.value<0||b.value>1000||!Number.isSafeInteger(b.expected)||b.expected<0||Object.keys(b).some(k=>!['type','value','expected','confirmed'].includes(k)))throw bad('Data atau konfirmasi tidak valid.');
   const member=await req.guild.members.fetch({user:req.params.id,force:true}).catch(()=>null);if(!member)throw bad('Anggota tidak ditemukan.',404);
   const sqlite=sqliteBackend(client);if(sqlite){if(client.homeGuildId&&client.homeGuildId!==req.guild.id)throw bad('Server tidak valid.',403);sqlite.transaction(tx=>{
-   if(b.type==='wallet'||b.type==='bank'){const data=readSQLiteBotValue(tx,`guild:${req.guild.id}:economy:${member.id}`);if(!data)throw bad('Data ekonomi belum tersedia.',404);if(!Number.isSafeInteger(data.wallet)||data.wallet<0||!Number.isSafeInteger(data.bank)||data.bank<0)throw bad('Saldo ekonomi tidak valid.',503);if(data[b.type]!==b.expected)throw bad('Saldo berubah; muat ulang sebelum menyimpan.',409);if(b.type==='bank'&&b.value>getMaxBankCapacity(data))throw bad('Saldo melebihi kapasitas bank anggota.');data[b.type]=b.value;tx.setAccount(req.guild.id,member.id,data);}
-   else{mutateLevelInTransaction(tx,req.guild.id,member.id,(data,exists)=>{if(!exists)throw bad('Data leveling belum tersedia.',404);if(data.level!==b.expected)throw bad('Level berubah; muat ulang sebelum menyimpan.',409);data.level=b.value;data.xp=0;data.totalXp=calculateTotalXp(b.value,0);return {result:true}});}
+   mutateLevelInTransaction(tx,req.guild.id,member.id,(data,exists)=>{if(!exists)throw bad('Data leveling belum tersedia.',404);if(data.level!==b.expected)throw bad('Level berubah; muat ulang sebelum menyimpan.',409);data.level=b.value;data.xp=0;data.totalXp=calculateTotalXp(b.value,0);return {result:true}});
   });console.info(`[dashboard] member update guild=${req.guild.id} moderator=${req.member.id} member=${member.id} type=${b.type}`);
-   if(b.type==='level')return res.json({ok:true,rewardRoles:await rewardRolesAfterLevel(client,req.guild,member,b.value)});
-   return res.json({ok:true});}
+   return res.json({ok:true,rewardRoles:await rewardRolesAfterLevel(client,req.guild,member,b.value)});}
   // A level write takes the lock shared with XP awards and the level commands,
   // so a message that arrives at the same moment cannot overwrite it.
-  const levelExclusive=task=>b.type==='level'?Mutex.runExclusive(getLevelLockKey(req.guild.id,member.id),task):task();
-  const db=pool(client);await Mutex.runExclusive(`dashboard-member:${req.guild.id}:${member.id}`,()=>levelExclusive(async()=>{
+  const db=pool(client);await Mutex.runExclusive(`dashboard-member:${req.guild.id}:${member.id}`,()=>Mutex.runExclusive(getLevelLockKey(req.guild.id,member.id),async()=>{
    const c=await db.connect();try{await c.query('BEGIN');
-    if(b.type==='wallet'||b.type==='bank'){
-     const r=await c.query(`SELECT balance,bank,data FROM ${tables.economy} WHERE guild_id=$1 AND user_id=$2 FOR UPDATE`,[req.guild.id,member.id]);if(!r.rows[0])throw bad('Data ekonomi belum tersedia.',404);
-     const row=r.rows[0], data={...(row.data||{})};let wallet=Number(data.wallet??row.balance),bank=Number(data.bank??row.bank);const old=b.type==='wallet'?wallet:bank;if(old!==b.expected)throw bad('Saldo berubah; muat ulang sebelum menyimpan.',409);
-     if(b.type==='bank'&&b.value>getMaxBankCapacity(data))throw bad('Saldo melebihi kapasitas bank anggota.');
-     if(b.type==='wallet')wallet=b.value;else bank=b.value;data.wallet=wallet;data.bank=bank;await c.query(`UPDATE ${tables.economy} SET balance=$3,bank=$4,data=$5::jsonb,updated_at=CURRENT_TIMESTAMP WHERE guild_id=$1 AND user_id=$2`,[req.guild.id,member.id,wallet,bank,JSON.stringify(data)]);
-    } else {
-     const r=await c.query(`SELECT level FROM ${tables.user_levels} WHERE guild_id=$1 AND user_id=$2 FOR UPDATE`,[req.guild.id,member.id]);if(!r.rows[0])throw bad('Data leveling belum tersedia.',404);if(Number(r.rows[0].level)!==b.expected)throw bad('Level berubah; muat ulang sebelum menyimpan.',409);
-     await c.query(`UPDATE ${tables.user_levels} SET level=$3,xp=0,total_xp=$4,updated_at=CURRENT_TIMESTAMP WHERE guild_id=$1 AND user_id=$2`,[req.guild.id,member.id,b.value,calculateTotalXp(b.value,0)]);
-    }
+    const r=await c.query(`SELECT level FROM ${tables.user_levels} WHERE guild_id=$1 AND user_id=$2 FOR UPDATE`,[req.guild.id,member.id]);if(!r.rows[0])throw bad('Data leveling belum tersedia.',404);if(Number(r.rows[0].level)!==b.expected)throw bad('Level berubah; muat ulang sebelum menyimpan.',409);
+    await c.query(`UPDATE ${tables.user_levels} SET level=$3,xp=0,total_xp=$4,updated_at=CURRENT_TIMESTAMP WHERE guild_id=$1 AND user_id=$2`,[req.guild.id,member.id,b.value,calculateTotalXp(b.value,0)]);
     await c.query('COMMIT');console.info(`[dashboard] member update guild=${req.guild.id} moderator=${req.member.id} member=${member.id} type=${b.type}`);
    }catch(e){await c.query('ROLLBACK').catch(()=>{});throw e}finally{c.release()}
   }));
-  if(b.type==='level')return res.json({ok:true,rewardRoles:await rewardRolesAfterLevel(client,req.guild,member,b.value)});
-  res.json({ok:true});
+  res.json({ok:true,rewardRoles:await rewardRolesAfterLevel(client,req.guild,member,b.value)});
  }catch(e){fail(res,e)}});
  router.get('/logs',auth,async(req,res)=>{try{
   const sqlite=sqliteBackend(client);const config=sqlite?sqlite.botGet(`guild:${req.guild.id}:config`):(await pool(client).query(`SELECT config FROM ${tables.guilds} WHERE id=$1`,[req.guild.id])).rows[0]?.config;const id=config?.logging?.channels?.audit;

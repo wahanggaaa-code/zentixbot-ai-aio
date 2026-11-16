@@ -26,8 +26,6 @@ function createStore(client) {
     },
     async update(id, patch) {
       const sqlite=sqliteBackend(client);if(sqlite)return sqlite.transaction(tx=>{
-        const cfg=unwrapReplitData(tx.botGet(`guild:${id}:config`)||{});
-        if(patch.roleIds.length&&(cfg.verification?.enabled||cfg.verification?.autoVerify?.enabled)){const e=new Error('Autorole tidak dapat diaktifkan saat verification atau auto-verify aktif.');e.status=409;throw e;}
         const raw=tx.botGet(`guild:${id}:welcome`)||{};if(raw.ok!==undefined&&raw.value!==undefined)throw new Error('Format welcome lama perlu dimigrasikan sebelum diubah.');
         const merged={...raw,...patch,welcomeEmbed:{...(raw.welcomeEmbed||{}),...patch.welcomeEmbed}};tx.botSet(`guild:${id}:welcome`,merged);return normalizeWelcomeConfig(merged);
       });
@@ -37,9 +35,6 @@ function createStore(client) {
         await db.query(`INSERT INTO ${t.guilds} (id, created_at) VALUES ($1, CURRENT_TIMESTAMP) ON CONFLICT (id) DO NOTHING`,[id]);
         const guild = await db.query(`SELECT config FROM ${t.guilds} WHERE id = $1 FOR UPDATE`,[id]);
         const cfg = guild.rows[0]?.config;
-        if (patch.roleIds.length && (cfg?.verification?.enabled || cfg?.verification?.autoVerify?.enabled)) {
-          const error = new Error('Autorole tidak dapat diaktifkan saat verification atau auto-verify aktif.'); error.status=409; throw error;
-        }
         await db.query(`INSERT INTO ${t.welcome_configs} (guild_id, config) VALUES ($1, '{}'::jsonb) ON CONFLICT (guild_id) DO NOTHING`,[id]);
         const old = await db.query(`SELECT config FROM ${t.welcome_configs} WHERE guild_id = $1 FOR UPDATE`,[id]);
         const raw = old.rows[0]?.config;
@@ -56,16 +51,21 @@ function createStore(client) {
   };
 }
 const allowed = ['enabled','channelId','welcomeMessage','welcomePing','welcomeImage','roleIds','welcomeEmbed'];
+// Autoroles can be several (multi-select); the runtime assigns every listed role.
+export const MAX_AUTOROLES = 5;
 function validate(body,guild) {
   if (!body || typeof body!=='object' || Array.isArray(body) || Object.keys(body).length!==allowed.length || Object.keys(body).some(k=>!allowed.includes(k))) throw new Error('Pengaturan welcome tidak valid.');
   if (typeof body.enabled!=='boolean' || typeof body.welcomePing!=='boolean') throw new Error('Nilai aktif dan ping harus boolean.');
   if (typeof body.welcomeMessage!=='string' || !body.welcomeMessage.trim() || body.welcomeMessage.length>1500) throw new Error('Pesan harus berisi 1–1500 karakter.');
   if (body.channelId !== null && (typeof body.channelId !== 'string' || guild.channels.cache.get(body.channelId)?.type !== ChannelType.GuildText)) throw new Error('Pilih channel teks dari server ini.');
   if (body.enabled && !body.channelId) throw new Error('Pilih channel untuk mengaktifkan welcome.');
-  if (!Array.isArray(body.roleIds) || body.roleIds.length>1 || body.roleIds.some(id=>typeof id!=='string')) throw new Error('Pilih maksimal satu autorole.');
+  if (!Array.isArray(body.roleIds) || body.roleIds.length>MAX_AUTOROLES || body.roleIds.some(id=>typeof id!=='string' || !/^\d{17,20}$/.test(id)) || new Set(body.roleIds).size!==body.roleIds.length) throw new Error(`Pilih maksimal ${MAX_AUTOROLES} autorole (ID role Discord, tidak boleh ganda).`);
   if (body.roleIds.length) {
-    const role=guild.roles.cache.get(body.roleIds[0]), me=guild.members.me;
-    if (!role || !me || role.id===guild.id || role.managed || !me.permissions.has(PermissionFlagsBits.ManageRoles) || me.roles.highest.comparePositionTo(role)<=0) throw new Error('Autorole tidak tersedia atau tidak dapat dikelola bot.');
+    const me=guild.members.me;
+    for (const roleId of body.roleIds) {
+      const role=guild.roles.cache.get(roleId);
+      if (!role || !me || role.id===guild.id || role.managed || !me.permissions.has(PermissionFlagsBits.ManageRoles) || me.roles.highest.comparePositionTo(role)<=0) throw new Error('Salah satu autorole tidak tersedia atau tidak dapat dikelola bot.');
+    }
   }
   if (body.welcomeImage !== null) {
     if (typeof body.welcomeImage !== 'string' || body.welcomeImage.length>1000) throw new Error('URL gambar tidak valid.');
@@ -89,7 +89,7 @@ export function createBotApiRouter(client, {auth, csrf, store = createStore(clie
       const channels=[...req.guild.channels.cache.values()].filter(c=>c.type===ChannelType.GuildText).map(c=>({id:c.id,name:c.name}));
       const me=req.guild.members.me;
       const roles=[...req.guild.roles.cache.values()].filter(r=>r.id!==req.guild.id && !r.managed && me?.permissions.has(PermissionFlagsBits.ManageRoles) && me.roles.highest.comparePositionTo(r)>0).map(r=>({id:r.id,name:r.name}));
-      res.json({welcome,channels,roles,verificationActive:!!(data.guild.verification?.enabled || data.guild.verification?.autoVerify?.enabled)});
+      res.json({welcome,channels,roles});
     } catch {res.status(503).json({error:'Tidak dapat membaca database persisten.'});}
   });
   router.patch('/welcome',auth,csrf,async(req,res)=>{

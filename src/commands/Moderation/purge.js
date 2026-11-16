@@ -1,4 +1,4 @@
-import { SlashCommandBuilder, PermissionFlagsBits, PermissionsBitField, ChannelType, MessageFlags } from 'discord.js';
+import { SlashCommandBuilder, PermissionsBitField, ChannelType, MessageFlags } from 'discord.js';
 
 import { logEvent } from '../../utils/moderation.js';
 import { logger } from '../../utils/logger.js';
@@ -16,8 +16,7 @@ export default {
         .setName("amount")
         .setDescription("Number of messages (1-100)")
         .setRequired(true),
-    )
-.setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages),
+    ),
   category: "moderation",
   abuseProtection: { maxAttempts: 5, windowMs: 60_000 },
 

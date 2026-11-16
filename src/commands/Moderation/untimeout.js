@@ -1,4 +1,4 @@
-import { SlashCommandBuilder, PermissionFlagsBits } from 'discord.js';
+import { SlashCommandBuilder } from 'discord.js';
 
 import { logger } from '../../utils/logger.js';
 import { ModerationService } from '../../services/moderation/moderationService.js';
@@ -16,8 +16,7 @@ export default {
                 .setName("target")
                 .setDescription("User to untimeout")
                 .setRequired(true),
-        )
-        .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers),
+        ),
     category: "moderation",
 
     async execute(interaction, config, client) {

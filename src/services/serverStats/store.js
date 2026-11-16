@@ -9,14 +9,40 @@
 import { createHash } from 'node:crypto';
 import { pgConfig } from '../../config/database/postgres.js';
 import { sqliteFor, readRow, changeRows } from '../storage/sqliteRows.js';
+import { DEFAULT_NOTATION, notationOrDefault } from './notation.js';
+import { validateGameBinding, validateSocialBinding } from './external.js';
 
 const tables = pgConfig.tables;
 const SNOWFLAKE = /^\d{17,20}$/;
 const COUNTER_ID = /^[A-Za-z0-9_-]{1,32}$/;
 
-export const COUNTER_TYPES = ['members', 'members_only', 'bots'];
-/** One counter per type, so the list cannot grow past this. */
-export const MAX_COUNTERS = COUNTER_TYPES.length;
+// One counter per type, plus the bound kinds that carry their own binding: `role` (one per chosen role)
+// and `goal` (one per chosen stat+target pair), each capped separately. The names come from
+// serverstatsService.COUNTER_TYPE_CONFIG; keep the two in step — tests/restricted-style parity is asserted in postgres-serverstats.test.js.
+export const COUNTER_TYPES = [
+    'members', 'members_only', 'bots', 'pending', 'norole',
+    'channels', 'text_channels', 'voice_channels', 'announcement_channels', 'forum_channels', 'stage_channels', 'categories',
+    'roles', 'emojis', 'static_emojis', 'animated_emojis', 'stickers',
+    'boosts', 'boost_tier', 'bans', 'role', 'goal',
+    'connected', 'online', 'idle', 'dnd', 'offline', 'streaming',
+    'game', 'social',
+];
+/** The stats a goal counter may track: every regular type. (`role` needs its own binding and is not a goal stat.) */
+export const GOAL_STATS = COUNTER_TYPES.filter((type) => type !== 'role' && type !== 'goal' && type !== 'game' && type !== 'social');
+/** The status counter types: they read the gateway presence cache, never the member list. */
+export const PRESENCE_TYPES = new Set(['connected', 'online', 'idle', 'dnd', 'offline', 'streaming']);
+/** The highest target a goal counter may carry: whole numbers, 1..2 billion, far above any Discord stat. */
+export const MAX_GOAL = 2_000_000_000;
+/** A server may have at most this many role counters (one per chosen role), on top of one per regular type. */
+export const MAX_ROLE_COUNTERS = 10;
+/** A server may have at most this many goal counters (one per chosen stat+target pair), on top of the rest. */
+export const MAX_GOAL_COUNTERS = 10;
+/** A server may have at most this many game counters (one per chosen game/server), on top of the rest. */
+export const MAX_GAME_COUNTERS = 10;
+/** A server may have at most this many social counters (one per chosen account), on top of the rest. */
+export const MAX_SOCIAL_COUNTERS = 10;
+/** One counter per regular type, plus one per chosen role, goal, game and social. */
+export const MAX_COUNTERS = (COUNTER_TYPES.length - 4) + MAX_ROLE_COUNTERS + MAX_GOAL_COUNTERS + MAX_GAME_COUNTERS + MAX_SOCIAL_COUNTERS;
 
 export const fail = (message, code, extra = {}) => Object.assign(new Error(message), { code, ...extra });
 
@@ -32,10 +58,22 @@ export function counterPool(client) {
 }
 
 function isCounterShape(entry) {
-    return Boolean(entry && typeof entry === 'object' && !Array.isArray(entry)
+    if (!(entry && typeof entry === 'object' && !Array.isArray(entry)
         && typeof entry.id === 'string' && COUNTER_ID.test(entry.id)
         && typeof entry.type === 'string' && entry.type.length > 0 && entry.type.length <= 32
-        && typeof entry.channelId === 'string' && SNOWFLAKE.test(entry.channelId));
+        && typeof entry.channelId === 'string' && SNOWFLAKE.test(entry.channelId))) {
+        return false;
+    }
+    // A role counter is only usable with a valid role id; a goal counter with a valid stat and target.
+    if (entry.type === 'role') return typeof entry.roleId === 'string' && SNOWFLAKE.test(entry.roleId);
+    if (entry.type === 'goal') {
+        return typeof entry.goalStat === 'string' && GOAL_STATS.includes(entry.goalStat)
+            && Number.isSafeInteger(entry.goal) && entry.goal >= 1 && entry.goal <= MAX_GOAL;
+    }
+    // Game and social counters carry a provider+target binding; an invalid one makes the entry unusable.
+    if (entry.type === 'game') return validateGameBinding(entry.game) !== null;
+    if (entry.type === 'social') return validateSocialBinding(entry.social) !== null;
+    return true;
 }
 
 function normalize(entry, guildId) {
@@ -48,13 +86,25 @@ function normalize(entry, guildId) {
         enabled: typeof entry.enabled === 'boolean' ? entry.enabled : true,
     };
     if (typeof entry.updatedAt === 'string') counter.updatedAt = entry.updatedAt;
+    // A role binding only means something for the role type; it is dropped anywhere else.
+    if (entry.type === 'role') counter.roleId = entry.roleId;
+    // A goal binding only means something for the goal type; it is dropped anywhere else.
+    if (entry.type === 'goal') {
+        counter.goalStat = entry.goalStat;
+        counter.goal = entry.goal;
+    }
+    // A game binding only means something for the game type; a social binding for the social type.
+    if (entry.type === 'game') counter.game = validateGameBinding(entry.game);
+    if (entry.type === 'social') counter.social = validateSocialBinding(entry.social);
     return counter;
 }
 
 /**
- * The stored column as a list of counters.
- * Entries that cannot be used (no id, type or channel) are left out and counted. A value that is not a list at all
- * is refused: writing over something this code does not understand would destroy it.
+ * The stored column as a list of counters and the notation of its numbers.
+ * The column is `{ counters: [...], notation: '...' }`; a bare list (as older versions wrote it) is read as-is.
+ * A notation this version does not know is treated as the default; it is a cosmetic choice, not data.
+ * Entries that cannot be used (no id, type or channel) are left out and counted. A value that is neither a list
+ * nor a wrapper with one is refused: writing over something this code does not understand would destroy it.
  */
 export function decodeCounters(raw, guildId) {
     let value = raw;
@@ -65,7 +115,13 @@ export function decodeCounters(raw, guildId) {
             throw fail('Stored counters are not valid JSON', 'SERVERSTATS_INVALID');
         }
     }
-    if (value === null || value === undefined) return { counters: [], rejected: 0 };
+    let notation = DEFAULT_NOTATION;
+    if (value !== null && typeof value === 'object' && !Array.isArray(value) && !isCounterShape(value)
+        && Array.isArray(value.counters)) {
+        notation = notationOrDefault(value.notation);
+        value = value.counters;
+    }
+    if (value === null || value === undefined) return { counters: [], rejected: 0, notation };
     // A single counter stored without its list, as an older version wrote it.
     if (isCounterShape(value)) value = [value];
     if (!Array.isArray(value)) throw fail('Stored counters are not a list', 'SERVERSTATS_INVALID');
@@ -81,12 +137,12 @@ export function decodeCounters(raw, guildId) {
         seen.add(entry.id);
         counters.push(normalize(entry, guildId));
     }
-    return { counters, rejected };
+    return { counters, rejected, notation };
 }
 
 /** A content hash of the list. Not a version number: A→B→A is not detected. */
 export function revisionOf(counters) {
-    const canonical = counters.map((c) => [c.id, c.type, c.channelId, c.enabled, c.createdAt, c.updatedAt ?? null]);
+    const canonical = counters.map((c) => [c.id, c.type, c.channelId, c.roleId ?? null, c.goalStat ?? null, c.goal ?? null, c.game ? validateGameBinding(c.game) : null, c.social ? validateSocialBinding(c.social) : null, c.enabled, c.createdAt, c.updatedAt ?? null]);
     return createHash('sha256').update(JSON.stringify(canonical)).digest('hex');
 }
 
@@ -101,13 +157,14 @@ const countersKey = (guildId) => `guild:${guildId}:counters`;
 
 function mutateOnSQLite(sqlite, guildId, mutate) {
     return changeRows(sqlite, (rows) => {
-        const { counters } = decodeCounters(rows.get(countersKey(guildId)) ?? null, guildId);
+        const stored = decodeCounters(rows.get(countersKey(guildId)) ?? null, guildId);
+        const { counters } = stored;
         const out = mutate(counters.map((counter) => ({ ...counter })), revisionOf(counters));
         if (!out || typeof out !== 'object' || typeof out.then === 'function') throw fail('Invalid counter mutation result', 'SERVERSTATS_INVALID');
         if (out.write === false) return out.result;
-        const { counters: next, rejected } = decodeCounters(out.counters, guildId);
-        if (rejected > 0 || next.length > MAX_COUNTERS) throw fail('Refusing to store an invalid counter list', 'SERVERSTATS_INVALID');
-        rows.put(countersKey(guildId), next);
+        const decoded = decodeCounters(out.counters, guildId);
+        if (decoded.rejected > 0 || decoded.counters.length > MAX_COUNTERS) throw fail('Refusing to store an invalid counter list', 'SERVERSTATS_INVALID');
+        rows.put(countersKey(guildId), { counters: decoded.counters, notation: notationOrDefault(out.notation ?? stored.notation) });
         return out.result;
     });
 }
@@ -116,13 +173,13 @@ export async function readCounters(client, guildId) {
     assertGuild(guildId);
     const sqlite = sqliteFor(client, unavailable);
     if (sqlite) {
-        const { counters, rejected } = decodeCounters(readRow(sqlite, countersKey(guildId)) ?? null, guildId);
-        return { counters, rejected, revision: revisionOf(counters) };
+        const { counters, rejected, notation } = decodeCounters(readRow(sqlite, countersKey(guildId)) ?? null, guildId);
+        return { counters, rejected, revision: revisionOf(counters), notation };
     }
     const pool = counterPool(client);
     const result = await pool.query(`SELECT counters FROM ${tables.guilds} WHERE id = $1`, [guildId]);
-    const { counters, rejected } = decodeCounters(result.rows[0]?.counters ?? null, guildId);
-    return { counters, rejected, revision: revisionOf(counters) };
+    const { counters, rejected, notation } = decodeCounters(result.rows[0]?.counters ?? null, guildId);
+    return { counters, rejected, revision: revisionOf(counters), notation };
 }
 
 /**
@@ -147,7 +204,8 @@ export async function mutateCounters(client, guildId, mutate) {
         const rows = await conn.query(`SELECT counters FROM ${tables.guilds} WHERE id = $1 FOR UPDATE`, [guildId]);
         if (!rows.rows.length) throw fail('Guild row unavailable', 'SERVERSTATS_UNAVAILABLE');
 
-        const { counters } = decodeCounters(rows.rows[0].counters, guildId);
+        const stored = decodeCounters(rows.rows[0].counters, guildId);
+        const { counters } = stored;
         const out = mutate(counters.map((counter) => ({ ...counter })), revisionOf(counters));
         if (!out || typeof out !== 'object' || typeof out.then === 'function') throw fail('Invalid counter mutation result', 'SERVERSTATS_INVALID');
 
@@ -156,11 +214,12 @@ export async function mutateCounters(client, guildId, mutate) {
             return out.result;
         }
 
-        const { counters: next, rejected } = decodeCounters(out.counters, guildId);
-        if (rejected > 0 || next.length > MAX_COUNTERS) throw fail('Refusing to store an invalid counter list', 'SERVERSTATS_INVALID');
+        const decoded = decodeCounters(out.counters, guildId);
+        if (decoded.rejected > 0 || decoded.counters.length > MAX_COUNTERS) throw fail('Refusing to store an invalid counter list', 'SERVERSTATS_INVALID');
+        const notation = notationOrDefault(out.notation ?? stored.notation);
         await conn.query(
             `UPDATE ${tables.guilds} SET counters = $2::jsonb, updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
-            [guildId, JSON.stringify(next)],
+            [guildId, JSON.stringify({ counters: decoded.counters, notation })],
         );
         await conn.query('COMMIT');
         return out.result;

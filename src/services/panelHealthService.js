@@ -3,17 +3,8 @@ import { logger } from '../utils/logger.js';
 import { getGuildConfig, setGuildConfig } from './config/guildConfig.js';
 import {
     getTicketPanelStatus,
-    getVerificationPanelStatus,
 } from '../utils/panelStatus.js';
 import { summarizePanels } from './reactionRoles/manage.js';
-
-async function persistVerificationMessageId(client, guildId, config, messageId) {
-    if (!messageId || config.verification?.messageId === messageId) return;
-    // Save against the original guild snapshot: the Discord scan can take long
-    // enough for the verification channel or other settings to change.
-    config.verification = { ...config.verification, messageId };
-    await setGuildConfig(client, guildId, config);
-}
 
 export async function reconcileTicketPanels(client) {
     const summary = {
@@ -55,52 +46,6 @@ export async function reconcileTicketPanels(client) {
         } catch (error) {
             summary.errors += 1;
             logger.warn(`Ticket panel health check failed for guild ${guild.id}:`, error.message);
-        }
-    }
-
-    return summary;
-}
-
-export async function reconcileVerificationPanels(client) {
-    const summary = {
-        scannedGuilds: 0,
-        healthyPanels: 0,
-        deletedPanels: 0,
-        missingChannels: 0,
-        recoveredIds: 0,
-        errors: 0,
-    };
-
-    for (const guild of client.guilds.cache.values()) {
-        if (!isHomeGuild(client, guild.id)) continue;
-        summary.scannedGuilds += 1;
-
-        try {
-            const config = await getGuildConfig(client, guild.id);
-            const verification = config?.verification;
-            if (!verification?.channelId || verification.enabled === false) continue;
-
-            const panelStatus = await getVerificationPanelStatus(client, guild, verification);
-
-            if (panelStatus.recoveredId) {
-                await persistVerificationMessageId(client, guild.id, config, panelStatus.recoveredId);
-                summary.recoveredIds += 1;
-            }
-
-            if (panelStatus.exists) {
-                summary.healthyPanels += 1;
-            } else if (panelStatus.reason === 'channel_missing') {
-                summary.missingChannels += 1;
-                logger.warn(`Verification panel channel missing for guild ${guild.id} (${guild.name})`);
-            } else if (panelStatus.reason === 'panel_deleted') {
-                summary.deletedPanels += 1;
-                logger.warn(
-                    `Verification panel deleted for guild ${guild.id} (${guild.name}) — repost from /verification dashboard`,
-                );
-            }
-        } catch (error) {
-            summary.errors += 1;
-            logger.warn(`Verification panel health check failed for guild ${guild.id}:`, error.message);
         }
     }
 

@@ -1,6 +1,5 @@
 import { Events, PermissionFlagsBits } from 'discord.js';
 import { getWelcomeConfig } from '../utils/database.js';
-import { deleteApplicationsOf } from '../services/applications/store.js';
 import { formatWelcomeMessage } from '../utils/welcome.js';
 import { deliverLeaveGoodbye } from '../services/ai/welcome.js';
 import { buildGoodbyePayload } from '../services/welcomePayload.js';
@@ -72,15 +71,6 @@ export default {
             }
         } catch (error) {
             logger.debug('Error handling birthday on member leave:', error);
-        }
-
-        try {
-            const removed = await deleteApplicationsOf(member.client, guild.id, user.id);
-            if (removed > 0) {
-                logger.debug(`Removed ${removed} applications for user ${user.id} in guild ${guild.id}`);
-            }
-        } catch (error) {
-            logger.debug('Error handling applications on member leave:', error);
         }
 
         try {

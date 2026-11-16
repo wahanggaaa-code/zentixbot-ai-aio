@@ -4,7 +4,7 @@
  * Usage:
  *   export default defineSlashCommand({
  *     data: new SlashCommandBuilder()...,
- *     category: 'economy',
+ *     category: 'leveling',
  *     async execute(interaction, config, client) {
  *       // throw ZentixBotError / createError on failure
  *       // use replyUserError for early validation returns

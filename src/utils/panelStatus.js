@@ -1,5 +1,5 @@
 /**
- * Shared helpers for detecting bot-posted panel messages (tickets, verification, etc.)
+ * Shared helpers for detecting bot-posted panel messages (tickets, etc.)
  */
 
 export function messageHasButtonCustomId(message, buttonCustomId) {
@@ -115,13 +115,5 @@ export async function getTicketPanelStatus(client, guild, config) {
         channelId: config.ticketPanelChannelId,
         messageId: config.ticketPanelMessageId,
         buttonCustomId: 'create_ticket',
-    });
-}
-
-export async function getVerificationPanelStatus(client, guild, config) {
-    return getBotPanelStatus(client, guild, {
-        channelId: config?.channelId,
-        messageId: config?.messageId,
-        buttonCustomId: 'verify_user',
     });
 }

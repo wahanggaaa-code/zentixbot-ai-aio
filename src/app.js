@@ -37,6 +37,11 @@ import { createReadinessHandler } from './services/storage/databaseReadiness.js'
 
 const DATABASE_NAMES = { postgresql: 'PostgreSQL', sqlite: 'SQLite' };
 
+// Presence counters (Tahap 6) are opt-in: the privileged Presence Intent is only requested when the owner sets
+// ZENTIX_PRESENCE_INTENT=1 in .env and has approved it in the Discord Developer Portal. Anything else: no intent,
+// and the status counters report themselves as unreadable in the diagnostics instead of showing 0.
+const wantPresenceIntent = process.env.ZENTIX_PRESENCE_INTENT === '1';
+
 class ZentixBot extends Client {
   constructor() {
     super({
@@ -53,6 +58,7 @@ class ZentixBot extends Client {
         GatewayIntentBits.GuildVoiceStates,             
 
         GatewayIntentBits.GuildBans,                    
+        ...(wantPresenceIntent ? [GatewayIntentBits.GuildPresences] : []),
       ],
       // Reactions on messages the bot did not see cached (e.g. from before a restart) still arrive.
       partials: [Partials.Message, Partials.Reaction],

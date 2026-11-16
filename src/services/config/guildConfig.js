@@ -24,11 +24,7 @@ function sqliteForConfig(client,guildId){
 function snapshot(sqlite,guildId,value,raw){sqliteSnapshots.set(value,{sqlite,guildId,raw:JSON.stringify(raw)});return value;}
 export function transferGuildConfigSnapshot(source,target){if(source&&target&&typeof target==='object'){for(const snapshots of [sqliteSnapshots,postgresSnapshots]){const entry=snapshots.get(source);if(entry)snapshots.set(target,entry);}}return target;}
 function checkLegacy(raw){if(raw&&typeof raw==='object'&&raw.ok!==undefined&&raw.value!==undefined)throw createError('Legacy config requires migration',ErrorTypes.CONFIGURATION,'Legacy configuration must be migrated before editing.');}
-function checkConflict(config,welcome){
- const verification=config.verification||{};
- if((welcome?.roleIds?.length&&(verification.enabled||verification.autoVerify?.enabled))||(verification.enabled&&(config.autoRole||verification.autoVerify?.enabled)))throw createError('Conflicting verification and autorole settings',ErrorTypes.CONFIGURATION,'Disable conflicting autorole or verification settings before saving.');
-}
-function persistConfig(tx,guildId,config,context){const key=getGuildConfigKey(guildId),raw=tx.botGet(key);checkLegacy(raw);const validated=validateGuildConfigOrThrow(config,{guildId,...context});const welcome=unwrapReplitData(tx.botGet(getWelcomeConfigKey(guildId))||{});checkConflict(validated,welcome);tx.botSet(key,validated);return validated;}
+function persistConfig(tx,guildId,config,context){const key=getGuildConfigKey(guildId),raw=tx.botGet(key);checkLegacy(raw);const storedWelcome=tx.botGet(getWelcomeConfigKey(guildId))||{};assertOnboardingShape(raw||{},storedWelcome);const validated=validateGuildConfigOrThrow(config,{guildId,...context});tx.botSet(key,validated);return validated;}
 function mutateSQLiteConfig(sqlite,guildId,context,mutate){return sqlite.transaction(tx=>{const raw=tx.botGet(getGuildConfigKey(guildId));checkLegacy(raw);const current=normalizeGuildConfig(raw||{},GUILD_CONFIG_DEFAULTS);const result=persistConfig(tx,guildId,mutate(current),context);return snapshot(sqlite,guildId,result,result)});}
 
 // PostgreSQL mutations serialize on the same guild row locked by the dashboard.
@@ -184,7 +180,7 @@ export const setConfigValue = wrapServiceBoundary(async function setConfigValue(
 });
 
 /**
- * Merge partial updates into a nested config object (e.g. verification, logging).
+ * Merge partial updates into a nested config object (e.g. logging, welcome).
  */
 export const patchGuildConfig = wrapServiceBoundary(async function patchGuildConfig(client, guildId, patch, context = {}) {
     // Capture and validate the entire request before any await. The caller may

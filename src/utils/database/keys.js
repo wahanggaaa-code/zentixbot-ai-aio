@@ -60,8 +60,8 @@ export function getUserLevelPrefix(guildId) {
     return `guild:${guildId}:leveling:users:`;
 }
 
-// Role applications build their own keys (src/services/applications/store.js); this prefix is what
-// the guild data reset uses to find them.
+// Role applications built their own keys; the store is gone with the feature and any stored rows
+// stay untouched. This prefix is what the guild data reset uses to find them.
 export function getApplicationsPrefix(guildId) {
     return `guild:${guildId}:applications:`;
 }

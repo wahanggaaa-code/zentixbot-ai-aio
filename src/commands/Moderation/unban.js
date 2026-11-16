@@ -1,4 +1,4 @@
-import { SlashCommandBuilder, PermissionFlagsBits } from 'discord.js';
+import { SlashCommandBuilder } from 'discord.js';
 
 import { logger } from '../../utils/logger.js';
 import { ModerationService } from '../../services/moderation/moderationService.js';
@@ -21,8 +21,7 @@ export default {
             option.setName("reason")
                 .setDescription("Reason for the unban")
                 .setRequired(false),
-        )
-        .setDefaultMemberPermissions(PermissionFlagsBits.BanMembers),
+        ),
     category: "moderation",
 
     async execute(interaction, config, client) {

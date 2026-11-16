@@ -4,23 +4,8 @@
  */
 
 export const commandAliases = {
-    'bal': 'balance',
-    'money': 'balance',
-    'cash': 'balance',
-
-    'dep': 'deposit',
-    'with': 'withdraw',
-    'work': 'work',
-    'daily': 'daily',
-    'gamble': 'gamble',
-    'bet': 'gamble',
-    'rob': 'rob',
-    'crime': 'crime',
-    'pay': 'pay',
-    'give': 'pay',
-    'send': 'pay',
-
-    'ping': 'ping',
+    'ping': 'uptime',
+    'stats': 'uptime',
     'help': 'help',
     'h': 'help',
     'info': 'help',
@@ -41,26 +26,11 @@ export const commandAliases = {
     'lb': 'leaderboard',
     'top': 'leaderboard',
 
-    'shop': 'shop',
-    'buy': 'buy',
-    'inventory': 'inventory',
-    'inv': 'inventory',
-    'items': 'inventory',
-
     'user': 'userinfo',
-    'avatar': 'avatar',
-    'pfp': 'avatar',
-    'icon': 'avatar',
-
     'bd': 'birthday',
     'bday': 'birthday',
     'b': 'birthday',
 
-    'flip': 'flip',
-    'coin': 'flip',
-    'roll': 'roll',
-    'dice': 'roll',
-    'fight': 'fight',
 
     'gcreate': 'gcreate',
     'gstart': 'gcreate',
@@ -74,27 +44,12 @@ export const commandAliases = {
     't': 'ticket',
     'new': 'ticket',
 
-    'ver': 'verify',
-    'vadmin': 'verification',
-    'av': 'autoverify',
 
-    'welcome': 'welcome',
-    'greet': 'greet',
-    'goodbye': 'goodbye',
-    'autorole': 'autorole',
-
-    'calc': 'calculate',
-    'math': 'calculate',
     'weather': 'weather',
-    'todo': 'todo',
     'report': 'report',
     'userinfo': 'userinfo',
     'whois': 'userinfo',
     'ui': 'userinfo',
-
-    'serverstats': 'serverstats',
-    'ss': 'serverstats',
-    'sstats': 'serverstats',
 
     'rr': 'reactroles',
     'reactionroles': 'reactroles',

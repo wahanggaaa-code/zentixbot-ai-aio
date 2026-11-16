@@ -4,6 +4,7 @@ import { PermissionFlagsBits } from 'discord.js';
 import { logger } from './logger.js';
 import { replyUserError, ErrorTypes } from './errorHandler.js';
 import { isBotOwner, getBotMessage } from '../config/bot.js';
+import { isRestrictedCommand, memberHasRestrictedAccess } from './restrictedCommands.js';
 
 /**
  * Read default_member_permissions from a SlashCommandBuilder (or its JSON).
@@ -151,6 +152,36 @@ export async function checkModerationPermissions(
 export async function enforceDefaultCommandPermissions(interaction, command, context = {}) {
   if (isBotOwner(interaction.user?.id)) {
     return true;
+  }
+
+  // Restricted commands are gated by the guild's `commandAccessRoleIds` setting only:
+  // bot owner + the roles chosen on the dashboard. Native Discord permissions —
+  // including Administrator — neither hide nor grant access, and the old modRole
+  // is not consulted. Applies to slash invocations (Discord cannot hide these
+  // commands after setDefaultMemberPermissions was removed) and to prefix alike.
+  const commandNameForAccess = command?.data?.name ?? interaction.commandName ?? '';
+  if (isRestrictedCommand(commandNameForAccess)) {
+    const member = interaction.member;
+    if (memberHasRestrictedAccess(member, interaction.user?.id, context.guildConfig ?? null)) {
+      return true;
+    }
+
+    await replyUserError(interaction, {
+      type: ErrorTypes.PERMISSION,
+      message: 'Hanya owner bot dan role yang diatur yang boleh menjalankan perintah ini.',
+      context: {
+        source: context.source ?? 'permissionGuard.enforceDefaultCommandPermissions',
+        commandName: commandNameForAccess,
+      },
+    });
+
+    logger.warn('[PERMISSION_DENIED] Restricted command blocked', {
+      userId: interaction.user?.id,
+      guildId: interaction.guildId,
+      command: commandNameForAccess,
+    });
+
+    return false;
   }
 
   const requiredPermissions = getCommandDefaultPermissions(command?.data);

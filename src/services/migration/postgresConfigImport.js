@@ -36,11 +36,6 @@ export async function importPostgresConfigSnapshot(conn,sqlite,guildId){
    if(!Array.isArray(result.rows)||result.rows.length>1||(result.rows.length&&result.rows[0].guild_id!==guildId))throw fail('Configuration scope or row count invalid');
    if(result.rows.length)entries.push({key:keys[kind],value:decode(result.rows[0].config_text,kind)});
   }
-  // Runtime configuration writes refuse these conflicting role/verification
-  // combinations; do not import a state that cannot later be safely edited.
-  const config=entries.find(x=>x.key===keys.config).value,welcome=entries.find(x=>x.key===keys.welcome)?.value||{};
-  const verification=config.verification||{};
-  if((welcome?.roleIds?.length&&(verification.enabled||verification.autoVerify?.enabled))||(verification.enabled&&(config.autoRole||verification.autoVerify?.enabled)))throw fail('Conflicting verification and autorole settings');
   await conn.query('COMMIT');began=false;
  }catch(e){if(began)await conn.query('ROLLBACK').catch(()=>{});throw e}
  const copied=sqlite.transaction(tx=>{

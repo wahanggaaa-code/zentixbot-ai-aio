@@ -22,7 +22,7 @@ Bot Discord untuk satu server, dengan dashboard web di proses yang sama. Ditulis
 
 Perintah slash dikelompokkan per kategori di `src/commands/`:
 
-AI · Birthday · Community · Core · Economy · Fun · Giveaway · Join to Create · Leveling · Logging · Moderation · Music · Reaction Roles · Search · Server Stats · Ticket · Tools · Utility · Verification · Welcome
+AI · Birthday · Core · Giveaway · Join to Create · Leveling · Logging · Moderation · Music · Reaction Roles · Search · Server Stats · Ticket · Tools · Utility
 
 Dashboard web dibuka di `/dashboard/`. Seluruh kategori diatur dari sana — AI lewat AI Studio. Search, Utility dan Tools sengaja tidak punya halaman sendiri karena tidak menyimpan pengaturan server; ketiganya tetap tersedia sebagai perintah di Discord.
 

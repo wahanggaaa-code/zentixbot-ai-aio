@@ -1,10 +1,11 @@
 import express from 'express';
 import {getCommandAccessSnapshot,getCategoryRegistry,resolveCommandTarget,isProtectedCommand} from '../services/commandAccessService.js';
 import {readPostgresCommandAccess,mutatePostgresCommandAccess} from '../services/config/commandAccessPostgres.js';
+import {readPostgresCommandAccessRoles,mutatePostgresCommandAccessRoles,MAX_ACCESS_ROLES} from '../services/config/commandAccessRolesPostgres.js';
 const bad=(status,message)=>Object.assign(new Error(message),{status});
-function respond(res,e){const conflict=['COMMAND_ACCESS_STALE','COMMAND_ACCESS_INVALID'].includes(e.code);res.status(e.status||(conflict?409:503)).json({error:e.status?e.message:conflict?'Pengaturan berubah atau data akses perlu diperiksa. Muat ulang.':'Tidak dapat mengakses database; jika hasil simpan tidak diketahui, muat ulang sebelum mencoba lagi.'})}
+function respond(res,e){const conflict=['COMMAND_ACCESS_STALE','COMMAND_ACCESS_INVALID','COMMAND_ACCESS_ROLES_STALE','COMMAND_ACCESS_ROLES_INVALID'].includes(e.code);res.status(e.status||(conflict?409:503)).json({error:e.status?e.message:conflict?'Pengaturan berubah atau data akses perlu diperiksa. Muat ulang.':'Tidak dapat mengakses database; jika hasil simpan tidak diketahui, muat ulang sebelum mencoba lagi.'})}
 export function createCoreApi(client,{auth,csrf}){
- const router=express.Router();router.use('/core/commands',express.json({limit:'4kb'}));router.use('/core/commands',(req,res,next)=>{res.set('Cache-Control','no-store');next()});
+ const router=express.Router();router.use('/core/commands',express.json({limit:'4kb'}));router.use('/core/commands',(req,res,next)=>{res.set('Cache-Control','no-store');next()});router.use('/core/access-roles',express.json({limit:'4kb'}));router.use('/core/access-roles',(req,res,next)=>{res.set('Cache-Control','no-store');next()});
  router.get('/core/commands',auth,async(req,res)=>{try{
   if(!client.commands?.values)throw bad(503,'Daftar perintah bot belum tersedia.');
   const {config,revision}=await readPostgresCommandAccess(client,req.guild.id);const snapshot=getCommandAccessSnapshot(client,config);
@@ -12,6 +13,20 @@ export function createCoreApi(client,{auth,csrf}){
   const categories=snapshot.categories.map(c=>({key:c.key,name:c.displayName,disabled:c.categoryDisabled,commands:c.commands.map(x=>({name:x.name,description:String(x.description).slice(0,300),protected:isProtectedCommand(x.parentCommand||x.name),ownDisabled:!!snapshot.disabledCommands[x.name.toLowerCase()],enabled:c.enabledCommands.includes(x.name)}))}));
   res.json({revision,categories});
  }catch(e){respond(res,e)}});
+ router.get('/core/access-roles',auth,async(req,res)=>{try{
+  const {revision,roleIds}=await readPostgresCommandAccessRoles(client,req.guild.id);
+  const cache=req.guild?.roles?.cache;const everyoneId=req.guild?.id;
+  const roles=cache?[...cache.values()].filter(r=>r.id!==everyoneId):[];
+  roles.sort((a,b)=>((b.position??0)-(a.position??0))||(a.id<b.id?-1:1));
+  const MAX_LISTED=100;
+  res.json({revision,roleIds,roles:roles.slice(0,MAX_LISTED).map(r=>({id:r.id,name:String(r.name??'').slice(0,100),color:r.color??0,position:r.position??0,managed:Boolean(r.managed)})),rolesTruncated:roles.length>MAX_LISTED,limits:{roles:MAX_ACCESS_ROLES}});
+ }catch(e){respond(res,e)}});
+ router.patch('/core/access-roles',auth,csrf,async(req,res)=>{try{
+  const b=req.body;if(!b||typeof b!=='object'||Array.isArray(b)||Object.keys(b).sort().join(',')!=='confirmed,revision,roleIds'||b.confirmed!==true||!Array.isArray(b.roleIds)||b.roleIds.length>MAX_ACCESS_ROLES||typeof b.revision!=='string'||!/^(missing|[0-9a-f]{64})$/.test(b.revision))throw bad(400,'Permintaan akses command terbatas tidak valid.');
+  const seen=new Set();for(const id of b.roleIds){if(typeof id!=='string'||!/^\d{17,20}$/.test(id)||seen.has(id))throw bad(400,'Daftar role tidak valid.');seen.add(id)}
+  const {revision,roleIds}=await mutatePostgresCommandAccessRoles(client,req.guild.id,{roleIds:[...seen],revision:b.revision});res.json({ok:true,revision,roleIds});
+ }catch(e){respond(res,e)}});
+
  router.patch('/core/commands',auth,csrf,async(req,res)=>{try{
   const b=req.body;if(!b||typeof b!=='object'||Array.isArray(b)||Object.keys(b).sort().join(',')!=='confirmed,disabled,kind,revision,target'||b.confirmed!==true||typeof b.disabled!=='boolean'||!['command','category'].includes(b.kind)||typeof b.target!=='string'||b.target.length>128||typeof b.revision!=='string'||!/^(missing|[0-9a-f]{64})$/.test(b.revision))throw bad(400,'Permintaan pengaturan akses tidak valid.');
   if(!client.commands?.values)throw bad(503,'Daftar perintah bot belum tersedia.');

@@ -15,7 +15,7 @@
 
  const SHORTCUTS=[
   ['features/core','Akses perintah','Aktif/nonaktifkan perintah dan kategori.'],
-  ['features/welcome','Welcome & verification','Sambutan, goodbye, autorole, verifikasi.'],
+  ['features/welcome','Welcome & autorole','Sambutan, goodbye, autorole.'],
   ['features/logging','Logging','Channel audit dan event yang dicatat.'],
   ['features/birthday','Birthday','Channel pengumuman dan tanggal anggota.'],
   ['features/giveaway','Giveaway','Buat, akhiri dan hapus giveaway.'],

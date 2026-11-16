@@ -36,31 +36,11 @@ const TicketLoggingSchema = z
   })
   .optional();
 
-const AutoVerifyConfigSchema = z
-  .object({
-    enabled: z.boolean().default(false),
-    criteria: z.enum(['account_age', 'server_size', 'none']).default('none'),
-    accountAgeDays: z.number().int().min(1).max(365).nullable().optional(),
-    roleId: z.string().nullable().optional()
-  })
-  .optional();
-
-const VerificationConfigSchema = z
-  .object({
-    enabled: z.boolean().default(false),
-    channelId: z.string().nullable().optional(),
-    messageId: z.string().nullable().optional(),
-    roleId: z.string().nullable().optional(),
-    message: z.string().optional(),
-    buttonText: z.string().default('Verify'),
-    autoVerify: AutoVerifyConfigSchema
-  })
-  .optional();
-
 export const GuildConfigSchema = z
   .object({
     prefix: z.string().optional(),
     modRole: z.string().nullable().optional(),
+    commandAccessRoleIds: z.array(z.string().max(32)).max(100).optional(),
     adminRole: z.string().nullable().optional(),
     logChannelId: z.string().nullable().optional(),
     welcomeChannel: z.string().nullable().optional(),
@@ -76,27 +56,9 @@ export const GuildConfigSchema = z
     logging: z.union([z.undefined(), LoggingConfigSchema]),
     ticketLogging: TicketLoggingSchema.optional(),
     enableLogging: z.boolean().optional(),
-    verification: VerificationConfigSchema
-  })
-  .passthrough();
-
-export const EconomyDataSchema = z
-  .object({
-    wallet: z.number().nonnegative().default(0),
-    bank: z.number().nonnegative().default(0),
-    bankLevel: z.number().int().nonnegative().default(0),
-    dailyStreak: z.number().int().nonnegative().default(0),
-    lastDaily: z.number().int().nonnegative().default(0),
-    lastWeekly: z.number().int().nonnegative().default(0),
-    lastWork: z.number().int().nonnegative().default(0),
-    lastCrime: z.number().int().nonnegative().default(0),
-    lastRob: z.number().int().nonnegative().default(0),
-    lastDeposit: z.number().int().nonnegative().default(0),
-    lastWithdraw: z.number().int().nonnegative().default(0),
-    xp: z.number().int().nonnegative().default(0),
-    level: z.number().int().nonnegative().default(1),
-    inventory: z.record(z.string(), z.any()).default({}),
-    cooldowns: z.record(z.string(), z.number().int().nonnegative()).default({})
+    // Verification settings are no longer part of the schema; any stored
+    // verification record from before the removal is stripped on normalize.
+    verification: z.unknown().optional()
   })
   .passthrough();
 
@@ -191,6 +153,8 @@ export function normalizeGuildConfig(raw, defaults = {}) {
 
   const parsed = GuildConfigSchema.safeParse(merged);
   const normalized = parsed.success ? parsed.data : { ...defaults, ...merged };
+  // The verification module is gone; any stored record is dropped here, not carried forward.
+  if (normalized && typeof normalized === 'object') delete normalized.verification;
 
   normalized.logging = migrateLoggingConfig(normalized.logging, {
     logChannelId: normalized.logChannelId,
@@ -200,13 +164,6 @@ export function normalizeGuildConfig(raw, defaults = {}) {
   });
 
   return stripLegacyLoggingFields(normalized);
-}
-
-export function normalizeEconomyData(raw, defaults = {}) {
-  const base = typeof raw === 'object' && raw !== null ? raw : {};
-  const merged = { ...defaults, ...base };
-  const parsed = EconomyDataSchema.safeParse(merged);
-  return parsed.success ? parsed.data : { ...defaults, ...base };
 }
 
 export function validateGuildConfigOrThrow(rawConfig, context = {}) {

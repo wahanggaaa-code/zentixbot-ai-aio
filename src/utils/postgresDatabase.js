@@ -58,10 +58,10 @@ const PROTOCOL_ONLY_KEY_TYPES = [
     // Written by src/services/reactionRoles/store.js (per-guild lock, validated panels).
     'reaction_role',
 ];
-// To-do lists have no key type of their own; they are written by src/services/todo/store.js
-// (lock from read to write, failures thrown instead of answered with "no data").
-// Role applications (settings, forms, per-form settings, applications) are written by
-// src/services/applications/store.js under one lock per server.
+// To-do lists had no key type of their own; they were written by src/services/todo/store.js,
+// which is gone with the feature. Any stored rows stay untouched.
+// Role applications (settings, forms, per-form settings, applications) were written by
+// src/services/applications/store.js, which is gone with the feature. Any stored rows stay untouched.
 const PROTOCOL_ONLY_KEY_PATTERN = /^(?:todo_|shared_todo_|user_shared_lists_|guild:[^:]+:applications:)/;
 
 function isProtocolOnlyKey(key) {

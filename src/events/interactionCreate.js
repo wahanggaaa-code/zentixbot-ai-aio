@@ -28,7 +28,6 @@ const COMMAND_ERROR_SUBTYPES = {
   untimeout: 'untimeout_failed',
   warnings: 'warnings_view_failed',
   ticket: 'ticket_failed',
-  serverstats: 'serverstats_failed',
   gcreate: 'giveaway_failed',
   gend: 'giveaway_failed',
   gdelete: 'giveaway_failed',
@@ -187,33 +186,6 @@ export default {
             return;
           }
         } else if (interaction.isButton()) {
-          if (interaction.customId.startsWith('shared_todo_')) {
-            const parts = interaction.customId.split('_');
-            const buttonType = parts.slice(0, 3).join('_');
-            const listId = parts[3];
-            const button = client.buttons.get(buttonType);
-
-            if (button) {
-              try {
-                await button.execute(interaction, client, [listId]);
-              } catch (error) {
-                await handleInteractionError(interaction, error, withTraceContext({
-                  type: 'button',
-                  customId: interaction.customId,
-                  handler: 'todo'
-                }, interactionTraceContext));
-              }
-            } else {
-              throw createError(
-                `No button handler found for ${buttonType}`,
-                ErrorTypes.CONFIGURATION,
-                'This button is not available.',
-                withTraceContext({ buttonType }, interactionTraceContext)
-              );
-            }
-            return;
-          }
-
           const [customId, ...args] = interaction.customId.split(':');
           const button = client.buttons.get(customId);
 
@@ -267,6 +239,7 @@ export default {
         } else if (interaction.isModalSubmit()) {
           if (
             interaction.customId.startsWith('jtc_')
+            || interaction.customId.startsWith('shared_todo_')
             || interaction.customId.startsWith('config_wizard_modal:')
             || interaction.customId.startsWith('log_dash_channel_modal:')
             || interaction.customId.startsWith('log_dash_filter_modal:')

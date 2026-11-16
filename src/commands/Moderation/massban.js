@@ -1,4 +1,4 @@
-import { SlashCommandBuilder, PermissionFlagsBits } from 'discord.js';
+import { SlashCommandBuilder } from 'discord.js';
 import { logModerationAction } from '../../utils/moderation.js';
 import { logger } from '../../utils/logger.js';
 import { ModerationService } from '../../services/moderation/moderationService.js';
@@ -29,8 +29,7 @@ export default {
                 .setMinValue(0)
                 .setMaxValue(7)
                 .setRequired(false)
-        )
-        .setDefaultMemberPermissions(PermissionFlagsBits.BanMembers),
+        ),
     category: "moderation",
     abuseProtection: { maxAttempts: 3, windowMs: 60_000 },
 
