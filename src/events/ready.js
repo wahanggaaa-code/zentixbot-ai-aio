@@ -6,6 +6,7 @@ import { reconcileTicketPanels, reconcileReactionRolePanelHealth } from "../serv
 import { reconcileLevelRoles } from "../services/leveling/levelRoleSyncService.js";
 import { initRiffyAfterReady } from "../services/music/riffySetup.js";
 import { reconcileJoinToCreate } from "../services/joinToCreateRuntime.js";
+import { createSocialAlertsPoller } from "../services/socialAlerts/poller.js";
 
 export default {
   name: Events.ClientReady,
@@ -20,6 +21,15 @@ export default {
 
       if (client.config?.features?.music) {
         initRiffyAfterReady(client);
+      }
+
+      // Isolated: social alerts must not keep the bot from booting when the poll cannot start.
+      try {
+        client.socialAlertsPoller = createSocialAlertsPoller(client);
+        client.socialAlertsPoller.start();
+        logger.info('Social Alerts: poller started (10 minute interval).');
+      } catch (error) {
+        logger.warn(`Social Alerts: poller not started (${error?.message ?? error})`);
       }
 
       if (!client.guilds.cache.has(client.homeGuildId)) {

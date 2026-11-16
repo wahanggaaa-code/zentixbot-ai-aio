@@ -57,6 +57,8 @@ const PROTOCOL_ONLY_KEY_TYPES = [
     'counters',
     // Written by src/services/reactionRoles/store.js (per-guild lock, validated panels).
     'reaction_role',
+    // Written by src/services/socialAlerts/store.js (per-guild lock, validated alerts).
+    'social_alert',
 ];
 // To-do lists had no key type of their own; they were written by src/services/todo/store.js,
 // which is gone with the feature. Any stored rows stay untouched.

@@ -22,9 +22,11 @@ Bot Discord untuk satu server, dengan dashboard web di proses yang sama. Ditulis
 
 Perintah slash dikelompokkan per kategori di `src/commands/`:
 
-AI · Birthday · Core · Giveaway · Join to Create · Leveling · Logging · Moderation · Music · Reaction Roles · Search · Server Stats · Ticket · Tools · Utility
+AI · Birthday · Core · Giveaway · Join to Create · Leveling · Logging · Moderation · Music · Reaction Roles · Search · Server Stats · Social Alerts · Ticket · Tools · Utility
 
 Dashboard web dibuka di `/dashboard/`. Seluruh kategori diatur dari sana — AI lewat AI Studio. Search, Utility dan Tools sengaja tidak punya halaman sendiri karena tidak menyimpan pengaturan server; ketiganya tetap tersedia sebagai perintah di Discord.
+
+Social Alerts (Fitur → Social Alerts) mengumumkan upload video / Shorts / live YouTube dan live Twitch ke channel pilihan, dengan jeda tiap feed, mention role opsional dan ringkasan AI opsional. Kuncinya: `YOUTUBE_API_KEY` (YouTube Data API v3, gratis, ±2 unit kuota per feed per pemeriksaan tiap 10 menit) untuk YouTube, `TWITCH_CLIENT_ID` + `TWITCH_CLIENT_SECRET` untuk Twitch. Tanpa kunci, feed tetap tersimpan tapi tidak diperiksa — halamannya menyebutkan kunci mana yang belum diisi. Jujur soal batasannya: deteksi Shorts dan live tidak 100% akurat, dan thumbnail live Twitch sering berupa placeholder. Tombol **Tes** di dashboard mengirim pesan sungguhan ke channel target (tanpa mention, termasuk @everyone).
 
 ## Kebutuhan
 

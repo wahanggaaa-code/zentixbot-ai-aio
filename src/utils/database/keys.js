@@ -98,6 +98,14 @@ export function getReactionRolesPrefix(guildId) {
     return `guild:${guildId}:reaction_roles:`;
 }
 
+export function getSocialAlertsPrefix(guildId) {
+    return `guild:${guildId}:social_alerts:`;
+}
+
+export function getSocialAlertKey(guildId, alertId) {
+    return `guild:${guildId}:social_alerts:${alertId}`;
+}
+
 export function getServerCountersKey(guildId) {
     return `guild:${guildId}:counters`;
 }

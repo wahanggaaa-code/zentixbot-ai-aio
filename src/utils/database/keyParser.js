@@ -109,6 +109,9 @@ export function parseKey(key) {
         if (parts[2] === 'reaction_roles' && parts[3]) {
             return { type: 'reaction_role', guildId, messageId: parts[3], fullKey };
         }
+        if (parts[2] === 'social_alerts' && parts[3]) {
+            return { type: 'social_alert', guildId, alertId: parts[3], fullKey };
+        }
         if (parts[2] === 'counters' && !parts[3]) {
             return { type: 'counters', guildId, fullKey };
         }
