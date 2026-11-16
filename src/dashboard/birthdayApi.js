@@ -57,7 +57,7 @@ function cursor(row){return `${String(row.month).padStart(2,'0')}-${String(row.d
 export function createBirthdayApi(client,{auth,csrf,audit=defaultAudit}){
  const router=express.Router();
  // Never delays or fails the response; the change is already stored.
- const record=(req,action,targetId)=>{Promise.resolve().then(()=>audit(client,req.guild.id,req.session?.user?.id??null,action,targetId)).catch(()=>{})};router.use(express.json({limit:'4kb'}));router.use((req,res,next)=>{res.set('Cache-Control','no-store');next()});
+ const record=(req,action,targetId)=>{Promise.resolve().then(()=>audit(client,req.guild.id,req.session?.user?.id??null,action,targetId)).catch(()=>{})};router.use('/birthday',express.json({limit:'4kb'}));router.use((req,res,next)=>{res.set('Cache-Control','no-store');next()});
  router.get('/birthday/settings',auth,async(req,res)=>{try{
   const sqlite=sqliteOf(client);
   const stored=sqlite?sqlite.botGet(configKey(req.guild.id))??{}:await pool(client).query(`SELECT config FROM ${tables.guilds} WHERE id=$1`,[req.guild.id]).then(result=>result.rows.length?result.rows[0].config:{});

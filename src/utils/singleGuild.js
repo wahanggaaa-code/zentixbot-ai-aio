@@ -1,3 +1,4 @@
+import { ChannelType } from 'discord.js';
 /** A single bot instance serves only its configured home guild. */
 export function requireHomeGuildId(value) {
   const id = String(value || '').trim();
@@ -21,6 +22,12 @@ export function mayDispatchEvent(client, eventName, args) {
     const validTail = parts[0] === 'ticket_feedback' && interaction.isButton?.() ? parts.length === 4 && /^[1-5]$/.test(parts[3]) : parts.length === 3;
     const botMessage = interaction.isModalSubmit?.() || (client.user?.id && interaction.message?.author?.id === client.user.id);
     return Boolean(allowed && validTail && botMessage && isHomeGuild(client, parts[1]) && /^\d{17,20}$/.test(parts[2] || ''));
+  }
+  if (eventName === 'messageCreate' && !args[0]?.guildId && !args[0]?.guild) {
+    // A direct message to the bot is the AI DM chat's only input — let it reach the handler.
+    const channel = args[0]?.channel;
+    const isDm = channel?.type === ChannelType.DM || (typeof channel?.isDMBased === 'function' && channel.isDMBased());
+    return Boolean(isDm && args[0]?.author);
   }
   if (eventName === 'messageReactionAdd' || eventName === 'messageReactionRemove') {
     const message = args[0]?.message;

@@ -6,7 +6,12 @@ import { createKV } from './kv.js';
 export const MAX_SMART_CHANNELS = 10;
 export const MAX_FAQ_ENTRIES = 25;
 /** Languages the translator offers: code → the name used in the prompt and on the dashboard. */
-export const LANGUAGES = Object.freeze({ id: 'Bahasa Indonesia', en: 'Bahasa Inggris', ja: 'Bahasa Jepang', ko: 'Bahasa Korea', zh: 'Bahasa Mandarin', ar: 'Bahasa Arab' });
+export const LANGUAGES = Object.freeze({
+    id: 'Bahasa Indonesia', en: 'Bahasa Inggris', ja: 'Bahasa Jepang', ko: 'Bahasa Korea', zh: 'Bahasa Mandarin', ar: 'Bahasa Arab',
+    fr: 'Bahasa Prancis', de: 'Bahasa Jerman', es: 'Bahasa Spanyol', it: 'Bahasa Italia', pt: 'Bahasa Portugis', ru: 'Bahasa Rusia',
+    nl: 'Bahasa Belanda', tr: 'Bahasa Turki', pl: 'Bahasa Polandia', uk: 'Bahasa Ukraina', cs: 'Bahasa Ceko', ro: 'Bahasa Rumania',
+    hu: 'Bahasa Hongaria', el: 'Bahasa Yunani', th: 'Bahasa Thai', vi: 'Bahasa Vietnam', ms: 'Bahasa Melayu', sv: 'Bahasa Swedia',
+}); // 24 languages + the /personal reset choice = exactly Discord's 25 option cap.
 export const ZONES = Object.freeze({ WIB: 'Asia/Jakarta', WITA: 'Asia/Makassar', WIT: 'Asia/Jayapura' });
 
 export const DEFAULT_SMART = Object.freeze({
@@ -23,7 +28,7 @@ export const DEFAULT_SMART = Object.freeze({
     // Additions to AI Welcome and AI Goodbye, written by the bot itself.
     greeting: Object.freeze({ multilingual: false, tenure: false }),
     // Translates what members write in the chosen channels.
-    translate: Object.freeze({ enabled: false, channelIds: Object.freeze([]), target: 'id', hourlyLimit: 30, reactionEnabled: false }),
+    translate: Object.freeze({ enabled: false, channelIds: Object.freeze([]), target: 'id', hourlyLimit: 30, reactionEnabled: false, deleteAfterSeconds: 0, channelLanguages: Object.freeze({}), reverse: Object.freeze([]) }),
 });
 export const SMART_SECTIONS = Object.freeze(Object.keys(DEFAULT_SMART));
 
@@ -47,6 +52,37 @@ function channelList(value, guild, label) {
     return [...value];
 }
 
+const MAX_REVERSE = 5;
+/** Per-channel target overrides: only overrides for channels in the chosen set are kept; the rest are dropped, not an error. */
+function checkChannelLanguages(value, channelIds, guild) {
+    if (!plain(value)) throw err('Bahasa khusus per channel tidak valid.');
+    const entries = Object.entries(value);
+    if (entries.length > MAX_SMART_CHANNELS) throw err(`Bahasa khusus: paling banyak ${MAX_SMART_CHANNELS} channel.`);
+    const out = {};
+    for (const [id, target] of entries) {
+        if (!SNOWFLAKE.test(id)) throw err('Bahasa khusus: ID channel tidak valid.');
+        if (!Object.hasOwn(LANGUAGES, target)) throw err('Bahasa khusus: bahasa tujuan tidak valid.');
+        if (!channelIds.includes(id)) continue;
+        if (guild && guild.channels?.cache?.get?.(id)?.type !== ChannelType.GuildText) throw err('Bahasa khusus: pilih channel teks server.');
+        out[id] = target;
+    }
+    return out;
+}
+/** Two-way channels: messages in either language are translated into the other; any other language is left alone (the AI answers SAMA). */
+function checkReverse(value, guild) {
+    if (!Array.isArray(value) || value.length > MAX_REVERSE) throw err(`Pasangan dua arah: paling banyak ${MAX_REVERSE} pasangan.`);
+    const seen = new Set(), out = [];
+    for (const entry of value) {
+        if (!plain(entry) || Object.keys(entry).length !== 3 || !SNOWFLAKE.test(entry.channelId ?? '')
+            || !Object.hasOwn(LANGUAGES, entry.langA) || !Object.hasOwn(LANGUAGES, entry.langB)) throw err('Pasangan dua arah tidak valid.');
+        if (entry.langA === entry.langB) throw err('Pasangan dua arah: dua bahasa harus berbeda.');
+        if (seen.has(entry.channelId)) throw err('Pasangan dua arah: channel yang sama dipakai dua kali.');
+        seen.add(entry.channelId);
+        if (guild && guild.channels?.cache?.get?.(entry.channelId)?.type !== ChannelType.GuildText) throw err('Pasangan dua arah: pilih channel teks server.');
+        out.push({ channelId: entry.channelId, langA: entry.langA, langB: entry.langB });
+    }
+    return out;
+}
 const VALIDATORS = {
     faq(v, guild) {
         booleans(v, ['enabled', 'autoAnswer']);
@@ -90,8 +126,11 @@ const VALIDATORS = {
         const channelIds = channelList(v.channelIds, guild, 'Channel terjemahan');
         if (!Object.hasOwn(LANGUAGES, v.target)) throw err('Bahasa tujuan tidak valid.');
         if (!Number.isInteger(v.hourlyLimit) || v.hourlyLimit < 1 || v.hourlyLimit > 120) throw err('Batas per jam harus 1–120.');
+        if (!Number.isInteger(v.deleteAfterSeconds) || v.deleteAfterSeconds < 0 || v.deleteAfterSeconds > 3600) throw err('Hapus balasan otomatis harus antara 0–3600 detik.');
+        const channelLanguages = checkChannelLanguages(v.channelLanguages, channelIds, guild);
+        const reverse = checkReverse(v.reverse, guild);
         if ((v.enabled || v.reactionEnabled) && channelIds.length === 0) throw err('Terjemahan otomatis dan reaksi bendera memerlukan minimal satu channel.');
-        return { ...v, channelIds };
+        return { ...v, channelIds, channelLanguages, reverse };
     },
 };
 

@@ -213,6 +213,9 @@ export function createDashboardRouter(client, { fetchImpl = globalThis.fetch, en
     next();
   };
   router.use('/api/bot', createBotApiRouter(client, {auth, csrf}));
+  // Self-roles first: their banner payload needs the big parser in selfRolesApi, so no small blanket
+  // parser mounted before it may see those requests (goodbye/birthday parsers are also path-scoped since the banner fix).
+  router.use('/api/bot', createSelfRolesApi(client, { auth, csrf }));
   router.use('/api/bot', createGoodbyeApi(client, {auth, csrf}));
   router.use('/api/bot', createBirthdayApi(client, {auth, csrf}));
   router.use('/api/bot', createCoreApi(client, {auth, csrf}));
@@ -220,7 +223,6 @@ export function createDashboardRouter(client, { fetchImpl = globalThis.fetch, en
   router.use('/api/bot', createJoinToCreateApi(client, {auth}));
   router.use('/api/bot', createJoinToCreateSettingsApi(client, {auth, csrf}));
   router.use('/api/bot', createServerStatsApi(client, {auth, csrf}));
-  router.use('/api/bot', createSelfRolesApi(client, { auth, csrf }));
   router.use('/api/bot', createSocialAlertsApi(client, {auth, csrf}));
   router.use('/api/bot', createModulesApi(client, {auth, csrf}));
   router.use('/api/bot', createOperationsApi(client, {auth, csrf}));

@@ -26,7 +26,11 @@ export default {
       if (message.author?.bot) return;
       // Direct messages to the bot are the AI DM chat: answer them like a person once the member agreed.
       if (!message.guild) {
-        if (message.channel?.type === ChannelType.DM) await handleDMChatMessage(message, client).catch((error) => logger.error('Error in DM chat handler:', error));
+        if (message.channel?.type === ChannelType.DM) {
+          // One line per incoming DM: the DM path otherwise leaves no trace, which made a dead gate look like a silent bot.
+          logger.info(`AI DM: incoming direct message from user ${message.author?.id ?? 'unknown'}`);
+          await handleDMChatMessage(message, client).catch((error) => logger.error('Error in DM chat handler:', error));
+        }
         return;
       }
 

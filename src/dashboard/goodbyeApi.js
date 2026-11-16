@@ -68,7 +68,7 @@ function validate(body,guild){
 }
 function fail(res,e){res.status(e.status||503).json({error:e.status?e.message:'Gagal mengakses database persisten.'});}
 export function createGoodbyeApi(client,{auth,csrf}){
- const router=express.Router();router.use(express.json({limit:'16kb'}));
+ const router=express.Router();router.use('/goodbye',express.json({limit:'16kb'}));
  router.get('/goodbye',auth,async(req,res)=>{try{
   const channels=()=>[...req.guild.channels.cache.values()].filter(c=>c.type===ChannelType.GuildText).map(c=>({id:c.id,name:c.name}));
   const sqlite=sqliteFor(client,unavailable);
