@@ -239,7 +239,6 @@ export default {
         } else if (interaction.isModalSubmit()) {
           if (
             interaction.customId.startsWith('jtc_')
-            || interaction.customId.startsWith('shared_todo_')
             || interaction.customId.startsWith('config_wizard_modal:')
             || interaction.customId.startsWith('log_dash_channel_modal:')
             || interaction.customId.startsWith('log_dash_filter_modal:')
