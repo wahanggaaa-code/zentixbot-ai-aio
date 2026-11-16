@@ -1,7 +1,10 @@
 /* Dashboard mode switch, shared request helper, connected overview and welcome. Other pages have their own *-live.js module. */
 (() => {
   const enabled=location.pathname.startsWith('/dashboard/');
-  if (enabled) document.querySelector('.demo-strip').textContent = 'TAHAP 08 / INTEGRASI AI · PERIKSA LABEL TIAP MODUL';
+  if (enabled) {
+    const strip = document.querySelector('.demo-strip');
+    if (strip) strip.remove();   // the connected dashboard needs no simulation banner
+  }
   const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const notify=text=>{const t=document.getElementById('toast');t.textContent=text;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),4000)};
   async function request(path,opts={}) {

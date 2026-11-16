@@ -87,7 +87,11 @@ export function createBotApiRouter(client, {auth, csrf, store = createStore(clie
   const router=express.Router();
 
   // Welcome API
-  router.use(express.json({limit:'16kb'}));
+  // Self-Role panel requests carry an optional inline base64 banner (up to ~7 MB of JSON) and have their own,
+  // bigger parser in selfRolesApi. Never reject them here: this router is mounted before that one, so a
+  // >16kb banner would die with PayloadTooLargeError before reaching its parser and return 500.
+  const smallJson = express.json({limit:'16kb'});
+  router.use((req, res, next) => (req.path === '/self-roles' || req.path.startsWith('/self-roles/')) ? next() : smallJson(req, res, next));
   router.get('/overview',auth,(req,res)=> {
     const ping=client.ws?.ping;
     res.json({guild:{id:req.guild.id,name:req.guild.name,memberCount:Number.isFinite(req.guild.memberCount)?req.guild.memberCount:null},online:client.isReady(),ping:Number.isFinite(ping)&&ping>=0?Math.round(ping):null,uptime:Number.isFinite(client.uptime)?client.uptime:null,database:client.db?.getStatus?.().isDegraded===false && !!client.db.db?.isAvailable?.()?'connected':'unavailable'});

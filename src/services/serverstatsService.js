@@ -211,7 +211,7 @@ export function computeGoalName(currentName, count, goal, notation = DEFAULT_NOT
 }
 
 export function formatCounterChannelName(type, count, notation = DEFAULT_NOTATION, baseName = null) {
-  const template = botConfig.counters?.defaults?.channelName || '{name}-{count}';
+  const template = botConfig.counters?.defaults?.channelName || '{name}: {count}';
   return template
     .replaceAll('{name}', baseName ?? getCounterBaseName(type))
     .replaceAll('{count}', formatCount(count, notation));
@@ -219,20 +219,31 @@ export function formatCounterChannelName(type, count, notation = DEFAULT_NOTATIO
 
 const DISCORD_CHANNEL_NAME_LIMIT = 100;
 
+const escapeRegExp = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 /**
  * The name a counter channel should carry. A free-form name the admin chose is kept:
  * the number inside it is replaced with `count` written in `notation`. Falls back to the
  * configured template when the name has no usable number or the result would be too long.
  * `preferred` may carry the number the bot itself wrote last time to win ties in ambiguous names.
+ *
+ * The old default template wrote `{name}-{count}`; a channel carrying exactly that shape for this
+ * counter is the bot's own output from before the template became `{name}: {count}` — not an admin's
+ * name — so it is rewritten to the new format on the next rename instead of keeping the hyphen.
+ * Anything with more than `{name}-{number}` (even a trailing word) is kept as the admin's name.
  */
 export function computeCounterName(currentName, type, count, notation = DEFAULT_NOTATION, preferred = null, baseName = null) {
   const use = notationOrDefault(notation);
   const formatted = formatCount(count, use);
   const current = String(currentName ?? '');
-  const candidate = pickNumber(current, count, preferred);
-  if (candidate) {
-    const next = current.slice(0, candidate.start) + formatted + current.slice(candidate.end);
-    if (next.length <= DISCORD_CHANNEL_NAME_LIMIT) return { name: next, source: 'custom' };
+  const base = String(baseName ?? getCounterBaseName(type));
+  const legacyTemplate = new RegExp(`^${escapeRegExp(base)}-\\d[\\d.,KMB]*$`, 'i').test(current);
+  if (!legacyTemplate) {
+    const candidate = pickNumber(current, count, preferred);
+    if (candidate) {
+      const next = current.slice(0, candidate.start) + formatted + current.slice(candidate.end);
+      if (next.length <= DISCORD_CHANNEL_NAME_LIMIT) return { name: next, source: 'custom' };
+    }
   }
   return { name: formatCounterChannelName(type, count, use, baseName), source: 'template' };
 }

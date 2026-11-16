@@ -64,7 +64,7 @@
   }
 
   function notationForm(data) {
-    const options = NOTATION_OPTIONS.map((option) => `<label class="f-field" style="display:flex;align-items:center;gap:10px;flex-direction:row"><input type="radio" name="notation" value="${esc(option.id)}"${option.id === data.notation ? ' checked' : ''}>`
+    const options = NOTATION_OPTIONS.map((option) => `<label class="f-field f-radio-row"><input type="radio" name="notation" value="${esc(option.id)}"${option.id === data.notation ? ' checked' : ''}>`
       + `<span><b>${esc(option.label)}</b><small>${esc(option.hint)}</small></span></label>`).join('');
     return `<form class="f-form" id="serverStatsNotationForm"><div>${options}</div>`
       + `<div class="f-form-actions"><span>BERLAKU UNTUK SEMUA COUNTER</span><button type="submit" class="f-primary">SIMPAN FORMAT ↗</button></div></form>`;

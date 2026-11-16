@@ -61,7 +61,9 @@ class ZentixBot extends Client {
         ...(wantPresenceIntent ? [GatewayIntentBits.GuildPresences] : []),
       ],
       // Reactions on messages the bot did not see cached (e.g. from before a restart) still arrive.
-      partials: [Partials.Message, Partials.Reaction],
+      // Channel: without it discord.js drops messageCreate for DMs (DM channels are uncached),
+      // so the AI DM chat never sees the user's messages.
+      partials: [Partials.Message, Partials.Reaction, Partials.Channel],
     });
 
     this.config = config;

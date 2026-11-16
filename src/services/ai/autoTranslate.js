@@ -102,15 +102,17 @@ export function createAutoTranslate({ client, settings, foundation = () => clien
         return list.length < limit;
     }
 
-    /** The shared core: `text` is ready to translate, the preflight is done. Resolves to true when a translation was posted. */
-    async function translatePost({ message, channelId, text, target, userId, hourlyLimit }) {
+    /** The shared core: `text` is ready to translate, the preflight is done. Resolves to true when a translation was posted. `trace`, when given, makes every refusal line visible (used for flag reactions). */
+    async function translatePost({ message, channelId, text, target, userId, hourlyLimit, trace }) {
+        const refuse = (why) => { if (trace) logger.info?.(`${trace}: ${why}`); return false; };
         const ai = typeof foundation === 'function' ? foundation() : foundation;
-        if (!ai) return false;
+        if (!ai) return refuse('no AI foundation');
         const me = message.guild.members?.me;
         const perms = me ? message.channel.permissionsFor?.(me) : null;
-        if (!perms?.has([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages])) return false;
-        if (busy.has(channelId) || !underLimit(channelId, hourlyLimit)) return false;
-        if (now() - (lastFor.get(userId) ?? -Infinity) < USER_COOLDOWN_MS) return false;
+        if (!perms?.has([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages])) return refuse('bot may not view or send in this channel');
+        if (busy.has(channelId)) return refuse('a translation is already running in this channel');
+        if (!underLimit(channelId, hourlyLimit)) return refuse(`hourly AI limit for the channel reached (${hourlyLimit}/h)`);
+        if (now() - (lastFor.get(userId) ?? -Infinity) < USER_COOLDOWN_MS) return refuse('member cooldown (3s) still active');
 
         const key = `${target}|${cacheKey(text)}`;
         let translation;
@@ -177,19 +179,24 @@ export function createAutoTranslate({ client, settings, foundation = () => clien
      * Resolves to true when a translation was posted. Never throws.
      */
     async function handleReaction(message, user, emojiName) {
+        // Console-only: members see nothing at all; the host log shows why a flag did nothing.
+        const note = (why) => logger.info?.(`AI auto-translate: flag reaction by ${user?.id ?? '?'} on message ${message?.id ?? '?'} ignored: ${why}`);
         try {
             const target = FLAG_LANGUAGES[typeof emojiName === 'string' ? emojiName : emojiName?.name];
             if (!target) return false;
             if (!message?.guild || message.guild.id !== client.homeGuildId || !client.user) return false;
             if (!user || user.bot) return false;
-            if (message.type !== MessageType.Default && message.type !== MessageType.Reply) return false;
+            if (message.type !== MessageType.Default && message.type !== MessageType.Reply) return note('message could not be read (partial fetch may have failed) or is not a normal chat message'), false;
             const cfg = (await settings())?.translate;
-            if (!cfg?.reactionEnabled || !cfg.channelIds.includes(message.channel.id)) return false;
+            if (!cfg?.reactionEnabled) return note('"Terjemahkan dengan reaksi bendera" is off (AI Studio -> Fitur pintar -> Terjemahan otomatis)'), false;
+            if (!cfg.channelIds.includes(message.channel.id)) return note(`channel ${message.channel.id} is not a chosen translation channel`), false;
 
             const text = translatableText(message.cleanContent ?? message.content).slice(0, TEXT_CHARS);
-            if ([...text].filter((c) => /\p{L}/u.test(c)).length < MIN_LETTERS) return false;
+            if ([...text].filter((c) => /\p{L}/u.test(c)).length < MIN_LETTERS) return note('text too short to translate'), false;
 
-            return await translatePost({ message, channelId: message.channel.id, text, target, userId: user.id, hourlyLimit: cfg.hourlyLimit });
+            const posted = await translatePost({ message, channelId: message.channel.id, text, target, userId: user.id, hourlyLimit: cfg.hourlyLimit, trace: `AI auto-translate: flag reaction on message ${message.id}` });
+            if (!posted) note('refused inside translatePost (busy channel, hourly limit, member cooldown, missing permissions or empty AI answer)');
+            return posted;
         } catch (error) {
             return skipped(error);
         }

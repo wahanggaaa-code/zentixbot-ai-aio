@@ -37,7 +37,7 @@
     <p>Satu feed per akun per channel. Badge platform, status dan aksi untuk tiap feed.</p></div><span>⊚</span></div>
     <div id="saList" aria-live="polite">Memuat…</div>
   </section>
-  <div class="f-layout" style="grid-template-columns:minmax(0,1.15fr) minmax(300px,1fr)">
+  <div class="f-layout">
     <section class="f-panel"><div class="f-panel-head"><div><h2 id="saFormTitle">Tambah feed</h2>
       <p>YouTube: tempel @handle, URL, atau ID channel. Twitch: login atau URL channel. Akun diverifikasi ke layanan masing-masing saat disimpan.</p></div><span>⊚</span></div>
       <form class="f-form" id="saForm">
@@ -56,8 +56,7 @@
           </div></fieldset>
         <label class="f-field"><span><b>Mention</b><small>Butuh izin bot untuk mention role; @everyone butuh izin khusus server.</small></span><select name="mentionRoleId" id="saMention"></select></label>
         <label class="f-field"><span><b>Warna aksen</b><small>Garis di sisi kiri pesan.</small></span><input name="accentColor" id="saColor" type="color" value="#5865F2"></label>
-        <div class="f-field" style="grid-template-columns:1fr"><span><b>Pesan kustom</b><small>Baris di atas kartu. Kosong = "📢 <i>{creator}</i> mengunggah …". Klik variabel untuk menyisipkan.</small></span></div>
-        <textarea name="customMessage" id="saCustom" rows="2" maxlength="500" spellcheck="false" placeholder="{role} {creator} baru: {title} {url}"></textarea>
+        <div class="f-field" style="grid-template-columns:1fr"><span><b>Pesan kustom</b><small>Baris di atas kartu. Kosong = "📢 <i>{creator}</i> mengunggah …". Klik variabel untuk menyisipkan.</small></span><textarea name="customMessage" id="saCustom" rows="3" maxlength="500" spellcheck="false" placeholder="{role} {creator} baru: {title} {url}"></textarea></div>
         <div class="sa-vars" id="saVars">${VARIABLES.map((v) => `<button type="button" class="f-outline" data-var="${v}">${v}</button>`).join('')}</div>
         <fieldset class="f-field"><span><b>Ringkasan AI</b><small>Ringkas 1–2 kalimat untuk video/Shorts baru. Opsional, memakai AI bot; kode tidak pernah mengirim teks petunjuk (prompt injection dipercaya sebagai teks, bukan instruksi).</small></span>
           <span class="f-check"><input type="checkbox" name="aiSummaryEnabled" id="saAi"><span class="fake-switch"></span></span></fieldset>
