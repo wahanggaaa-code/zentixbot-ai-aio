@@ -94,3 +94,11 @@ fieldset.f-field{border:0;border-bottom:1px solid var(--softline);margin:0;min-w
 .s-long .s-bar{grid-template-columns:minmax(0,1fr) auto;row-gap:2px}
 .s-long .s-bar>span{grid-column:1/-1;white-space:normal;overflow-wrap:anywhere}
 }
+
+/* Dashboard explanations use the same high-contrast colour as headings.
+   Dark cards keep their light foreground; disabled controls retain their state styling. */
+.f-field small, .f-panel-head p, .f-muted, .f-feature-note p,
+.f-index-card p, .f-more>p, .f-toolbar p, .b-build-meta, .s-head small, .s-stats span,
+.intro-copy, .right-desc, .module-name small, .placeholder-card p, .metric small { color: var(--ink); opacity: 1; }
+.main-card p, .ai-index-intro p, .ai-quiz p, .music-player p { color: #ededdf; opacity: 1; }
+.discord-copy small { color: #e6e7eb; opacity: 1; }

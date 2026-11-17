@@ -1,9 +1,8 @@
 import { Events, PermissionFlagsBits } from 'discord.js';
 import { getWelcomeConfig } from '../utils/database.js';
-import { formatWelcomeMessage } from '../utils/welcome.js';
 import { deliverLeaveGoodbye } from '../services/ai/welcome.js';
 import { buildGoodbyePayload } from '../services/welcomePayload.js';
-import { botConfig } from '../config/bot.js';
+import {readGreetingBanner, attachGreetingBanner, withoutGreetingImage} from '../services/greetingBanner.js';
 import { logEvent, EVENT_TYPES } from '../services/loggingService.js';
 import { counterRefresher } from '../services/serverStats/refresh.js';
 import { getGuildBirthdays, deleteBirthday } from '../utils/database.js';
@@ -22,7 +21,7 @@ export default {
         
         const welcomeConfig = await getWelcomeConfig(member.client, guild.id);
         
-        const goodbyeTask=deliverLeaveGoodbye(member,()=>deliverLegacyGoodbye(member,welcomeConfig)).then(result=>{
+        const goodbyeTask=deliverLeaveGoodbye(member,()=>deliverLegacyGoodbye(member,welcomeConfig),{legacyConfig:welcomeConfig}).then(result=>{
             if(result.source==='unavailable')logger.warn('Goodbye channel unavailable.');
         }).catch(()=>logger.warn('Goodbye delivery failed; other leave actions continue.'));
 
@@ -99,19 +98,8 @@ async function deliverLegacyGoodbye(member,welcomeConfig) {
                     return;
                 }
 
-                if (!permissions.has(PermissionFlagsBits.EmbedLinks)) {
-                    const formatData = { user, guild, member };
-                    const goodbyeMessage = formatWelcomeMessage(
-                        welcomeConfig.leaveMessage || welcomeConfig.leaveEmbed?.description || botConfig.welcome?.defaultGoodbyeMessage || '{user} has left the server.',
-                        formatData
-                    );
-                    await channel.send({
-                        content: welcomeConfig?.goodbyePing ? `<@${user.id}> ${goodbyeMessage}` : goodbyeMessage,
-                        allowedMentions: welcomeConfig?.goodbyePing ? { users: [user.id] } : { parse: [] }
-                    });
-                } else {
-                    await channel.send(buildGoodbyePayload({ member, config: welcomeConfig }));
-                }
+                const banner=await readGreetingBanner(member.client,guild.id,'goodbye').catch(()=>null);
+                await channel.send(attachGreetingBanner(buildGoodbyePayload({ member, config: banner?withoutGreetingImage(welcomeConfig,'goodbye'):welcomeConfig }),banner));
             }
         }
 

@@ -47,7 +47,7 @@ export function buildWelcomePayload({member, config, canEmbed = true, test = fal
 }
 
 // Shared by the legacy goodbye path so welcome and goodbye look the same.
-export function buildGoodbyePayload({member, config}) {
+export function buildGoodbyePayload({member, config, test = false}) {
   const {user, guild} = member;
   const data = {user, guild, member};
   const message = formatWelcomeMessage(
@@ -56,7 +56,7 @@ export function buildGoodbyePayload({member, config}) {
   );
   const embedCfg = config?.leaveEmbed || {};
   const ping = config?.goodbyePing ? user.toString() : null;
-  const allowedMentions = config?.goodbyePing ? {parse: [], users: [user.id]} : {parse: []};
+  const allowedMentions = !test && config?.goodbyePing ? {parse: [], users: [user.id]} : {parse: []};
   const pingPrefix = ping && !message.includes(user.id) ? `${ping}\n` : '';
   const container = createV2Container({
     title: formatWelcomeMessage(embedCfg.title || '👋 Goodbye', data),

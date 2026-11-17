@@ -1,7 +1,10 @@
 import express from 'express';
+import {readGreetingBanner, attachGreetingBanner, withoutGreetingImage} from '../services/greetingBanner.js';
+import {getWelcomeConfigForEditing} from '../utils/database.js';
+import {buildWelcomePayload,buildGoodbyePayload} from '../services/welcomePayload.js';
 import { createAIFoundation, validateSettings } from '../services/ai/foundation.js';
-import { ChannelType } from 'discord.js';
-import { createAIWelcomeStore, validateAIWelcome, generateWelcomeTemplate } from '../services/ai/welcome.js';
+import { ChannelType, PermissionFlagsBits } from 'discord.js';
+import { createAIWelcomeStore, validateAIWelcome, generateWelcomeTemplate, renderAIWelcome, buildAIGreetingPayload, sharedGreetingConfig } from '../services/ai/welcome.js';
 import { createActivityStore, validateActivity, startActivity, saveActivitySettings, activityPlan } from '../services/ai/activities.js';
 import { sendDMPublicPanel } from '../services/ai/dmPanel.js';
 import { createChatStore, validateChatSettings } from '../services/ai/chat.js';
@@ -33,11 +36,34 @@ export function createAIApi(client,{auth,csrf,env=process.env,foundation=client.
  router.patch('/welcome',auth,owner,csrf,async(req,res)=>{try{const settings=validateAIWelcome(req.body,req.guild);await welcomeStore.save(req.guild.id,settings);res.json({ok:true,settings})}catch(e){fail(res,e)}});
  router.post('/welcome/preview',auth,owner,csrf,async(req,res)=>{
   if(!req.body||Object.keys(req.body).length!==1||req.body.confirmed!==true)return res.status(400).json({error:'Konfirmasi pengujian diperlukan.'});
-  try{const cfg=await welcomeStore.read(req.guild.id);const result=await generateWelcomeTemplate({foundation,guildId:req.guild.id,actorId:req.session.user.id,cfg});res.json({ok:true,source:result.source,preview:result.template.replaceAll('{user}','@anggota').replaceAll('{server}','Server Contoh')});}catch(e){fail(res,e)}
+  try{let cfg=await welcomeStore.read(req.guild.id);if(cfg.shared)cfg=sharedGreetingConfig(cfg,await getWelcomeConfigForEditing(client,req.guild.id),'welcome');const result=await generateWelcomeTemplate({foundation,guildId:req.guild.id,actorId:req.session.user.id,cfg});res.json({ok:true,source:result.source,preview:result.template.replaceAll('{user}','@anggota').replaceAll('{server}','Server Contoh')});}catch(e){fail(res,e)}
  });
  router.get('/goodbye',auth,owner,async(req,res)=>{try{const settings=await goodbyeStore.read(req.guild.id);const channels=[...req.guild.channels.cache.values()].filter(c=>c.type===ChannelType.GuildText).map(({id,name})=>({id,name}));res.json({settings,channels})}catch(e){fail(res,e)}});
  router.patch('/goodbye',auth,owner,csrf,async(req,res)=>{try{const settings=validateAIWelcome(req.body,req.guild);if(settings.toDm)throw Object.assign(Error('AI Goodbye tidak mendukung DM.'),{status:400});await goodbyeStore.save(req.guild.id,settings);res.json({ok:true,settings})}catch(e){fail(res,e)}});
- router.post('/goodbye/preview',auth,owner,csrf,async(req,res)=>{if(!req.body||Object.keys(req.body).length!==1||req.body.confirmed!==true)return res.status(400).json({error:'Konfirmasi pengujian diperlukan.'});try{const cfg=await goodbyeStore.read(req.guild.id);const result=await generateWelcomeTemplate({foundation,guildId:req.guild.id,actorId:req.session.user.id,cfg,kind:'goodbye'});res.json({ok:true,source:result.source,preview:result.template.replaceAll('{user}','@anggota').replaceAll('{server}','Server Contoh')});}catch(e){fail(res,e)}});
+ router.post('/goodbye/preview',auth,owner,csrf,async(req,res)=>{if(!req.body||Object.keys(req.body).length!==1||req.body.confirmed!==true)return res.status(400).json({error:'Konfirmasi pengujian diperlukan.'});try{let cfg=await goodbyeStore.read(req.guild.id);if(cfg.shared)cfg=sharedGreetingConfig(cfg,await getWelcomeConfigForEditing(client,req.guild.id),'goodbye');const result=await generateWelcomeTemplate({foundation,guildId:req.guild.id,actorId:req.session.user.id,cfg,kind:'goodbye'});res.json({ok:true,source:result.source,preview:result.template.replaceAll('{user}','@anggota').replaceAll('{server}','Server Contoh')});}catch(e){fail(res,e)}});
+ // Explicit owner-only test: saved channel, no mentions or DM, and a visible test label.
+ for (const kind of ['welcome','goodbye']) router.post(`/${kind}/test`,auth,owner,csrf,async(req,res)=>{
+  if(!req.body||Object.keys(req.body).length!==1||req.body.confirmed!==true)return res.status(400).json({error:'Konfirmasi pengujian diperlukan.'});
+  try{
+   let cfg=await (kind==='welcome'?welcomeStore:goodbyeStore).read(req.guild.id);
+   const legacy=cfg.shared?await getWelcomeConfigForEditing(client,req.guild.id):null;
+   cfg=sharedGreetingConfig(cfg,legacy,kind);
+   const channel=req.guild.channels.cache.get(cfg.channelId),me=req.guild.members.me;
+   if(!channel||channel.type!==ChannelType.GuildText||!me||!req.member?.user)return res.status(400).json({error:'Channel tersimpan atau anggota tidak tersedia.'});
+   if(!channel.permissionsFor(me)?.has([PermissionFlagsBits.ViewChannel,PermissionFlagsBits.SendMessages]))return res.status(403).json({error:'Bot tidak dapat mengirim ke channel ini.'});
+   const generated=await generateWelcomeTemplate({foundation,guildId:req.guild.id,actorId:req.session.user.id,cfg,kind});
+   let content=renderAIWelcome(generated.template,req.member);
+   try{content=(await client.aiSmart?.decorateGreeting?.(content,req.member,kind))??content;}catch{}
+   const banner=await readGreetingBanner(client,req.guild.id,kind).catch(()=>null);
+   let payload;
+   if(legacy){const visual=kind==='welcome'?{...legacy,welcomeMessage:`-# Pesan uji ${kind}\n${content}`,welcomePing:false}:{...legacy,leaveMessage:`-# Pesan uji ${kind}\n${content}`,goodbyePing:false};
+    const config=banner?withoutGreetingImage(visual,kind):visual;
+    payload=kind==='welcome'?buildWelcomePayload({member:req.member,config,test:true}):buildGoodbyePayload({member:req.member,config,test:true});
+   }else payload=buildAIGreetingPayload(`-# Pesan uji ${kind}\n${content}`,kind);
+   await channel.send(attachGreetingBanner(payload,banner));
+   res.json({ok:true,source:generated.source});
+  }catch(e){fail(res,e)}
+ });
  // What the saved settings will do (next rounds, rounds per day, the last automatic round) and the daily AI limits
  // those rounds count against. Both are extras of the page: a failure here must not hide the settings.
  const activityOutlook=async(guildId,settings)=>{

@@ -1,15 +1,17 @@
 import { ChannelType, PermissionFlagsBits } from 'discord.js';
 import { pgConfig } from '../../config/database/postgres.js';
 import { sqliteBackend } from '../storage/sqlite.js';
-import { buildWelcomePayload } from '../welcomePayload.js';
+import { buildWelcomePayload, buildGoodbyePayload } from '../welcomePayload.js';
 import { formatWelcomeMessage } from '../../utils/welcome.js';
+import { createV2Container, v2Message } from '../../utils/componentsV2.js';
+import {readGreetingBanner, attachGreetingBanner, withoutGreetingImage} from '../greetingBanner.js';
 
 export const DEFAULT_AI_WELCOME=Object.freeze({enabled:false,toChannel:true,toDm:false,channelId:null,tone:'warm',language:'id',fallback:'Selamat datang {user} di {server}!'});
 export const DEFAULT_AI_GOODBYE=Object.freeze({...DEFAULT_AI_WELCOME,fallback:'Sampai jumpa {user}, terima kasih sudah bersama {server}.'});
 const invalid=message=>Object.assign(new Error(message),{status:400,code:'INVALID_WELCOME'});
 export function validateAIWelcome(v,guild){
  const keys=Object.keys(DEFAULT_AI_WELCOME);
- if(!v||typeof v!=='object'||Array.isArray(v)||Object.keys(v).length!==keys.length||!keys.every(k=>Object.hasOwn(v,k)))throw invalid('Pengaturan AI Welcome tidak valid.');
+ if(!v||typeof v!=='object'||Array.isArray(v)||Object.keys(v).some(k=>!keys.includes(k)&&k!=='shared')||!keys.every(k=>Object.hasOwn(v,k))||(v.shared!==undefined&&typeof v.shared!=='boolean'))throw invalid('Pengaturan AI Welcome tidak valid.');
  if(['enabled','toChannel','toDm'].some(k=>typeof v[k]!=='boolean'))throw invalid('Status harus boolean.');
  if(v.channelId!==null&&(typeof v.channelId!=='string'||!/^\d{17,20}$/.test(v.channelId)))throw invalid('ID channel tidak valid.');
  if(guild&&v.channelId!==null&&guild.channels.cache.get(v.channelId)?.type!==ChannelType.GuildText)throw invalid('Pilih channel teks pada server ini.');
@@ -28,6 +30,13 @@ export function createAIWelcomeStore(client,kind='welcome'){
  const pool=()=>{const db=client.db;if(!db||db.getStatus?.().isDegraded||!db.isAvailable?.()||!db.db?.isAvailable?.()||!db.db.pool)throw new Error('Persistent database unavailable');return db.db.pool;};
  return {async read(id){const sqlite=sqliteBackend(client);if(sqlite){const v=sqlite.get(key(id));return v?validate(v):{...defaults};}const r=await pool().query(`SELECT value FROM ${table} WHERE key=$1`,[key(id)]);return r.rows[0]?.value?validate(r.rows[0].value):{...defaults};},async save(id,settings){const v=validate(settings),sqlite=sqliteBackend(client);if(sqlite){sqlite.set(key(id),v);return v;}await pool().query(`INSERT INTO ${table} (key,value,expires_at) VALUES ($1,$2::jsonb,NULL) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value, expires_at=NULL`,[key(id),JSON.stringify(v)]);return v;}};
 }
+// Old AI settings remain independent until the owner explicitly saves shared mode.
+// Once shared, the template and destination always come from the ordinary greeting settings.
+export function sharedGreetingConfig(cfg, legacy, kind='welcome') {
+ if(!cfg.shared||!legacy)return cfg;
+ return {...cfg,channelId:kind==='goodbye'?legacy.goodbyeChannelId:legacy.channelId,
+  fallback:kind==='goodbye'?legacy.leaveMessage:legacy.welcomeMessage};
+}
 // No guild or user data is sent to the provider; only fixed instructions and validated enum values.
 export function welcomePrompt(cfg,kind='welcome'){return `Write one short, friendly Discord server ${kind==='goodbye'?'farewell':'welcome'} in ${cfg.language==='id'?'Indonesian':'English'} with a ${cfg.tone} tone. Output only the message. Include the exact placeholders {user} and {server}; do not include URLs, mentions or other placeholders.`;}
 export function safeGeneratedTemplate(text){
@@ -40,34 +49,49 @@ export async function generateWelcomeTemplate({foundation,guildId,actorId,cfg,ki
 }
 // The returned text is rendered locally, after generation, without passing Discord names to AI.
 export function renderAIWelcome(template,member){return formatWelcomeMessage(template,{member,user:member.user,guild:member.guild}).slice(0,1900);}
+// Both channel and DM use Components V2; allow no automatic mentions.
+export function buildAIGreetingPayload(content, kind = 'welcome') {
+ const container = createV2Container({ description: content, color: kind === 'goodbye' ? 'error' : 'success', raw: true });
+ return { ...v2Message([container]), allowedMentions: { parse: [] } };
+}
 // Greeting word in another language and time spent in the server: added by the bot, switched on in AI Studio → Welcome & goodbye → Sapaan multibahasa.
 async function withExtras(content,member,kind){try{return (await member.client.aiSmart?.decorateGreeting?.(content,member,kind))??content}catch{return content}}
 export async function deliverJoinWelcome(member,legacyConfig,{store,foundation}={}){
  const guild=member.guild, client=member.client;
  if(!guild||!client||guild.id!==client.homeGuildId)return {source:'blocked'};
  let cfg;try{cfg=await (store||createAIWelcomeStore(client)).read(guild.id);}catch{cfg={...DEFAULT_AI_WELCOME};}
+ cfg=sharedGreetingConfig(cfg,legacyConfig,'welcome');
+ if(cfg.shared&&cfg.enabled&&!legacyConfig?.enabled)return {source:'disabled'};
  if(!cfg.enabled){
   if(!legacyConfig?.enabled||!legacyConfig.channelId)return {source:'disabled'};
   const ch=guild.channels.cache.get(legacyConfig.channelId),me=guild.members.me,perms=ch?.isTextBased?.()&&me?ch.permissionsFor(me):null;
   if(!perms?.has([PermissionFlagsBits.ViewChannel,PermissionFlagsBits.SendMessages]))return {source:'legacy-unavailable'};
-  await ch.send(buildWelcomePayload({member,config:legacyConfig,canEmbed:perms.has(PermissionFlagsBits.EmbedLinks)}));return {source:'legacy'};
+  const banner=await readGreetingBanner(client,guild.id,'welcome').catch(()=>null);
+  await ch.send(attachGreetingBanner(buildWelcomePayload({member,config:banner?withoutGreetingImage(legacyConfig,'welcome'):legacyConfig}),banner));return {source:'legacy'};
  }
  const channel=cfg.toChannel?guild.channels.cache.get(cfg.channelId):null, me=guild.members.me;
  const perms=channel?.type===ChannelType.GuildText && me?channel.permissionsFor(me):null;
  const canChannel=Boolean(perms?.has([PermissionFlagsBits.ViewChannel,PermissionFlagsBits.SendMessages]));
  if(!canChannel&&!cfg.toDm)return {source:'unavailable'};
  const generated=await generateWelcomeTemplate({foundation:foundation||client.aiFoundation,guildId:guild.id,actorId:client.user?.id,cfg});
- const content=await withExtras(renderAIWelcome(generated.template,member),member,'welcome');const payload={content,allowedMentions:{parse:[]}};
+ const content=await withExtras(renderAIWelcome(generated.template,member),member,'welcome');const banner=await readGreetingBanner(client,guild.id,'welcome').catch(()=>null);
+ const visual=cfg.shared?{...legacyConfig,welcomeMessage:content,welcomePing:false}:null;
+ const payload=attachGreetingBanner(visual?buildWelcomePayload({member,config:banner?withoutGreetingImage(visual,'welcome'):visual}):buildAIGreetingPayload(content,'welcome'),banner);
  const sends=[];if(canChannel)sends.push(Promise.resolve().then(()=>channel.send(payload)));if(cfg.toDm)sends.push(Promise.resolve().then(()=>member.send(payload)));
  const results=await Promise.allSettled(sends);return {source:generated.source,sent:results.filter(r=>r.status==='fulfilled').length,failed:results.filter(r=>r.status==='rejected').length+(cfg.toChannel&&!canChannel?1:0)};
 }
 
-export async function deliverLeaveGoodbye(member,legacy,{store,foundation}={}){
+export async function deliverLeaveGoodbye(member,legacy,{store,foundation,legacyConfig}={}){
  const guild=member.guild,client=member.client;if(!guild||!client||guild.id!==client.homeGuildId)return {source:'blocked'};
  let cfg;try{cfg=await (store||createAIWelcomeStore(client,'goodbye')).read(guild.id);}catch{cfg={...DEFAULT_AI_GOODBYE};}
+ cfg=sharedGreetingConfig(cfg,legacyConfig,'goodbye');
+ if(cfg.shared&&cfg.enabled&&!legacyConfig?.goodbyeEnabled)return {source:'disabled'};
  if(!cfg.enabled){await legacy();return {source:'legacy'};}
  const channel=guild.channels.cache.get(cfg.channelId),me=guild.members.me,perms=channel?.type===ChannelType.GuildText&&me?channel.permissionsFor(me):null;
  if(!perms?.has([PermissionFlagsBits.ViewChannel,PermissionFlagsBits.SendMessages]))return {source:'unavailable'};
  const generated=await generateWelcomeTemplate({foundation:foundation||client.aiFoundation,guildId:guild.id,actorId:client.user?.id,cfg,kind:'goodbye'});
- await channel.send({content:await withExtras(renderAIWelcome(generated.template,member),member,'goodbye'),allowedMentions:{parse:[]}});return {source:generated.source};
+ const banner=await readGreetingBanner(client,guild.id,'goodbye').catch(()=>null);
+ const content=await withExtras(renderAIWelcome(generated.template,member),member,'goodbye');
+ const visual=cfg.shared&&legacyConfig?{...legacyConfig,leaveMessage:content,goodbyePing:false}:null;
+ await channel.send(attachGreetingBanner(visual?buildGoodbyePayload({member,config:banner?withoutGreetingImage(visual,'goodbye'):visual}):buildAIGreetingPayload(content,'goodbye'),banner));return {source:generated.source};
 }

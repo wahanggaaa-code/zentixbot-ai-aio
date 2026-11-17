@@ -5,6 +5,8 @@ import {pgConfig} from '../config/database/postgres.js';
 import {normalizeWelcomeConfig} from '../utils/database.js';
 import {assertOnboardingShape, assertOnboardingCompatible} from '../services/config/onboardingConflict.js';
 import {sqliteFor} from '../services/storage/sqliteRows.js';
+import {buildGoodbyePayload} from '../services/welcomePayload.js';
+import {readGreetingBanner, attachGreetingBanner, withoutGreetingImage} from '../services/greetingBanner.js';
 
 const tables=pgConfig.tables;
 const record=x=>x!==null && typeof x==='object' && !Array.isArray(x);
@@ -77,6 +79,20 @@ export function createGoodbyeApi(client,{auth,csrf}){
   const row=result.rows[0],raw=row?row.config:{},goodbye=view(raw);
   res.json({goodbye,revision:row?version(row.serialized):'missing',channels:channels()});
  }catch(e){fail(res,e)}});
+ router.post('/goodbye/test',auth,csrf,async(req,res)=>{
+  if(!req.body||Object.keys(req.body).length!==1||req.body.confirmed!==true)return res.status(400).json({error:'Konfirmasi pengiriman diperlukan.'});
+  try{
+   const sqlite=sqliteFor(client,unavailable);
+   const raw=sqlite?(sqlite.botGet(welcomeKey(req.guild.id))??{}):((await pool(client).query(`SELECT config FROM ${tables.welcome_configs} WHERE guild_id=$1`,[req.guild.id])).rows[0]?.config??{});
+   const cfg=normalizeWelcomeConfig(checked(raw)),channel=req.guild.channels.cache.get(cfg.goodbyeChannelId),me=req.guild.members.me;
+   if(!req.member?.user||!channel||channel.type!==ChannelType.GuildText||!me)return res.status(400).json({error:'Channel atau anggota tidak tersedia.'});
+   if(!channel.permissionsFor(me)?.has([PermissionFlagsBits.ViewChannel,PermissionFlagsBits.SendMessages]))return res.status(403).json({error:'Bot tidak memiliki izin melihat dan mengirim pesan di channel.'});
+   const testCfg={...cfg,leaveMessage:`-# Pesan uji goodbye\n${cfg.leaveMessage}`};
+   const banner=await readGreetingBanner(client,req.guild.id,'goodbye').catch(()=>null);
+   await channel.send(attachGreetingBanner(buildGoodbyePayload({member:req.member,config:banner?withoutGreetingImage(testCfg,'goodbye'):testCfg,test:true}),banner));
+   res.json({ok:true});
+  }catch(e){fail(res,e)}
+ });
  router.patch('/goodbye',auth,csrf,async(req,res)=>{
   let body;try{body=validate(req.body,req.guild)}catch(e){return fail(res,e)}
   let conn;try{

@@ -7,6 +7,8 @@ import { unwrapReplitData } from '../utils/database/guildConfigStorage.js';
 import { buildWelcomePayload } from '../services/welcomePayload.js';
 import { assertOnboardingCompatible, assertOnboardingShape } from '../services/config/onboardingConflict.js';
 import { logger } from '../utils/logger.js';
+import { validateBannerUpload } from '../services/selfRoles/manage.js';
+import { readGreetingBanner, saveGreetingBanner, deleteGreetingBanner, attachGreetingBanner, withoutGreetingImage } from '../services/greetingBanner.js';
 
 function persistentPool(client) {
   const db = client.db;
@@ -91,7 +93,21 @@ export function createBotApiRouter(client, {auth, csrf, store = createStore(clie
   // bigger parser in selfRolesApi. Never reject them here: this router is mounted before that one, so a
   // >16kb banner would die with PayloadTooLargeError before reaching its parser and return 500.
   const smallJson = express.json({limit:'16kb'});
-  router.use((req, res, next) => (req.path === '/self-roles' || req.path.startsWith('/self-roles/')) ? next() : smallJson(req, res, next));
+  router.use((req, res, next) => (req.path === '/self-roles' || req.path.startsWith('/self-roles/') || req.path.startsWith('/greeting-banner/')) ? next() : smallJson(req, res, next));
+  const bannerJson=express.json({limit:'2mb'});
+  router.get('/greeting-banner/:kind',auth,async(req,res)=>{
+    if(!['welcome','goodbye'].includes(req.params.kind))return res.status(400).json({error:'Jenis banner tidak valid.'});
+    try{const asset=await readGreetingBanner(client,req.guild.id,req.params.kind);if(!asset)return res.status(404).end();res.set('Cache-Control','no-store');res.type(asset.mime).send(asset.buffer);}catch{return res.status(503).json({error:'Banner tidak tersedia.'});}
+  });
+  router.put('/greeting-banner/:kind',auth,csrf,bannerJson,async(req,res)=>{
+    if(!['welcome','goodbye'].includes(req.params.kind))return res.status(400).json({error:'Jenis banner tidak valid.'});
+    let asset;try{if(!req.body||Object.keys(req.body).sort().join(',')!=='base64,mime')throw Error();asset=validateBannerUpload(req.body);if(asset.buffer.length>1024*1024)throw Error();}catch{return res.status(400).json({error:'Banner harus PNG, JPEG, WebP atau GIF yang valid, maksimal 1 MB.'});}
+    try{await saveGreetingBanner(client,req.guild.id,req.params.kind,asset);res.json({ok:true});}catch{return res.status(503).json({error:'Banner gagal disimpan.'});}
+  });
+  router.delete('/greeting-banner/:kind',auth,csrf,async(req,res)=>{
+    if(!['welcome','goodbye'].includes(req.params.kind))return res.status(400).json({error:'Jenis banner tidak valid.'});
+    try{await deleteGreetingBanner(client,req.guild.id,req.params.kind);res.json({ok:true});}catch{return res.status(503).json({error:'Banner gagal dihapus.'});}
+  });
   router.get('/overview',auth,(req,res)=> {
     const ping=client.ws?.ping;
     res.json({guild:{id:req.guild.id,name:req.guild.name,memberCount:Number.isFinite(req.guild.memberCount)?req.guild.memberCount:null},online:client.isReady(),ping:Number.isFinite(ping)&&ping>=0?Math.round(ping):null,uptime:Number.isFinite(client.uptime)?client.uptime:null,database:client.db?.getStatus?.().isDegraded===false && !!client.db.db?.isAvailable?.()?'connected':'unavailable'});
@@ -118,7 +134,9 @@ export function createBotApiRouter(client, {auth, csrf, store = createStore(clie
       if (!channel || channel.type!==ChannelType.GuildText || !me) return res.status(400).json({error:'Channel welcome tersimpan tidak tersedia.'});
       const perms=channel.permissionsFor(me);
       if (!perms?.has([PermissionFlagsBits.ViewChannel,PermissionFlagsBits.SendMessages])) return res.status(403).json({error:'Bot tidak memiliki izin melihat dan mengirim pesan di channel.'});
-      await channel.send(buildWelcomePayload({member:req.member,config,canEmbed:perms.has(PermissionFlagsBits.EmbedLinks),test:true}));
+      const banner=await readGreetingBanner(client,req.guild.id,'welcome').catch(()=>null);
+      const testConfig={...config,welcomeEmbed:{...config.welcomeEmbed,title:`Pesan uji · ${config.welcomeEmbed?.title || 'Welcome'}`}};
+      await channel.send(attachGreetingBanner(buildWelcomePayload({member:req.member,config:banner?withoutGreetingImage(testConfig,'welcome'):testConfig,test:true}),banner));
       res.json({ok:true});
     } catch {res.status(503).json({error:'Gagal mengirim pesan percobaan atau membaca database.'});}
   });
