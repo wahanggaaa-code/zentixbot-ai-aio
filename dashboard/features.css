@@ -33,3 +33,5 @@ fieldset.f-field{border:0;margin:0;padding:16px 0;min-width:0}
 .greeting-color-swatches{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}
 .greeting-color-swatches button{width:29px;height:29px;border:1px solid #141517;border-radius:5px;cursor:pointer}
 .greeting-color .greeting-color-reset{background:#5865f2;color:white;border-color:#5865f2;border-radius:6px}
+.greeting-preview-field{border-top:1px solid #555;margin-top:10px;padding-top:8px;color:#dbdee1;line-height:1.4}
+.greeting-preview-field[hidden]{display:none}

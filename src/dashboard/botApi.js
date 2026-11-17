@@ -82,7 +82,7 @@ function validate(body,guild) {
     if (url.protocol!=='https:' || url.username || url.password) throw new Error('URL gambar harus HTTPS.');
   }
   const e=body.welcomeEmbed;
-  if (!e || typeof e!=='object' || Array.isArray(e) || Object.keys(e).sort().join(',')!=='color,footer,title' || typeof e.title!=='string' || !e.title.trim() || e.title.length>256 || typeof e.footer!=='string' || e.footer.length>1024 || !Number.isInteger(e.color) || e.color<0 || e.color>0xffffff) throw new Error('Judul, footer atau warna embed tidak valid.');
+  if (!e || typeof e!=='object' || Array.isArray(e) || Object.keys(e).some(k=>!['color','footer','title','showUser','showMemberCount'].includes(k)) || ['showUser','showMemberCount'].some(k=>e[k]!==undefined && typeof e[k]!=='boolean') || typeof e.title!=='string' || !e.title.trim() || e.title.length>256 || typeof e.footer!=='string' || e.footer.length>1024 || !Number.isInteger(e.color) || e.color<0 || e.color>0xffffff) throw new Error('Judul, footer atau warna embed tidak valid.');
   return body;
 }
 export function createBotApiRouter(client, {auth, csrf, store = createStore(client)}) {

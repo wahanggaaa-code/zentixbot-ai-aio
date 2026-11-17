@@ -37,8 +37,8 @@ export function buildWelcomePayload({member, config, canEmbed = true, test = fal
     color: embedCfg.color ?? getColor('success'),
     thumbnail: user.displayAvatarURL(),
     fields: [
-      {name: 'User', value: `${user.tag} (${user.id})`},
-      {name: 'Member Count', value: String(guild.memberCount)},
+      ...(embedCfg.showUser !== false ? [{name: 'User', value: `${user.tag} (${user.id})`}] : []),
+      ...(embedCfg.showMemberCount !== false ? [{name: 'Member Count', value: String(guild.memberCount)}] : []),
     ],
     footer: embedCfg.footer ? formatWelcomeMessage(embedCfg.footer, data) : `Welcome to ${guild.name}!`,
   });
@@ -64,8 +64,8 @@ export function buildGoodbyePayload({member, config, test = false}) {
     color: embedCfg.color || getColor('error'),
     thumbnail: user.displayAvatarURL(),
     fields: [
-      {name: 'User', value: `${user.tag} (${user.id})`},
-      {name: 'Member Count', value: String(guild.memberCount)},
+      ...(embedCfg.showUser !== false ? [{name: 'User', value: `${user.tag} (${user.id})`}] : []),
+      ...(embedCfg.showMemberCount !== false ? [{name: 'Member Count', value: String(guild.memberCount)}] : []),
     ],
     footer: embedCfg.footer ? formatWelcomeMessage(embedCfg.footer, data) : `Goodbye from ${guild.name}!`,
   });
