@@ -14,7 +14,7 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import {
     ActionRowBuilder, ChannelType, PermissionFlagsBits, StringSelectMenuBuilder,
-    ButtonBuilder, ButtonStyle, ContainerBuilder,
+    ButtonBuilder, ButtonStyle, ContainerBuilder, SectionBuilder,
     TextDisplayBuilder, SeparatorBuilder, MediaGalleryBuilder, MediaGalleryItemBuilder,
     AttachmentBuilder,
 } from 'discord.js';
@@ -367,7 +367,7 @@ export function buildPanelMessage(panel, rolesWithItems) {
         let currentRow = new ActionRowBuilder();
         rolesWithItems.forEach(({ role, item }, index) => {
             const btn = new ButtonBuilder()
-                .setCustomId(`sr_btn:${panel.messageId}:${role.id}`)
+                .setCustomId(`sr_btn:${role.id}`)
                 .setLabel(item.label || role.name)
                 .setStyle(ButtonStyle[item.buttonStyle || 'Primary'] || ButtonStyle.Primary)
                 .setEmoji(item.emoji || '🎭');
@@ -385,7 +385,7 @@ export function buildPanelMessage(panel, rolesWithItems) {
                 .addTextDisplayComponents(v2TextRaw(`${item.label || role.name}${item.description ? `\n${item.description}` : ''}`))
                 .setButtonAccessory(
                     new ButtonBuilder()
-                        .setCustomId(`sr_btn:${panel.messageId}:${role.id}`)
+                        .setCustomId(`sr_btn:${role.id}`)
                         .setLabel(behaviorMode === 'verify' ? 'Verifikasi' : (behaviorMode === 'unique' ? 'Ambil' : 'Ambil/Lepas'))
                         .setStyle(ButtonStyle[item.buttonStyle || 'Primary'] || ButtonStyle.Primary)
                         .setEmoji(item.emoji || '🎭')
@@ -395,7 +395,7 @@ export function buildPanelMessage(panel, rolesWithItems) {
     } else if (interactionType === 'dropdown') {
         // Dropdown
         const menu = new StringSelectMenuBuilder()
-            .setCustomId(`sr_sel:${panel.messageId}`)
+            .setCustomId('sr_sel')
             .setPlaceholder(panel.dropdownPlaceholder || 'Select your roles')
             .setMinValues(behaviorMode === 'verify' ? 0 : 1)
             .setMaxValues(Math.min(panel.maxSelect || 1, rolesWithItems.length))

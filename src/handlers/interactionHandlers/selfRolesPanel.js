@@ -130,9 +130,15 @@ async function runPanelInteraction(interaction, client, resolve) {
     }
 }
 
-/** A button of a panel: `sr_btn:<messageId>:<roleId>`. */
+/**
+ * A button of a panel: `sr_btn:<roleId>` — the button sits on the panel message, so the
+ * message id is taken from the interaction. Legacy `sr_btn:<messageId>:<roleId>` and the
+ * pre-fix broken `sr_btn:undefined:<roleId>` both carry the role id in the last segment.
+ */
 export async function handleSelfRoleButton(interaction, client, args) {
-    const [messageId, roleId] = Array.isArray(args) ? args : [];
+    const parts = Array.isArray(args) ? args : [];
+    const roleId = parts.length >= 2 ? parts[parts.length - 1] : parts[0];
+    const messageId = panelMessageId(interaction, null);
     if (!isSnowflake(messageId) || !isSnowflake(roleId)) {
         const deferSuccess = await InteractionHelper.safeDefer(interaction, { flags: MessageFlags.Ephemeral });
         if (deferSuccess) {
@@ -144,11 +150,13 @@ export async function handleSelfRoleButton(interaction, client, args) {
 }
 
 /**
- * A select menu of a panel: `sr_sel:<messageId>`, or the pre-unification `reaction_roles` menu,
- * which carried no id and is bound to the message it is on.
+ * A select menu of a panel: `sr_sel` — the menu sits on the panel message, so the message id
+ * is taken from the interaction. Legacy `sr_sel:<messageId>` and the pre-fix broken
+ * `sr_sel:undefined` are both accepted; the pre-unification `reaction_roles` menu carried no
+ * id and is bound to the message it is on.
  */
 export async function handlePanelSelect(interaction, client, messageId) {
-    const resolved = messageId ?? (isSnowflake(args0(interaction)) ? args0(interaction) : interaction.message?.id);
+    const resolved = panelMessageId(interaction, messageId);
     if (!isSnowflake(resolved)) {
         const deferSuccess = await InteractionHelper.safeDefer(interaction, { flags: MessageFlags.Ephemeral });
         if (deferSuccess) {
@@ -159,8 +167,12 @@ export async function handlePanelSelect(interaction, client, messageId) {
     await runPanelInteraction(interaction, client, (member) => applyMemberChoice(client, interaction.guild, member, resolved, interaction.values ?? []));
 }
 
-function args0(interaction) {
-    const customId = String(interaction.customId ?? '');
-    const index = customId.indexOf(':');
-    return index === -1 ? null : customId.slice(index + 1);
+/**
+ * The message the component sits on IS the panel message; the id embedded in legacy customIds
+ * is only a fallback for interactions without one (never produced by Discord's component events).
+ */
+function panelMessageId(interaction, embedded) {
+    const fromMessage = interaction?.message?.id;
+    if (isSnowflake(fromMessage)) return fromMessage;
+    return isSnowflake(embedded) ? embedded : null;
 }

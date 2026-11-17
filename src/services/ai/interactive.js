@@ -706,14 +706,18 @@ export function createInteractive({
     /** True when the bot itself wrote the newest message of the channel. Asked once per channel after a start. */
     async function lastWordIsOurs(channel) {
         if (nudged.has(channel.id)) return nudged.get(channel.id);
-        let ours = true; // when the channel cannot be read, stay quiet
         try {
             const newest = await channel.messages.fetch({ limit: 1 });
             const message = newest?.first?.() ?? null;
-            ours = message ? message.author?.id === client.user.id : true;
-        } catch { ours = true; }
-        nudged.set(channel.id, ours);
-        return ours;
+            const ours = message ? message.author?.id === client.user.id : true;
+            nudged.set(channel.id, ours);
+            return ours;
+        } catch (error) {
+            // Stay quiet this minute, but do not latch the failure: a passing Discord hiccup must
+            // not silence the nudge until the next restart.
+            warnOnce('IDLE_LOOKUP', `could not check the newest message in #${channel.name ?? channel.id} (${error?.message ?? error}); the nudge waits`);
+            return true;
+        }
     }
 
     /**
@@ -736,7 +740,22 @@ export function createInteractive({
             for (const channelId of cfg.channelIds) {
                 const channel = guild.channels.cache.get(channelId);
                 if (!channel || channel.type !== ChannelType.GuildText || !canWrite(channel) || busy(channelId) > 0) continue;
-                if (!channel.lastMessageId || !underHourlyLimit(channelId, cfg)) continue;
+                if (!underHourlyLimit(channelId, cfg)) continue;
+                if (!channel.lastMessageId) {
+                    // GUILD_CREATE may omit last_message_id; ask Discord for the newest message instead of
+                    // skipping the channel forever until somebody writes. The answer doubles as the author check.
+                    try {
+                        const newest = await channel.messages.fetch({ limit: 1 });
+                        const message = newest?.first?.() ?? null;
+                        if (message?.id) {
+                            channel.lastMessageId = message.id;
+                            if (message.author?.id) nudged.set(channel.id, message.author.id === client.user.id);
+                        }
+                    } catch (error) {
+                        warnOnce('IDLE_LOOKUP', `could not read the newest message in #${channel.name ?? channel.id} (${error?.message ?? error}); the nudge waits`);
+                    }
+                    if (!channel.lastMessageId) continue;
+                }
                 const lastAt = Math.max(Number(SnowflakeUtil.timestampFrom(channel.lastMessageId)), recent(channelId).at(-1)?.at ?? 0);
                 const silentFor = now() - lastAt;
                 if (silentFor < cfg.idleMinutes * 60000) continue;
