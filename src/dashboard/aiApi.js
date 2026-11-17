@@ -9,7 +9,6 @@ import { createActivityStore, validateActivity, startActivity, saveActivitySetti
 import { sendDMPublicPanel } from '../services/ai/dmPanel.js';
 import { createChatStore, validateChatSettings } from '../services/ai/chat.js';
 import { createInteractive, validateInteractive } from '../services/ai/interactive.js';
-import { createKnowledgeStore, askKnowledge } from '../services/ai/knowledge.js';
 import { summarizeLink } from '../services/ai/linkSummary.js';
 import { research } from '../services/ai/research.js';
 import { runTextTool } from '../services/ai/tools.js';
@@ -17,8 +16,6 @@ import { createImageService } from '../services/ai/images.js';
 import { createBuilder, PLAN_LIMITS, CHANNEL_TYPES } from '../services/ai/builder.js';
 import { listThemes } from '../services/ai/builderThemes.js';
 import { createManualBuilder, MANUAL_ROLE_PERMISSIONS } from '../services/ai/builderManual.js';
-import { extractImageText, extractPdfPageText } from '../services/ai/ocr.js';
-import { extractDocument } from '../services/ai/documentExtract.js';
 import { createSearchService } from '../services/ai/search.js';
 import { createSmart } from '../services/ai/smart.js';
 import { LANGUAGES, MAX_FAQ_ENTRIES, MAX_SMART_CHANNELS } from '../services/ai/smartSettings.js';
@@ -26,8 +23,8 @@ import { MESSAGE_MENUS } from '../services/ai/menus.js';
 import { MAX_REPORT_DAYS } from '../services/ai/usage.js';
 import { resolveSearchProvider } from '../services/ai/extraProviders.js';
 
-export function createAIApi(client,{auth,csrf,env=process.env,foundation=client.aiFoundation||createAIFoundation({client,env}),welcomeStore=createAIWelcomeStore(client),goodbyeStore=createAIWelcomeStore(client,'goodbye'),activityStore=createActivityStore(client),chatStore=createChatStore(client),knowledgeStore=createKnowledgeStore(client),imageService=client.aiImageService||createImageService({client,foundation,env}),builder=createBuilder({client,foundation}),manualBuilder=createManualBuilder({client}),searchService=client.aiSearchService||createSearchService({client,foundation,env})}) {
- const router=express.Router();const json=express.json({limit:'24kb'});router.use((req,res,next)=>['/image','/knowledge/upload','/knowledge/ocr','/knowledge/ocr-pdf','/smart/faq'].includes(req.path)?next():json(req,res,next));
+export function createAIApi(client,{auth,csrf,env=process.env,foundation=client.aiFoundation||createAIFoundation({client,env}),welcomeStore=createAIWelcomeStore(client),goodbyeStore=createAIWelcomeStore(client,'goodbye'),activityStore=createActivityStore(client),chatStore=createChatStore(client),imageService=client.aiImageService||createImageService({client,foundation,env}),builder=createBuilder({client,foundation}),manualBuilder=createManualBuilder({client}),searchService=client.aiSearchService||createSearchService({client,foundation,env})}) {
+ const router=express.Router();const json=express.json({limit:'24kb'});router.use((req,res,next)=>(['/image','/smart/faq'].includes(req.path)||req.path==='/knowledge'||req.path.startsWith('/knowledge/'))?next():json(req,res,next));
  const owner=(req,res,next)=>{const ids=String(env.OWNER_IDS||'').split(',').map(x=>x.trim()).filter(x=>/^\d{17,20}$/.test(x));if(!ids.includes(req.session.user.id))return res.status(403).json({error:'Pengaturan dan uji AI hanya untuk owner bot.'});next()};
  const fail=(res,e)=>res.status(e.status||503).json({error:e.status?e.message:'Layanan AI atau database tidak tersedia.',code:e.code||'UNAVAILABLE',...(e.created?{created:e.created,buildId:e.buildId??null,recorded:e.recorded===true}:{})});
  router.get('/settings',auth,owner,async(req,res)=>{try{res.json({settings:await foundation.store.read(req.guild.id),credentials:foundation.credentials()})}catch(e){fail(res,e)}});
@@ -88,13 +85,8 @@ export function createAIApi(client,{auth,csrf,env=process.env,foundation=client.
  router.get('/interactive',auth,owner,async(req,res)=>{try{const settings=await interactive.store.read(req.guild.id);const channels=[...req.guild.channels.cache.values()].filter(c=>c.type===ChannelType.GuildText).map(({id,name})=>({id,name}));res.json({settings,channels,search:{configured:searchReady()}})}catch(e){fail(res,e)}});
  router.patch('/interactive',auth,owner,csrf,async(req,res)=>{try{const settings=await interactive.saveSettings(validateInteractive(req.body,req.guild));res.json({ok:true,settings})}catch(e){fail(res,e)}});
  router.post('/chat/panel',auth,owner,csrf,async(req,res)=>{try{if(!req.body||Object.keys(req.body).length!==1||req.body.confirmed!==true)throw Object.assign(Error('Konfirmasi diperlukan.'),{status:400});const settings=await chatStore.read(req.guild.id);res.json({ok:true,...await sendDMPublicPanel({client,guild:req.guild,settings,confirmed:true})})}catch(e){fail(res,e)}});
- router.get('/knowledge',auth,owner,async(req,res)=>{try{const docs=await knowledgeStore.read(req.guild.id);res.json({documents:docs.map(({id,name,createdAt,content})=>({id,name,createdAt,characters:content.length}))})}catch(e){fail(res,e)}});
- router.post('/knowledge',auth,owner,csrf,async(req,res)=>{try{const b=req.body;if(!b||Object.keys(b).sort().join(',')!=='confirmed,content,name'||b.confirmed!==true)throw Object.assign(Error('Konfirmasi diperlukan.'),{status:400});const doc=await knowledgeStore.add(req.guild.id,b.name,b.content);res.json({ok:true,document:doc})}catch(e){fail(res,e)}});
- router.post('/knowledge/ocr',auth,owner,csrf,express.json({limit:'1500kb'}),async(req,res)=>{try{const b=req.body;if(!b||Object.keys(b).sort().join(',')!=='base64,confirmed,name'||b.confirmed!==true)throw Object.assign(Error('Konfirmasi diperlukan.'),{status:400});const result=await extractImageText({client,guildId:req.guild.id,userId:req.session.user.id,name:b.name,base64:b.base64,consent:true,foundation});res.json({ok:true,...result})}catch(e){fail(res,e)}});
- router.post('/knowledge/ocr-pdf',auth,owner,csrf,express.json({limit:'1500kb'}),async(req,res)=>{try{const b=req.body;if(!b||Object.keys(b).sort().join(',')!=='base64,confirmed,name,pageNumber'||b.confirmed!==true)throw Object.assign(Error('Konfirmasi diperlukan.'),{status:400});const result=await extractPdfPageText({client,guildId:req.guild.id,userId:req.session.user.id,name:b.name,base64:b.base64,pageNumber:b.pageNumber,consent:true,foundation});res.json({ok:true,...result})}catch(e){fail(res,e)}});
- router.post('/knowledge/upload',auth,owner,csrf,express.json({limit:'1500kb'}),async(req,res)=>{try{const b=req.body;if(!b||Object.keys(b).sort().join(',')!=='base64,confirmed,name'||b.confirmed!==true)throw Object.assign(Error('Konfirmasi diperlukan.'),{status:400});const content=await extractDocument(b.name,b.base64);const document=await knowledgeStore.add(req.guild.id,b.name,content);res.json({ok:true,document})}catch(e){fail(res,e)}});
- router.delete('/knowledge/:id',auth,owner,csrf,async(req,res)=>{try{if(!req.body||Object.keys(req.body).length!==1||req.body.confirmed!==true)throw Object.assign(Error('Konfirmasi diperlukan.'),{status:400});await knowledgeStore.remove(req.guild.id,req.params.id);res.json({ok:true})}catch(e){fail(res,e)}});
- router.post('/knowledge/ask',auth,owner,csrf,async(req,res)=>{try{const b=req.body;if(!b||Object.keys(b).sort().join(',')!=='confirmed,question'||b.confirmed!==true)throw Object.assign(Error('Konfirmasi diperlukan.'),{status:400});res.json({ok:true,...await askKnowledge({client,guildId:req.guild.id,userId:req.session.user.id,question:b.question,consent:true,store:knowledgeStore,foundation})})}catch(e){fail(res,e)}});
+ // Retired document endpoints never access stored documents or invoke a provider.
+ router.use('/knowledge',auth,owner,(req,res,next)=>['GET','HEAD'].includes(req.method)?next():csrf(req,res,next),(req,res)=>res.status(410).json({error:'Pengetahuan dokumen sudah dihentikan. FAQ & cache ada di halaman Pengetahuan.'}));
  router.post('/tools',auth,owner,csrf,async(req,res)=>{try{const b=req.body;if(!b||Object.keys(b).sort().join(',')!=='confirmed,language,mode,text'||b.confirmed!==true)throw Object.assign(Error('Konfirmasi diperlukan.'),{status:400});res.json({ok:true,...await runTextTool({client,guildId:req.guild.id,userId:req.session.user.id,mode:b.mode,text:b.text,language:b.language,consent:true,foundation})})}catch(e){fail(res,e)}});
  router.post('/link-summary',auth,owner,csrf,async(req,res)=>{try{const b=req.body;if(!b||Object.keys(b).sort().join(',')!=='confirmed,url'||b.confirmed!==true)throw Object.assign(Error('Konfirmasi diperlukan.'),{status:400});res.json({ok:true,...await summarizeLink({client,guildId:req.guild.id,userId:req.session.user.id,url:b.url,consent:true,foundation})})}catch(e){fail(res,e)}});
  router.post('/research',auth,owner,csrf,async(req,res)=>{try{const b=req.body;if(!b||Object.keys(b).sort().join(',')!=='confirmed,query'||b.confirmed!==true)throw Object.assign(Error('Konfirmasi diperlukan.'),{status:400});res.json({ok:true,...await research({client,guildId:req.guild.id,userId:req.session.user.id,query:b.query,consent:true,foundation,searchService})})}catch(e){fail(res,e)}});
@@ -143,6 +135,11 @@ export function createAIApi(client,{auth,csrf,env=process.env,foundation=client.
    const members=report.members.map(row=>({...row,name:req.guild.members.cache.get(row.userId)?.displayName??null}));
    res.json({enabled:settings.usage.enabled,limits:{perUserDaily:limits.perUserDaily,guildDaily:limits.guildDaily},...report,members});
   }catch(e){fail(res,e)}
+ });
+ router.get('/smart/facts/status',auth,owner,async(req,res)=>{try{res.json({status:await smart.facts.lastStatus(req.guild)})}catch(e){fail(res,e)}});
+ router.post('/smart/facts/test',auth,owner,csrf,async(req,res)=>{
+  if(!req.body||Object.keys(req.body).length!==1||req.body.confirmed!==true)return res.status(400).json({error:'Konfirmasi pengiriman diperlukan.'});
+  try{res.json({ok:true,...await smart.facts.sendNow(req.guild,(await smart.settings({strict:true})).facts)})}catch(e){fail(res,e)}
  });
  router.post('/smart/digest/test',auth,owner,csrf,async(req,res)=>{
   if(!req.body||Object.keys(req.body).length!==1||req.body.confirmed!==true)return res.status(400).json({error:'Konfirmasi pengiriman diperlukan.'});

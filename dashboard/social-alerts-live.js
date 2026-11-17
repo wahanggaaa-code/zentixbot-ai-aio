@@ -55,7 +55,7 @@
             <label id="saNtShortsLabel"><input type="checkbox" name="notifyTypes" value="shorts"> Shorts</label>
           </div></fieldset>
         <label class="f-field"><span><b>Mention</b><small>Butuh izin bot untuk mention role; @everyone butuh izin khusus server.</small></span><select name="mentionRoleId" id="saMention"></select></label>
-        <label class="f-field"><span><b>Warna aksen</b><small>Garis di sisi kiri pesan.</small></span><input name="accentColor" id="saColor" type="color" value="#5865F2"></label>
+        <div class="f-field"><span><b>Warna container</b><small>Pilih warna, masukkan kode Hex atau RGB, atau gunakan preset.</small></span>${window.ZentixGreetingColor?.render('#5865f2','#5865f2',{name:'accentColor'}) || '<input name="accentColor" id="saColor" type="color" value="#5865F2">'}</div>
         <div class="f-field" style="grid-template-columns:1fr"><span><b>Pesan kustom</b><small>Baris di atas kartu. Kosong = "📢 <i>{creator}</i> mengunggah …". Klik variabel untuk menyisipkan.</small></span><textarea name="customMessage" id="saCustom" rows="3" maxlength="500" spellcheck="false" placeholder="{role} {creator} baru: {title} {url}"></textarea></div>
         <div class="sa-vars" id="saVars">${VARIABLES.map((v) => `<button type="button" class="f-outline" data-var="${v}">${v}</button>`).join('')}</div>
         <fieldset class="f-field"><span><b>Ringkasan AI</b><small>Ringkas 1–2 kalimat untuk video/Shorts baru. Opsional, memakai AI bot; kode tidak pernah mengirim teks petunjuk (prompt injection dipercaya sebagai teks, bukan instruksi).</small></span>
@@ -90,6 +90,7 @@
     const $ = (id) => root.querySelector(id);
     const form = $('#saForm');
     if (!form) return;
+    window.ZentixGreetingColor?.bind(form);
 
     const sampleFill = (template) => String(template || '')
       .replace(/\{creator\}/gi, PLACEHOLDER.creator).replace(/\{title\}/gi, PLACEHOLDER.title)
@@ -183,6 +184,7 @@
       $('#saCancelEdit').hidden = true;
       $('#saSave').textContent = 'SIMPAN FEED ↗';
       form.reset();
+      window.ZentixGreetingColor?.set(form,'#5865f2');
       syncNotifyFieldsets();
       paintPreview();
     }
@@ -214,7 +216,8 @@
       $('#saLabelRow').hidden = true;
       $('#saCancelEdit').hidden = false;
       $('#saSave').textContent = 'SIMPAN PERUBAHAN ↗';
-      form.elements.accentColor.value = /^#[0-9a-f]{6}$/i.test(alert.accentColor || '') ? alert.accentColor : '#5865F2';
+      const color = /^#[0-9a-f]{6}$/i.test(alert.accentColor || '') ? alert.accentColor : '#5865F2';
+      if (window.ZentixGreetingColor) window.ZentixGreetingColor.set(form,color); else form.elements.accentColor.value=color;
       form.elements.customMessage.value = alert.customMessage || '';
       form.elements.aiSummaryEnabled.checked = alert.aiSummaryEnabled;
       const target = $('#saTarget');

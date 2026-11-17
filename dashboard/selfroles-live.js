@@ -211,7 +211,7 @@
       + `<label class="f-field"><span><b>Banner URL</b><small>${String(panel.bannerUrl || '').startsWith('attachment://') ? 'Banner unggahan tersimpan — isi untuk menggantinya dengan link, kosongkan untuk mempertahankannya' : '(opsional, harus https://)'}</small></span><input name="bannerUrl" type="url" maxlength="2048" value="${esc(panel.bannerUrl && !String(panel.bannerUrl).startsWith('attachment://') ? panel.bannerUrl : '')}" placeholder="https://…"></label>`
       + `<label class="f-field"><span><b>Unggah banner</b><small>PNG, JPEG, WebP atau GIF, paling banyak 5 MB. Menggantikan banner yang ada.</small></span><input name="bannerFile" type="file" accept="${BANNER_TYPES.join(',')}"></label>`
       + `<label class="f-field"><span><b>Hapus banner</b><small>Hapus banner tanpa menggantinya.</small></span><span class="f-check"><input type="checkbox" name="bannerClear"><span class="fake-switch" aria-hidden="true"></span></span></label>`
-      + `<label class="f-field"><span><b>Warna Accent</b><small>(hex, mis. #99aab5; kosongkan untuk bawaan)</small></span><input name="accentColor" maxlength="7" value="${esc(panel.accentColor ? '#' + panel.accentColor : '')}" placeholder="#99aab5"></label>`
+      + `<div class="f-field"><span><b>Warna container</b><small>Pilih warna atau tekan Reset untuk warna bawaan.</small></span>${window.ZentixGreetingColor?.render(panel.accentColor ? '#' + panel.accentColor : '', PREVIEW_ACCENT, {name:'accentColor',optional:true}) || `<input name="accentColor" maxlength="7" value="${esc(panel.accentColor ? '#' + panel.accentColor : '')}" placeholder="#99aab5">`}</div>`
       + `<label class="f-field"><span><b>Tipe interaksi</b></span><select name="interactionType">${typeOptions}</select></label>`
       + `<label class="f-field"><span><b>Mode perilaku</b></span><select name="behaviorMode">${modeOptions}</select></label>`
       + `<label class="f-field data-dropdown-only"><span><b>Maks pilihan</b><small>Dropdown saja: 1–25.</small></span><input name="maxSelect" type="number" min="1" max="25" value="${esc(panel.maxSelect ?? 1)}"></label>`
@@ -245,7 +245,7 @@
       + `<label class="f-field"><span><b>Deskripsi</b><small>Paling banyak ${esc(data.limits.description)} karakter.</small></span><textarea name="description" maxlength="${esc(data.limits.description)}"></textarea></label>`
       + `<label class="f-field"><span><b>Banner URL</b><small>(opsional, harus https://)</small></span><input name="bannerUrl" type="url" maxlength="2048" placeholder="https://…"></label>`
       + `<label class="f-field"><span><b>Unggah banner</b><small>PNG, JPEG, WebP atau GIF, paling banyak 5 MB. Dipilih lebih diutamakan daripada URL.</small></span><input name="bannerFile" type="file" accept="${BANNER_TYPES.join(',')}"></label>`
-      + `<label class="f-field"><span><b>Warna Accent</b><small>(hex, mis. #99aab5)</small></span><input name="accentColor" maxlength="7" placeholder="#99aab5"></label>`
+      + `<div class="f-field"><span><b>Warna container</b><small>Pilih warna atau tekan Reset untuk warna bawaan.</small></span>${window.ZentixGreetingColor?.render('', PREVIEW_ACCENT, {name:'accentColor',optional:true}) || `<input name="accentColor" maxlength="7" placeholder="#99aab5">`}</div>`
       + `<label class="f-field"><span><b>Tipe interaksi</b></span><select name="interactionType"><option value="buttons">Tombol Grid</option><option value="section_buttons">Section List</option><option value="dropdown">Dropdown</option><option value="reaction">Reaction (Klasik)</option></select></label>`
       + `<label class="f-field"><span><b>Mode perilaku</b></span><select name="behaviorMode"><option value="toggle">Toggle (klik/pilih lagi untuk lepas)</option><option value="unique">Unique (hanya 1 role)</option><option value="verify">Verify (hanya tambah)</option></select></label>`
       + `<label class="f-field data-dropdown-only"><span><b>Maks pilihan</b><small>Dropdown saja: 1–25.</small></span><input name="maxSelect" type="number" min="1" max="25" value="1"></label>`
@@ -341,6 +341,7 @@
         const label = panel.title ?? panel.messageId;
 
         const text = block.querySelector('form[data-text]');
+        window.ZentixGreetingColor?.bind(text);
         text.onsubmit = async (event) => {
           event.preventDefault();
           const form = text;
@@ -469,6 +470,7 @@
       const createRoles = data.roles;
       const form = create.querySelector('#selfRolesCreateForm');
       if (form) {
+        window.ZentixGreetingColor?.bind(form);
         const repaintCreate = () => paintPreview(form, createRoles);
         form.addEventListener('input', repaintCreate);
         form.addEventListener('change', repaintCreate);

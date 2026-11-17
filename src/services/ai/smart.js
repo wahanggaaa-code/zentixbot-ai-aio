@@ -17,6 +17,7 @@ import { createUsage } from './usage.js';
 import { createRecap } from './recap.js';
 import { createMenus } from './menus.js';
 import { createDigest } from './digest.js';
+import { createDailyFacts } from './dailyFacts.js';
 import { createAutoTranslate } from './autoTranslate.js';
 import { createPersonalLanguageStore } from './personalLanguage.js';
 import { decorateGreeting } from './greetings.js';
@@ -68,6 +69,7 @@ export function createSmart({
     const personalLanguage = createPersonalLanguageStore(kv);
     const menus = createMenus({ client, settings, recap, interactiveSettings, foundation, searchService, personalLanguage });
     const digest = createDigest({ client, settings, kv, foundation, searchService, now, logger });
+    const facts = createDailyFacts({ client, settings, kv, foundation, now, logger });
     const translate = createAutoTranslate({ client, settings, foundation, now, logger, ...(schedule ? { schedule } : {}) });
 
     /** The FAQ entry that answers `text`, or null (also when the FAQ is off). */
@@ -123,7 +125,7 @@ export function createSmart({
     }
 
     return {
-        store, settings, saveSection, usage, recap, menus, digest, translate,
+        store, settings, saveSection, usage, recap, menus, digest, facts, translate,
         faqFor, faqWouldAnswer, handleMessage,
         /** Reply cache for the interactive AI: null when the cache is off or has nothing. */
         async cachedReply(text) {

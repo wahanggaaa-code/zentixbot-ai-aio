@@ -35,3 +35,4 @@ fieldset.f-field{border:0;margin:0;padding:16px 0;min-width:0}
 .greeting-color .greeting-color-reset{background:#5865f2;color:white;border-color:#5865f2;border-radius:6px}
 .greeting-preview-field{border-top:1px solid #555;margin-top:10px;padding-top:8px;color:#dbdee1;line-height:1.4}
 .greeting-preview-field[hidden]{display:none}
+.greeting-color-default-note{display:block;margin-top:8px;color:#dbdee1;font-size:12px}

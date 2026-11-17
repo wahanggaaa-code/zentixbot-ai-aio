@@ -25,6 +25,8 @@ export const DEFAULT_SMART = Object.freeze({
     menu: Object.freeze({ translate: false, explain: false, factCheck: false, recap: false, language: 'id' }),
     // News and a fact, once every morning.
     digest: Object.freeze({ enabled: false, channelIds: Object.freeze([]), time: '07:00', zone: 'WIB', news: true, fact: true, topics: '' }),
+    // Independent daily facts; old Koran pagi configuration remains unchanged.
+    facts: Object.freeze({ enabled: false, channelId: null, time: '07:00', zone: 'WIB' }),
     // Additions to AI Welcome and AI Goodbye, written by the bot itself.
     greeting: Object.freeze({ multilingual: false, tenure: false }),
     // Translates what members write in the chosen channels.
@@ -119,6 +121,14 @@ const VALIDATORS = {
         if (v.enabled && channelIds.length === 0) throw err('Koran pagi memerlukan minimal satu channel.');
         if (v.enabled && !v.news && !v.fact) throw err('Pilih berita, fakta, atau keduanya.');
         return { ...v, channelIds, topics: oneLine(v.topics) };
+    },
+    facts(v, guild) {
+        booleans(v, ['enabled']);
+        if (v.channelId !== null && (typeof v.channelId !== 'string' || !SNOWFLAKE.test(v.channelId))) throw err('Channel fakta tidak valid.');
+        if (v.channelId && guild && guild.channels.cache.get(v.channelId)?.type !== ChannelType.GuildText) throw err('Pilih satu channel teks untuk fakta.');
+        if (v.enabled && !v.channelId) throw err('Pilih satu channel untuk fakta.');
+        if (typeof v.time !== 'string' || !CLOCK.test(v.time) || !Object.hasOwn(ZONES, v.zone)) throw err('Jam atau zona waktu fakta tidak valid.');
+        return {...v};
     },
     greeting(v) { booleans(v, ['multilingual', 'tenure']); return { ...v }; },
     translate(v, guild) {

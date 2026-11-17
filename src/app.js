@@ -250,6 +250,7 @@ class ZentixBot extends Client {
     cron.schedule('* * * * *', runSafeTask('ai_proactive', () => runProactiveAgent(this)));
     cron.schedule('* * * * *', runSafeTask('ai_interactive_idle', () => this.aiInteractive.runIdle()));
     cron.schedule('* * * * *', runSafeTask('ai_digest', () => this.aiSmart.digest.run()));
+    cron.schedule('* * * * *', runSafeTask('ai_facts', () => this.aiSmart.facts.run()));
     cron.schedule('*/15 * * * *', runSafeTask('counter_update', () => this.updateAllCounters()));
   }
 

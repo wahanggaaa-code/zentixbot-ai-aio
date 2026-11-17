@@ -83,8 +83,9 @@ export function buildSocialAlertMessage({ alert, event, aiSummary = null } = {})
     components.push(text(topbar));
 
     // --- the container ---
+    const accent = String(alert.accentColor ?? DEFAULT_ACCENT_COLOR);
     const container = new ContainerBuilder().setAccentColor(
-        Number.parseInt(String(alert.accentColor ?? DEFAULT_ACCENT_COLOR).replace('#', ''), 16) || 0x5865F2,
+        /^#[0-9a-f]{6}$/i.test(accent) ? Number.parseInt(accent.slice(1), 16) : 0x5865F2,
     );
 
     const meta = [platform, creator];
