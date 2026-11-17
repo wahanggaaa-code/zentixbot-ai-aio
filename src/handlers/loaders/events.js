@@ -5,6 +5,7 @@ import { dirname } from 'path';
 import { logger, startupLog } from '../../utils/logger.js';
 import { describeEvents } from '../../utils/startupReport.js';
 import { mayDispatchEvent } from '../../utils/singleGuild.js';
+import { debugLog } from '../../utils/debugLog.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -30,6 +31,10 @@ export default async function loadEvents(client, eventsPath = join(__dirname, '.
             const safeExecute = async (...args) => {
                 try {
                     if (!mayDispatchEvent(client, event.name, args)) {
+                        const argsHint = event.name.startsWith('messageReaction')
+                            ? `messageGuildId=${args[0]?.message?.guildId ?? args[0]?.message?.guild?.id ?? 'null'} homeGuildId=${client.homeGuildId}`
+                            : `guildId=${args[0]?.guildId ?? args[0]?.guild?.id ?? 'null'} homeGuildId=${client.homeGuildId}`;
+                        debugLog(`${event.name}: dispatch denied (${argsHint})`);
                         const interaction = event.name === 'interactionCreate' ? args[0] : null;
                         if (interaction?.isAutocomplete?.()) await interaction.respond([]).catch(() => {});
                         else if (interaction?.isRepliable?.() && !interaction.replied && !interaction.deferred) {

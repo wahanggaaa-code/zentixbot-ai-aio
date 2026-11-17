@@ -5,6 +5,7 @@ import { readDiscordImage } from './attachments.js';
 import { scheduleMatches } from './activities.js';
 import { createKnowledgeStore, selectExcerpts } from './knowledge.js';
 import {pgConfig} from '../../config/database/postgres.js';
+import {logger} from '../../utils/logger.js';
 import {sqliteBackend} from '../storage/sqlite.js';
 export const DEFAULT_CHAT=Object.freeze({enabled:false,dmEnabled:false,channelId:null,knowledgeEnabled:false,audioEnabled:false,fileEnabled:false,proactiveEnabled:false,proactiveTime:'18:00',proactiveZone:'WIB',persona:'Asisten komunitas yang ramah dan membantu.'});
 const err=(message,status=400)=>Object.assign(new Error(message),{status});
@@ -15,10 +16,28 @@ export function validateChatSettings(v,guild){
  if(guild&&v.channelId!==null&&guild.channels.cache.get(v.channelId)?.type!==ChannelType.GuildText)throw err('Pilih channel teks server.');
  if((v.enabled||v.proactiveEnabled)&&!v.channelId)throw err('Channel chat diperlukan.');if(v.proactiveEnabled&&!v.enabled)throw err('Chat channel harus aktif untuk agent proaktif.');return {...v};
 }
-export function createChatStore(client){
+// The /aichat cron reads settings every minute just to check the clock, and the chat handlers read
+// them on every message; without a cache that is one PG round-trip per minute forever (the 12:30
+// crash was a read on that path). A short TTL keeps the dashboard edit-visible quickly, `save`
+// refreshes it, and an unavailable DB serves the last cached copy instead of taking the bot down.
+// The cache is keyed by (database adapter instance, guild id). Production owns one adapter for the
+// process lifetime, so this still serves the cron from memory; the test suite opens several databases
+// in one process and must never see each other's settings.
+const SETTINGS_CACHE_TTL_MS = 60_000;
+const settingsCache = new Map();
+const backendIds = new WeakMap();
+let nextBackendId = 1;
+const backendIdOf = (client) => { const adapter = client?.db?.db; if (!adapter || (typeof adapter !== 'object' && typeof adapter !== 'function')) return 'db:none'; let id = backendIds.get(adapter); if (!id) { id = String(nextBackendId++); backendIds.set(adapter, id); } return id; };
+const cacheKey = (client, id) => `${backendIdOf(client)}:${id}`;
+/** Test hook / manual bust: forget cached settings (one guild everywhere, or all of them). */
+export function clearChatSettingsCache(id){ if (id === undefined) { settingsCache.clear(); return; } for (const key of [...settingsCache.keys()]) if (key.endsWith(`:${id}`)) settingsCache.delete(key); }
+export function createChatStore(client, { ttlMs = SETTINGS_CACHE_TTL_MS } = {}){
  const key=id=>`ai:chat:settings:${id}`,table=pgConfig.tables.cache_data;
  const pool=()=>{const d=client.db;if(!d||d.getStatus?.().isDegraded||!d.isAvailable?.()||!d.db?.isAvailable?.()||!d.db.pool)throw err('Database persisten tidak tersedia.',503);return d.db.pool;};
- return {async read(id){const sqlite=sqliteBackend(client);if(sqlite){const v=sqlite.get(key(id));return v?validateChatSettings({...DEFAULT_CHAT,...v}):{...DEFAULT_CHAT};}const r=await pool().query(`SELECT value FROM ${table} WHERE key=$1`,[key(id)]);return r.rows[0]?.value?validateChatSettings({...DEFAULT_CHAT,...r.rows[0].value}):{...DEFAULT_CHAT};},async save(id,v){const s=validateChatSettings(v),sqlite=sqliteBackend(client);if(sqlite){sqlite.set(key(id),s);return s;}await pool().query(`INSERT INTO ${table} (key,value) VALUES ($1,$2::jsonb) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value`,[key(id),JSON.stringify(s)]);return s;}};
+ const fresh=id=>{const cached=ttlMs>0?settingsCache.get(cacheKey(client,id)):null;return cached&&Date.now()-cached.at<ttlMs?cached.value:null;};
+ const store=(id,value)=>{if(ttlMs>0)settingsCache.set(cacheKey(client,id),{at:Date.now(),value});return value;};
+ const readNow=async id=>{const sqlite=sqliteBackend(client);if(sqlite){const v=sqlite.get(key(id));return v?validateChatSettings({...DEFAULT_CHAT,...v}):{...DEFAULT_CHAT};}const r=await pool().query(`SELECT value FROM ${table} WHERE key=$1`,[key(id)]);return r.rows[0]?.value?validateChatSettings({...DEFAULT_CHAT,...r.rows[0].value}):{...DEFAULT_CHAT};};
+ return {async read(id){const hit=fresh(id);if(hit)return hit;try{return store(id,await readNow(id));}catch(error){const stale=ttlMs>0?settingsCache.get(cacheKey(client,id)):null;if(stale){logger.warn(`ai:chat: pengaturan gagal dibaca dari database; memakai salinan tersimpan (${error?.message??'unknown error'})`);return stale.value;}throw error;}},async save(id,v){const s=validateChatSettings(v),sqlite=sqliteBackend(client);if(sqlite){sqlite.set(key(id),s);return store(id,s);}await pool().query(`INSERT INTO ${table} (key,value) VALUES ($1,$2::jsonb) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value`,[key(id),JSON.stringify(s)]);return store(id,s);}};
 }
 // Volatile, deliberately small memory. Restart clears it; users opt in per question.
 const conversations=new Map(), pending=new Map();
