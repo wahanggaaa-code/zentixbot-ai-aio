@@ -26,7 +26,7 @@ export const DEFAULT_SMART = Object.freeze({
     // News and a fact, once every morning.
     digest: Object.freeze({ enabled: false, channelIds: Object.freeze([]), time: '07:00', zone: 'WIB', news: true, fact: true, topics: '' }),
     // Independent daily facts; old Koran pagi configuration remains unchanged.
-    facts: Object.freeze({ enabled: false, channelId: null, time: '07:00', zone: 'WIB' }),
+    facts: Object.freeze({ enabled: false, channelId: null, times: Object.freeze(['07:00']), zone: 'WIB' }),
     // Additions to AI Welcome and AI Goodbye, written by the bot itself.
     greeting: Object.freeze({ multilingual: false, tenure: false }),
     // Translates what members write in the chosen channels.
@@ -127,8 +127,9 @@ const VALIDATORS = {
         if (v.channelId !== null && (typeof v.channelId !== 'string' || !SNOWFLAKE.test(v.channelId))) throw err('Channel fakta tidak valid.');
         if (v.channelId && guild && guild.channels.cache.get(v.channelId)?.type !== ChannelType.GuildText) throw err('Pilih satu channel teks untuk fakta.');
         if (v.enabled && !v.channelId) throw err('Pilih satu channel untuk fakta.');
-        if (typeof v.time !== 'string' || !CLOCK.test(v.time) || !Object.hasOwn(ZONES, v.zone)) throw err('Jam atau zona waktu fakta tidak valid.');
-        return {...v};
+        if (!Array.isArray(v.times) || v.times.length < 1 || v.times.length > 3 || v.times.some(t => typeof t !== 'string' || !CLOCK.test(t)) || new Set(v.times).size !== v.times.length) throw err('Pilih 1–3 jam fakta yang valid dan berbeda.');
+        if (!Object.hasOwn(ZONES, v.zone)) throw err('Zona waktu fakta tidak valid.');
+        return {...v, times: [...v.times]};
     },
     greeting(v) { booleans(v, ['multilingual', 'tenure']); return { ...v }; },
     translate(v, guild) {
@@ -159,7 +160,9 @@ export function upgradeSmart(stored) {
     const out = {};
     for (const section of SMART_SECTIONS) {
         const known = Object.keys(DEFAULT_SMART[section]);
-        const raw = plain(stored?.[section]) ? stored[section] : {};
+        let raw = plain(stored?.[section]) ? stored[section] : {};
+        // Keep a previously configured single time as the first slot without changing its enabled state.
+        if (section === 'facts' && !Object.hasOwn(raw, 'times') && Object.hasOwn(raw, 'time')) raw = {...raw, times: [raw.time]};
         try { out[section] = validateSmartSection(section, { ...copy(section), ...Object.fromEntries(known.filter((k) => Object.hasOwn(raw, k)).map((k) => [k, raw[k]])) }); }
         catch { out[section] = copy(section); }
     }
