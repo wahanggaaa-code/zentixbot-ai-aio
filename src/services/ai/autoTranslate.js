@@ -14,6 +14,8 @@ import { debugLog } from '../../utils/debugLog.js';
 export const FLAG_LANGUAGES = Object.freeze({
     '\u{1F1EE}\u{1F1E9}': 'id',
     '\u{1F1EC}\u{1F1E7}': 'en', '\u{1F1FA}\u{1F1F8}': 'en', '\u{1F1E6}\u{1F1FA}': 'en', '\u{1F1E8}\u{1F1E6}': 'en',
+    // Some Android pickers offer "UM" (U+1F1FA U+1F1F2, U.S. Minor Outlying Islands) right before the US flag and it is easy to tap by mistake; members mean English.
+    '\u{1F1FA}\u{1F1F2}': 'en',
     '\u{1F1EF}\u{1F1F5}': 'ja', '\u{1F1F0}\u{1F1F7}': 'ko',
     '\u{1F1E8}\u{1F1F3}': 'zh', '\u{1F1F9}\u{1F1FC}': 'zh',
     '\u{1F1F8}\u{1F1E6}': 'ar', '\u{1F1E6}\u{1F1EA}': 'ar',
@@ -238,14 +240,19 @@ export function createAutoTranslate({ client, settings, foundation = () => clien
      * Resolves to true when a translation was posted. Never throws.
      */
     async function handleReaction(message, user, emojiName) {
-        // Console-only: members see nothing at all; the host log shows why a flag did nothing.
+        // The host log shows why a flag did nothing; an unsupported flag also earns a ❌ so the member sees the attempt was seen.
         const note = (why) => logger.info?.(`AI auto-translate: flag reaction by ${user?.id ?? '?'} on message ${message?.id ?? '?'} ignored: ${why}`);
         try {
             const emoji = typeof emojiName === 'string' ? emojiName : emojiName?.name;
-            const target = FLAG_LANGUAGES[emoji];
-            if (!target) return note('flag emoji "' + (emoji ?? '?') + '" has no translation attached; supported flags: ' + Object.keys(FLAG_LANGUAGES).join(' ')), false;
+            // The guild gate comes first: a stray ❌ outside the home guild would be the bot acting where it should be silent.
             if (!isHomeMessage(message) || !client.user) return note(`message guild is not the configured home guild (${guildGateIds(client, message)})`), false;
             if (!user || user.bot) return false;
+            const target = FLAG_LANGUAGES[emoji];
+            if (!target) {
+                note('flag emoji "' + (emoji ?? '?') + '" has no translation attached; supported flags: ' + Object.keys(FLAG_LANGUAGES).join(' '));
+                try { await message?.react?.('❌'); } catch (error) { logger.info?.(`AI auto-translate: could not add the ❌ reaction on message ${message?.id ?? '?'}: ${error?.message ?? error}`); }
+                return false;
+            }
             if (message.type !== MessageType.Default && message.type !== MessageType.Reply) return note('message could not be read (partial fetch may have failed) or is not a normal chat message'), false;
             const cfg = (await settings())?.translate;
             if (!cfg?.reactionEnabled) return note('"Terjemahkan dengan reaksi bendera" is off (AI Studio -> Fitur pintar -> Terjemahan otomatis)'), false;
@@ -254,7 +261,7 @@ export function createAutoTranslate({ client, settings, foundation = () => clien
             const text = translatableText(message.cleanContent ?? message.content).slice(0, TEXT_CHARS);
             if (letterCount(text) < minLettersFor(text)) return note('text too short to translate'), false;
 
-            const posted = await translatePost({ message, channelId: message.channel.id, text, target, userId: user.id, hourlyLimit: cfg.hourlyLimit, trace: `AI auto-translate: flag reaction on message ${message.id}` });
+            const posted = await translatePost({ message, channelId: message.channel.id, text, target, userId: user.id, hourlyLimit: cfg.hourlyLimit, deleteAfterSeconds: cfg.deleteAfterSeconds, trace: `AI auto-translate: flag reaction on message ${message.id}` });
             if (!posted) note('refused inside translatePost (busy channel, hourly limit, member cooldown, missing permissions or empty AI answer)');
             return posted;
         } catch (error) {
