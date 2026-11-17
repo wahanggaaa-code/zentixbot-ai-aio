@@ -94,14 +94,14 @@ export function createBotApiRouter(client, {auth, csrf, store = createStore(clie
   // >16kb banner would die with PayloadTooLargeError before reaching its parser and return 500.
   const smallJson = express.json({limit:'16kb'});
   router.use((req, res, next) => (req.path === '/self-roles' || req.path.startsWith('/self-roles/') || req.path.startsWith('/greeting-banner/')) ? next() : smallJson(req, res, next));
-  const bannerJson=express.json({limit:'2mb'});
+  const bannerJson=express.json({limit:'8mb'});
   router.get('/greeting-banner/:kind',auth,async(req,res)=>{
     if(!['welcome','goodbye'].includes(req.params.kind))return res.status(400).json({error:'Jenis banner tidak valid.'});
     try{const asset=await readGreetingBanner(client,req.guild.id,req.params.kind);if(!asset)return res.status(404).end();res.set('Cache-Control','no-store');res.type(asset.mime).send(asset.buffer);}catch{return res.status(503).json({error:'Banner tidak tersedia.'});}
   });
   router.put('/greeting-banner/:kind',auth,csrf,bannerJson,async(req,res)=>{
     if(!['welcome','goodbye'].includes(req.params.kind))return res.status(400).json({error:'Jenis banner tidak valid.'});
-    let asset;try{if(!req.body||Object.keys(req.body).sort().join(',')!=='base64,mime')throw Error();asset=validateBannerUpload(req.body);if(asset.buffer.length>1024*1024)throw Error();}catch{return res.status(400).json({error:'Banner harus PNG, JPEG, WebP atau GIF yang valid, maksimal 1 MB.'});}
+    let asset;try{if(!req.body||Object.keys(req.body).sort().join(',')!=='base64,mime')throw Error();asset=validateBannerUpload(req.body);}catch{return res.status(400).json({error:'Banner harus PNG, JPEG, WebP atau GIF yang valid, maksimal 5 MB.'});}
     try{await saveGreetingBanner(client,req.guild.id,req.params.kind,asset);res.json({ok:true});}catch{return res.status(503).json({error:'Banner gagal disimpan.'});}
   });
   router.delete('/greeting-banner/:kind',auth,csrf,async(req,res)=>{
@@ -145,6 +145,7 @@ export function createBotApiRouter(client, {auth, csrf, store = createStore(clie
   router.use((error, req, res, next) => {
     logger.error('Bot API error:', error);
     if (res.headersSent) return next(error);
+    if (error.type === 'entity.too.large') return res.status(413).json({error:'File terlalu besar. Banner maksimal 5 MB.'});
     res.status(500).json({ error: 'Internal Server Error' });
   });
 

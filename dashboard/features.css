@@ -19,3 +19,17 @@ fieldset.f-field{border:0;margin:0;padding:16px 0;min-width:0}
 .f-radio-row{display:flex;align-items:center;gap:12px;cursor:pointer}
 .f-radio-row input[type=radio]{flex:none}
 .f-radio-row span{min-width:0}
+
+/* Greeting colour selector: one shared value, with a spectrum, Hex/RGB and presets. */
+.greeting-color{position:relative;background:#313338;border-radius:12px;padding:12px;color:#fff;min-width:0}
+.greeting-color .greeting-color-source{position:absolute!important;width:1px!important;height:1px;opacity:0;padding:0!important;pointer-events:none}
+.greeting-color-square{height:170px;border-radius:6px;position:relative;touch-action:none;cursor:crosshair;background-image:linear-gradient(to top,#000,transparent),linear-gradient(to right,#fff,transparent)}
+.greeting-color-marker{position:absolute;width:13px;height:13px;border:2px solid #fff;border-radius:50%;box-shadow:0 0 2px #000;transform:translate(-50%,-50%);pointer-events:none}
+.f-field .greeting-color input.greeting-color-hue{appearance:none;-webkit-appearance:none;height:14px;padding:0;border:0;margin:10px 0;background:linear-gradient(to right,red,#ff0,#0f0,#0ff,#00f,#f0f,red);border-radius:4px;cursor:pointer}
+.greeting-color-hue::-webkit-slider-thumb{-webkit-appearance:none;width:10px;height:18px;border:2px solid #fff;border-radius:3px;background:#fff;box-shadow:0 0 3px #111}
+.greeting-color-values{display:grid;grid-template-columns:2fr repeat(3,1fr);gap:6px}
+.greeting-color-values label{display:flex;flex-direction:column-reverse;gap:5px;color:#dbdee1;font:11px var(--mono);text-align:center}
+.f-field .greeting-color-values input{background:#202225;color:#fff;border:1px solid #202225;border-radius:5px;min-width:0;font-size:12px;text-align:center;padding:8px 4px}
+.greeting-color-swatches{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}
+.greeting-color-swatches button{width:29px;height:29px;border:1px solid #141517;border-radius:5px;cursor:pointer}
+.greeting-color .greeting-color-reset{background:#5865f2;color:white;border-color:#5865f2;border-radius:6px}
