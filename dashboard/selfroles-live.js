@@ -69,7 +69,7 @@
     } else if (/^https:\/\//.test(url)) {
       bannerHtml = `<img src="${esc(url)}" alt="" style="display:block;width:100%;max-height:180px;object-fit:cover" onerror="this.style.display='none'">`;
     } else if (scope.__storedBannerUpload === true && !settings.elements.bannerClear?.checked) {
-      bannerHtml = `<div style="padding:18px;text-align:center;color:#949ba4;border-bottom:1px dashed #3f4147">Banner unggahan tersimpan akan dipakai</div>`;
+      bannerHtml = `<div style="padding:18px;text-align:center;color:#dbdee1;border-bottom:1px dashed #3f4147">Banner unggahan tersimpan akan dipakai</div>`;
     }
 
     // Items, in display order.
@@ -94,14 +94,14 @@
 
     let body;
     if (!items.length) {
-      body = '<p style="color:#949ba4;font-style:italic;margin:0">Pilih role untuk melihat pratinjau.</p>';
+      body = '<p style="color:#dbdee1;font-style:italic;margin:0">Pilih role untuk melihat pratinjau.</p>';
     } else if (interactionType === 'buttons') {
       body = `<div style="display:flex;flex-wrap:wrap;gap:6px">${items.map((item) => `<span style="background:${STYLE_COLORS[item.buttonStyle]};color:#fff;border-radius:4px;padding:4px 10px;font-size:13px;font-weight:500;display:inline-flex;gap:6px;align-items:center">${esc(item.emoji)} ${esc(item.label)}</span>`).join('')}</div>`;
     } else if (interactionType === 'section_buttons') {
       const accessory = behaviorMode === 'verify' ? 'Verifikasi' : behaviorMode === 'unique' ? 'Ambil' : 'Ambil/Lepas';
-      body = items.map((item) => `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;background:#313338;border-radius:6px;padding:8px 10px;margin-bottom:6px"><span style="min-width:0"><span style="display:block;color:#f2f3f5">${esc(item.emoji)} ${esc(item.label)}</span>${item.description ? `<span style="display:block;color:#949ba4;font-size:12px;margin-top:2px">${esc(item.description)}</span>` : ''}</span><span style="flex:none;background:${STYLE_COLORS[item.buttonStyle]};color:#fff;border-radius:4px;padding:4px 10px;font-size:12px;font-weight:500">${accessory}</span></div>`).join('');
+      body = items.map((item) => `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;background:#313338;border-radius:6px;padding:8px 10px;margin-bottom:6px"><span style="min-width:0"><span style="display:block;color:#f2f3f5">${esc(item.emoji)} ${esc(item.label)}</span>${item.description ? `<span style="display:block;color:#dbdee1;font-size:12px;margin-top:2px">${esc(item.description)}</span>` : ''}</span><span style="flex:none;background:${STYLE_COLORS[item.buttonStyle]};color:#fff;border-radius:4px;padding:4px 10px;font-size:12px;font-weight:500">${accessory}</span></div>`).join('');
     } else if (interactionType === 'dropdown') {
-      body = `<div style="background:#1e1f22;border:1px solid #3f4147;border-radius:6px;padding:8px 12px;display:flex;justify-content:space-between;gap:10px;color:#a5a8ad"><span>${esc(placeholder)}</span><span>▾</span></div><p style="color:#949ba4;font-size:12px;margin:6px 2px 0">Maks ${esc(maxSelect)} dari ${esc(items.length)} role</p>`;
+      body = `<div style="background:#1e1f22;border:1px solid #3f4147;border-radius:6px;padding:8px 12px;display:flex;justify-content:space-between;gap:10px;color:#dbdee1"><span>${esc(placeholder)}</span><span>▾</span></div><p style="color:#dbdee1;font-size:12px;margin:6px 2px 0">Maks ${esc(maxSelect)} dari ${esc(items.length)} role</p>`;
     } else {
       body = items.map((item) => `<div style="display:flex;gap:8px;align-items:center;padding:5px 2px;border-bottom:1px dashed #3f4147"><span>${esc(item.emoji)}</span><span style="flex:1;color:#f2f3f5">${esc(item.name)}${item.label && item.label !== item.name ? ` (${esc(item.label)})` : ''}</span></div>`).join('');
     }
@@ -113,7 +113,7 @@
       + `<div style="border-top:1px solid #3f4147;margin:10px 0"></div>`
       + body
       + `<div style="border-top:1px solid #3f4147;margin:10px 0"></div>`
-      + `<div style="color:#949ba4;font-size:11px">-# Zentix Self-Role</div>`
+      + `<div style="color:#dbdee1;font-size:11px">-# Zentix Self-Role</div>`
       + `</div>`;
   }
   const readFile = (file) => new Promise((resolve, reject) => {

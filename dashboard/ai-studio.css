@@ -102,3 +102,8 @@ fieldset.f-field{border:0;border-bottom:1px solid var(--softline);margin:0;min-w
 .intro-copy, .right-desc, .module-name small, .placeholder-card p, .metric small { color: var(--ink); opacity: 1; }
 .main-card p, .ai-index-intro p, .ai-quiz p, .music-player p { color: #ededdf; opacity: 1; }
 .discord-copy small { color: #e6e7eb; opacity: 1; }
+
+/* Descriptive copy on the light dashboard background is solid black, not grey. */
+main :is(.f-field small,.f-panel-head p,.f-muted,.f-feature-note p,.f-index-card p,.f-toolbar p,.b-build-meta,.s-head small,.s-stats span,.intro-copy,.right-desc,.module-name small,.placeholder-card p,.metric small){color:#000 !important;opacity:1;font-size:12px;line-height:1.55}
+/* Discord previews and the dark overview cards must stay light on dark backgrounds. */
+main :is(.discord-demo,.main-card,.ai-index-intro,.ai-quiz,.music-player) :is(p,small,.f-muted){color:#fff !important;opacity:1}
