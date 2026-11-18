@@ -42,7 +42,7 @@ Pemelihara hanya dapat memperbaiki kode. Mengganti token atau memulihkan data se
 - **Siapa pun yang tahu `DASHBOARD_TOKEN` dapat memakai dashboard**, termasuk fitur moderasi. Jangan kirim token atau tautan login lewat chat atau tangkapan layar.
 - **Berkas `.env` dan folder `data/` tidak boleh masuk Git.** Keduanya sudah ada di `.gitignore`.
 - **Cadangan database tidak dienkripsi** dan berisi seluruh data bot. Simpan di tempat yang tidak dapat dibaca orang lain.
-- **Jangan buka PostgreSQL ke internet.** Pakai jaringan internal dan kata sandi yang kuat.
+- **Jangan buka PostgreSQL ke internet.** Pakai jaringan internal dan kata sandi yang kuat. Docker Compose mewajibkan `POSTGRES_PASSWORD` di `.env`; gunakan huruf dan angka acak yang panjang karena password dimasukkan ke URL koneksi. Volume database lama tetap memakai password lama sampai diubah di PostgreSQL.
 - **Beri bot izin Discord seperlunya saja.**
 
 ## Data yang keluar dari bot

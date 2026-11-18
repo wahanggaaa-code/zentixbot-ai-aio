@@ -4,6 +4,9 @@ ENV NODE_ENV=production
 
 WORKDIR /usr/src/app
 
+# PostgreSQL backup and verification scripts invoke pg_dump and pg_restore.
+RUN apk add --no-cache postgresql-client
+
 COPY package*.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 
