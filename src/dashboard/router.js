@@ -26,6 +26,7 @@ import { createSettingsApi } from './settingsApi.js';
 import { createBotPresenceApi } from './botPresenceApi.js';
 import { createServerStatsApi } from './serverStatsApi.js';
 import { createSocialAlertsApi } from './socialAlertsApi.js';
+import { createMessageStudioApi } from './messageStudioApi.js';
 
 const preview = fileURLToPath(new URL('../../dashboard/', import.meta.url));
 const random = () => crypto.randomBytes(32).toString('hex');
@@ -232,6 +233,7 @@ export function createDashboardRouter(client, { fetchImpl = globalThis.fetch, en
   router.use('/api/bot', createSettingsApi(client, {auth, env}));
   router.use('/api/bot', createBotPresenceApi(client, {auth, csrf, env}));
   router.use('/api/ai', createAIApi(client, {auth, csrf, env}));
+  router.use('/api/message-studio', createMessageStudioApi(client, {auth, csrf, env}));
   // botOwner lets AI Studio say up front that its routes will refuse this account (see `owner` in aiApi.js).
   const botOwners = () => String(env.OWNER_IDS || '').split(',').map((x) => x.trim()).filter((x) => /^\d{17,20}$/.test(x));
   router.get('/api/me', auth, (req,res) => res.json({user:req.session.user, guild:{id:req.guild.id,name:req.guild.name}, csrf:req.session.csrf, botReady:client.isReady(), botOwner:botOwners().includes(req.session.user.id)}));

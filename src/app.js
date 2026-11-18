@@ -11,6 +11,7 @@ import { describeExtraProviders } from './services/ai/extraProviders.js';
 import { runProactiveAgent } from './services/ai/chat.js';
 import { createInteractive } from './services/ai/interactive.js';
 import { createSmart } from './services/ai/smart.js';
+import { createMessageStudio } from './services/messageStudio.js';
 import { getCommandPrefix } from './config/bot.js';
 import { runActivitySchedules } from './services/ai/activities.js';
 import { requireHomeGuildId, isHomeGuild } from './utils/singleGuild.js';
@@ -84,6 +85,7 @@ class ZentixBot extends Client {
     this.aiImageService = createImageService({client:this});
     this.aiAudioService = createAudioService({client:this});
     this.aiSearchService = createSearchService({client:this});
+    this.messageStudio = createMessageStudio({client:this});
     this.commands = new Collection();
     this.events = new Collection();
     this.buttons = new Collection();
