@@ -2,6 +2,7 @@ import { Events } from "discord.js";
 import { logger, startupLog } from "../utils/logger.js";
 import { describeCheck, describeServer } from "../utils/startupReport.js";
 import config from "../config/application.js";
+import { botPresenceFor } from "../services/botPresence.js";
 import { reconcileTicketPanels, reconcileSelfRolePanelHealth } from "../services/panelHealthService.js";
 import { reconcileLevelRoles } from "../services/leveling/levelRoleSyncService.js";
 import { initRiffyAfterReady } from "../services/music/riffySetup.js";
@@ -14,7 +15,14 @@ export default {
 
   async execute(client) {
     try {
-      client.user.setPresence(config.bot.presence);
+      try {
+        const restored = await botPresenceFor(client).restore();
+        if (!restored.sent) logger.warn('Bot status: saved presence could not be sent to Discord.');
+      } catch {
+        // A storage problem must not stop the bot from starting or erase saved settings.
+        logger.warn('Bot status: saved settings unavailable; using the configured default.');
+        try { await client.user.setPresence(config.bot.presence); } catch { logger.warn('Bot status: default presence could not be sent.'); }
+      }
 
       startupLog(`Discord: logged in as ${client.user.tag}`);
       startupLog(describeServer({ id: client.homeGuildId, name: client.guilds.cache.get(client.homeGuildId)?.name ?? null, connected: client.guilds.cache.size }));

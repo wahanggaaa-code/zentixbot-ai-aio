@@ -23,6 +23,7 @@ import { createHostingApi } from './hostingApi.js';
 import { createSystemUsageApi } from './systemUsageApi.js';
 import { createAIApi } from './aiApi.js';
 import { createSettingsApi } from './settingsApi.js';
+import { createBotPresenceApi } from './botPresenceApi.js';
 import { createServerStatsApi } from './serverStatsApi.js';
 import { createSocialAlertsApi } from './socialAlertsApi.js';
 
@@ -229,6 +230,7 @@ export function createDashboardRouter(client, { fetchImpl = globalThis.fetch, en
   router.use('/api/bot', createHostingApi({auth, env}));
   router.use('/api/bot', createSystemUsageApi({auth: authPolled, env, ...(systemUsage ? {usage: systemUsage} : {})}));
   router.use('/api/bot', createSettingsApi(client, {auth, env}));
+  router.use('/api/bot', createBotPresenceApi(client, {auth, csrf, env}));
   router.use('/api/ai', createAIApi(client, {auth, csrf, env}));
   // botOwner lets AI Studio say up front that its routes will refuse this account (see `owner` in aiApi.js).
   const botOwners = () => String(env.OWNER_IDS || '').split(',').map((x) => x.trim()).filter((x) => /^\d{17,20}$/.test(x));

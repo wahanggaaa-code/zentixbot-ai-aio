@@ -37,6 +37,7 @@ export const DEFAULT_INTERACTIVE = Object.freeze({
     idleDailyMax: 6,
     // Look at images: in a message addressed to the bot, and in every image post of a gallery channel.
     imagesEnabled: false,
+    galleryReactionEnabled: false,
     galleryChannelIds: Object.freeze([]),
     // Send members' display names to the provider so the bot can call people by name.
     useNames: true,
@@ -66,7 +67,7 @@ const ZONES = { WIB: 'Asia/Jakarta', WITA: 'Asia/Makassar', WIT: 'Asia/Jayapura'
 const SNOWFLAKE = /^\d{17,20}$/;
 const CLOCK = /^([01]\d|2[0-3]):[0-5]\d$/;
 const RANGES = { joinChance: [1, 100], joinCooldownSeconds: [10, 3600], idleMinutes: [10, 720], idleDailyMax: [1, 24], hourlyLimit: [1, 200], followUpSeconds: [30, 300] };
-const BOOLEANS = ['enabled', 'replyEnabled', 'replyAnywhere', 'joinEnabled', 'idleEnabled', 'imagesEnabled', 'useNames', 'etiquetteEnabled', 'nicknameEnabled', 'followUpEnabled', 'linkSummaryEnabled', 'newsSearchEnabled', 'recapEnabled'];
+const BOOLEANS = ['enabled', 'replyEnabled', 'replyAnywhere', 'joinEnabled', 'idleEnabled', 'imagesEnabled', 'galleryReactionEnabled', 'useNames', 'etiquetteEnabled', 'nicknameEnabled', 'followUpEnabled', 'linkSummaryEnabled', 'newsSearchEnabled', 'recapEnabled'];
 const NICKNAME = /^[\p{L}\p{N}][\p{L}\p{N} ._-]{0,22}[\p{L}\p{N}]$/u;
 /** Words that tie a question to the member who asks it, or to what was said just before: never served from the reply cache. */
 const NOT_REUSABLE = /(^|[^\p{L}])(aku|saya|gue|gua|gw|ane|aing|abdi|ku|i|me|my|mine|im|tadi|barusan|tersebut|sebelumnya|gitu|begitu|gini|begini|diatas|di atas)(?=$|[^\p{L}])|\p{L}{3,}ku(?=$|[^\p{L}])/iu;
@@ -241,6 +242,20 @@ export function withinHours(clock, start, end) {
     return start < end ? clock >= start && clock < end : clock >= start || clock < end;
 }
 
+// Accept a single standard Unicode emoji chosen by the model, never a custom
+// Discord emoji, extra text, or multiple emoji. RGI_Emoji supports multi-codepoint
+// sequences including skin tones and ZWJ emoji on the supported Node versions.
+const SINGLE_EMOJI = /^\p{RGI_Emoji}$/v;
+const GALLERY_FALLBACK = Object.freeze(['✨', '❤️', '🔥', '👏']);
+function galleryOutput(text, random) {
+    const markers = [];
+    const comment = String(text ?? '').replace(/^\s*(?:\*\*)?REAKSI(?:\*\*)?\s*:\s*([^\r\n]*)$/gim, (_, value) => { markers.push(value.trim()); return ''; }).trim();
+    const selected = markers.length === 1 && SINGLE_EMOJI.test(markers[0]) ? markers[0] : null;
+    const roll = selected ? 0 : Number(random());
+    const index = Number.isFinite(roll) ? Math.min(GALLERY_FALLBACK.length - 1, Math.max(0, Math.floor(roll * GALLERY_FALLBACK.length))) : 0;
+    return { comment, emoji: selected || GALLERY_FALLBACK[index] };
+}
+
 const TASKS = {
     reply: (who) => `${who} baru saja menyapamu atau membalas pesanmu (pesan terakhir di atas). Balas dia.`,
     join: (who) => `Kamu tidak dipanggil, tetapi kamu ikut nimbrung. Tanggapi pesan terakhir dari ${who} secara singkat dan wajar, boleh dengan pertanyaan balik.`,
@@ -252,7 +267,7 @@ const TASKS = {
  * Builds the single prompt for one answer. `history` is oldest first: [{ name, text }].
  * Older history lines are dropped until the prompt fits the provider limit.
  */
-export function buildPrompt({ kind, botName, persona, guildName, channelName, timeText, history = [], who = 'Anggota', idleMinutes = 0, replied = null, imageUnreadable = false }) {
+export function buildPrompt({ kind, botName, persona, guildName, channelName, timeText, history = [], who = 'Anggota', idleMinutes = 0, replied = null, imageUnreadable = false, galleryReaction = false }) {
     const head = [
         `Kamu adalah ${safeName(botName)}, bot di server Discord "${oneLine(guildName, 80)}". Persona: ${oneLine(persona, 500)}`,
         `Kamu sedang berada di channel #${oneLine(channelName, 60)}. Sekarang ${timeText}.`,
@@ -264,6 +279,7 @@ export function buildPrompt({ kind, botName, persona, guildName, channelName, ti
         replied ? `PESANMU YANG DIBALAS: ${oneLine(replied, HISTORY_LINE_CHARS)}` : '',
         imageUnreadable ? 'Catatan: gambar pada pesan terakhir tidak dapat kamu lihat. Jangan menebak isinya.' : '',
         `TUGAS: ${TASKS[kind](who, idleMinutes)}`,
+        galleryReaction ? 'Setelah komentar, tulis satu baris terakhir persis REAKSI: diikuti satu emoji Unicode yang paling sesuai dengan gambar. Pilih bebas sesuai gambar, bukan emoji kustom Discord; jangan tulis hal lain di baris reaksi.' : '',
     ].filter(Boolean).join('\n');
 
     const lines = history.map((entry) => `${entry.name}: ${entry.text}`);
@@ -600,6 +616,7 @@ export function createInteractive({
         const wantsImage = cfg.imagesEnabled && (kind === 'gallery' || kind === 'reply') && [...(message.attachments?.values?.() ?? [])].some((a) => String(a.contentType ?? '').startsWith('image/'));
         if (wantsImage) image = await readMessageImage(message, fetchImpl);
         if (kind === 'gallery' && !image) return false;
+        const reactToGallery = cfg.galleryReactionEnabled && Boolean(image) && cfg.galleryChannelIds.includes(channel.id) && (kind === 'gallery' || kind === 'reply');
 
         const time = localTime(new Date(now()), cfg.zone);
         // The message being answered goes in at full length. In a chat channel it is already in the history
@@ -617,27 +634,33 @@ export function createInteractive({
             guildId: message.guild.id,
             userId: message.author.id,
             consent: true,
-            prompt: buildPrompt({ kind, botName: client.user.username, persona: cfg.persona, guildName: message.guild.name, channelName: channel.name, timeText: time.text, history: lines, who, replied, imageUnreadable: wantsImage && !withImage }),
+            prompt: buildPrompt({ kind, botName: client.user.username, persona: cfg.persona, guildName: message.guild.name, channelName: channel.name, timeText: time.text, history: lines, who, replied, imageUnreadable: wantsImage && !withImage, galleryReaction: reactToGallery && withImage }),
             kind,
             ...(withImage ? { image } : {}),
         });
 
-        let result;
+        let result, usedImage = Boolean(image);
         try {
-            result = await generate(Boolean(image));
+            result = await generate(usedImage);
         } catch (error) {
             // A model without vision refuses the image. An addressed member still deserves an answer.
             if (image && kind === 'reply' && ['REQUEST_REJECTED', 'PROVIDERS_UNAVAILABLE'].includes(error.code)) {
-                try { result = await generate(false); } catch (second) { return refused(message, kind, second); }
+                try { usedImage = false; result = await generate(false); } catch (second) { return refused(message, kind, second); }
             } else return refused(message, kind, error);
         }
 
-        const content = cleanReply(result.text, client.user.username);
+        const gallery = reactToGallery && usedImage ? galleryOutput(result.text, random) : null;
+        const content = cleanReply(gallery ? gallery.comment : result.text, client.user.username);
         if (!content) return false;
         // An answer that names the member who asked is not kept for the next one.
         const namesAsker = String(who ?? '').trim().length >= 3 && content.toLowerCase().includes(String(who).trim().toLowerCase());
         const reusable = kind === 'reply' && !wantsImage && !namesAsker && cacheable(message, own.text);
         await deliver(message, cfg, kind, content);
+        // A failed reaction (e.g. missing Add Reactions permission) never cancels the comment.
+        if (gallery && typeof message.react === 'function') {
+            try { await message.react(gallery.emoji); }
+            catch { warnOnce('GALLERY_REACTION', 'gallery reaction failed (check Add Reactions permission)'); }
+        }
         if (reusable) await Promise.resolve(getSmart()?.rememberReply?.(own.text, content)).catch(() => {});
         return true;
     }

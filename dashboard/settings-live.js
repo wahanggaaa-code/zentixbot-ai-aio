@@ -1,13 +1,11 @@
-/* Main settings page: a read-only control center. It shows what the bot sees in
-   Discord right now, which storage it uses, and why this session has access.
-   Nothing on this page changes anything; settings live on their feature pages. */
+/* Control center: live server information and an owner-only bot presence editor. */
 (() => {
  const enabled=location.pathname.startsWith('/dashboard/');
  const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
- async function request(path){
-  await window.ZentixSession;
-  const response=await fetch('/dashboard/api/bot/'+path,{cache:'no-store'});
+ async function request(path,opts={}){
+  const session=await window.ZentixSession;
+  const response=await fetch('/dashboard/api/bot/'+path,{cache:'no-store',...opts,headers:opts.body?{'Content-Type':'application/json','x-csrf-token':session.csrf}:{}});
   const data=await response.json();
   if(!response.ok)throw Error(data.error||'Permintaan gagal.');
   return data;
@@ -25,12 +23,13 @@
 
  function render(){
   return `<section class="placeholder-head"><div class="kicker"><span class="pill-num">04 / PENGATURAN</span><i></i> YOUR CONTROL CENTER</div>`
-   +`<h1>Semua dalam<br>kendali.</h1><p>Kondisi server, penyimpanan dan akses dashboard saat ini. Halaman ini hanya membaca; `
-   +`setiap pengaturan diubah di halaman fiturnya.</p></section>`
+   +`<h1>Semua dalam<br>kendali.</h1><p>Kondisi server, penyimpanan dan akses dashboard saat ini. Owner bot juga dapat mengatur status bot di sini.</p></section>`
    +`<div class="f-layout" style="padding-top:25px"><div>`
    +`<section class="f-panel"><div class="f-panel-head"><div><h2>Server di Discord</h2>`
    +`<p>Yang dilihat bot di Discord saat halaman dimuat, bukan data tersimpan.</p></div><span>✳</span></div>`
    +`<div id="settingsDiscord" aria-live="polite">Memuat…</div></section>`
+   +`<section class="f-panel" style="margin-top:18px"><div class="f-panel-head"><div><h2>Status bot</h2><p>Atur status online dan tulisan di profil Discord · khusus owner bot.</p></div><span>◌</span></div>`
+   +`<div id="settingsPresence" aria-live="polite">Memuat…</div></section>`
    +`<section class="f-panel" style="margin-top:18px"><div class="f-panel-head"><div><h2>Tempat mengatur</h2>`
    +`<p>Pengaturan tersimpan ada di halaman masing-masing fitur.</p></div><span>✳</span></div>`
    +`<div class="f-table-wrap"><table class="f-table f-table-fit"><tbody>${SHORTCUTS.map(([go,title,desc])=>`<tr><td><b>${title}</b><br><small>${desc}</small></td>`
@@ -127,6 +126,7 @@
    storage:root.querySelector('#settingsStorage'),
    access:root.querySelector('#settingsAccess'),
    hosting:root.querySelector('#settingsHosting'),
+   presence:root.querySelector('#settingsPresence'),
   };
   const readAt=root.querySelector('#settingsReadAt'),reload=root.querySelector('#settingsReload');
   if(!slots.discord||!reload)return;
@@ -146,6 +146,25 @@
      if(slot.isConnected)status.textContent=`Panel menjawab. Status server: ${data.status}.`;
     }catch(e){if(slot.isConnected)status.textContent=e.message}
     finally{button.disabled=false}
+   };
+  }
+
+  async function bindPresence(isOwner){
+   const slot=slots.presence;
+   if(!isOwner){slot.textContent='Hanya owner bot yang dapat mengubah status bot.';return;}
+   slot.textContent='Memuat status bot…';
+   let data;
+   try{data=await request('presence')}catch(e){if(slot.isConnected)slot.textContent=e.message;return;}
+   if(!slot.isConnected)return;
+   const {status,text}=data.settings;
+   const labels={online:'Online',idle:'Idle',dnd:'Do Not Disturb',invisible:'Invisible'};
+   slot.innerHTML=`<form id="botPresenceForm" class="f-form"><label class="f-field"><span><b>Status online</b><small>Invisible membuat bot terlihat offline.</small></span><select name="status">${Object.entries(labels).map(([id,label])=>`<option value="${id}" ${id===status?'selected':''}>${label}</option>`).join('')}</select></label><label class="f-field"><span><b>Tulisan status</b><small>Maksimal 128 karakter. Kosongkan untuk menghapus tulisan.</small></span><input name="text" type="text" maxlength="128" value="${esc(text)}" placeholder="mis. Siap membantu ✨"></label><div class="f-feature-note"><p><b>Preview profil bot</b><br><span id="presencePreviewStatus"></span><br><span id="presencePreviewText"></span></p></div><div class="f-form-actions"><span>✳ TERSIMPAN DI DATABASE</span><button type="submit" class="f-primary">SIMPAN STATUS ↗</button></div></form><p class="f-muted" id="presenceResult" role="status"></p>`;
+   const form=slot.querySelector('form'),out=slot.querySelector('#presenceResult'),button=form.querySelector('button');
+   function preview(){slot.querySelector('#presencePreviewStatus').textContent=labels[form.elements.status.value]||'—';slot.querySelector('#presencePreviewText').textContent=form.elements.text.value.trim()||'Tanpa tulisan status';}
+   form.addEventListener('input',preview);form.addEventListener('change',preview);preview();
+   form.onsubmit=async e=>{e.preventDefault();button.disabled=true;out.textContent='Menyimpan…';
+    try{const result=await request('presence',{method:'PATCH',body:JSON.stringify({status:form.elements.status.value,text:form.elements.text.value})});form.elements.text.value=result.settings.text;preview();out.textContent=result.sent?'Tersimpan dan dikirim ke Discord. Tampilan dapat membutuhkan waktu untuk diperbarui.':'Tersimpan, tetapi belum dapat dikirim ke Discord. Status akan dicoba lagi saat bot restart atau Anda menyimpan ulang.';}
+    catch(error){out.textContent=error.message}finally{button.disabled=false}
    };
   }
 
@@ -169,6 +188,7 @@
    slots.access.innerHTML=accessHtml(data.access,data.dashboard);
    slots.access.querySelector('#settingsLogout').onclick=()=>document.getElementById('profileButton').click();
    bindHosting(data.hosting);
+   bindPresence(data.access.isBotOwner);
    readAt.textContent=`Dibaca ${new Date(data.readAt).toLocaleString('id-ID')}. Halaman tidak memperbarui diri; muat ulang untuk kondisi terbaru.`;
    reload.disabled=false;
   }
