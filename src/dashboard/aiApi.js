@@ -9,9 +9,6 @@ import { createActivityStore, validateActivity, startActivity, saveActivitySetti
 import { sendDMPublicPanel } from '../services/ai/dmPanel.js';
 import { createChatStore, validateChatSettings } from '../services/ai/chat.js';
 import { createInteractive, validateInteractive } from '../services/ai/interactive.js';
-import { summarizeLink } from '../services/ai/linkSummary.js';
-import { research } from '../services/ai/research.js';
-import { runTextTool } from '../services/ai/tools.js';
 import { createImageService } from '../services/ai/images.js';
 import { createBuilder, PLAN_LIMITS, CHANNEL_TYPES } from '../services/ai/builder.js';
 import { listThemes } from '../services/ai/builderThemes.js';
@@ -86,9 +83,6 @@ export function createAIApi(client,{auth,csrf,env=process.env,foundation=client.
  router.post('/chat/panel',auth,owner,csrf,async(req,res)=>{try{if(!req.body||Object.keys(req.body).length!==1||req.body.confirmed!==true)throw Object.assign(Error('Konfirmasi diperlukan.'),{status:400});const settings=await chatStore.read(req.guild.id);res.json({ok:true,...await sendDMPublicPanel({client,guild:req.guild,settings,confirmed:true})})}catch(e){fail(res,e)}});
  // Retired document endpoints never access stored documents or invoke a provider.
  router.use('/knowledge',auth,owner,(req,res,next)=>['GET','HEAD'].includes(req.method)?next():csrf(req,res,next),(req,res)=>res.status(410).json({error:'Pengetahuan dokumen sudah dihentikan. FAQ & cache ada di halaman Pengetahuan.'}));
- router.post('/tools',auth,owner,csrf,async(req,res)=>{try{const b=req.body;if(!b||Object.keys(b).sort().join(',')!=='confirmed,language,mode,text'||b.confirmed!==true)throw Object.assign(Error('Konfirmasi diperlukan.'),{status:400});res.json({ok:true,...await runTextTool({client,guildId:req.guild.id,userId:req.session.user.id,mode:b.mode,text:b.text,language:b.language,consent:true,foundation})})}catch(e){fail(res,e)}});
- router.post('/link-summary',auth,owner,csrf,async(req,res)=>{try{const b=req.body;if(!b||Object.keys(b).sort().join(',')!=='confirmed,url'||b.confirmed!==true)throw Object.assign(Error('Konfirmasi diperlukan.'),{status:400});res.json({ok:true,...await summarizeLink({client,guildId:req.guild.id,userId:req.session.user.id,url:b.url,consent:true,foundation})})}catch(e){fail(res,e)}});
- router.post('/research',auth,owner,csrf,async(req,res)=>{try{const b=req.body;if(!b||Object.keys(b).sort().join(',')!=='confirmed,query'||b.confirmed!==true)throw Object.assign(Error('Konfirmasi diperlukan.'),{status:400});res.json({ok:true,...await research({client,guildId:req.guild.id,userId:req.session.user.id,query:b.query,consent:true,foundation,searchService})})}catch(e){fail(res,e)}});
  router.post('/image',auth,owner,csrf,express.json({limit:'3mb'}),async(req,res)=>{try{const b=req.body;if(!b||!['confirmed,imageBase64,mode,prompt','confirmed,imageBase64,mode,prompt,size,style'].includes(Object.keys(b).sort().join(','))||b.confirmed!==true)throw Object.assign(Error('Konfirmasi diperlukan.'),{status:400});res.json({ok:true,...await imageService.generate({guildId:req.guild.id,userId:req.session.user.id,prompt:b.prompt,mode:b.mode,imageBase64:b.imageBase64,consent:true,...(Object.hasOwn(b,'size')?{size:b.size,style:b.style}:{})})})}catch(e){fail(res,e)}});
  router.get('/builder/manual/permissions',auth,owner,(req,res)=>res.json({permissions:MANUAL_ROLE_PERMISSIONS}));
  router.post('/builder/manual/prepare',auth,owner,csrf,async(req,res)=>{try{const b=req.body;if(!b||Object.keys(b).sort().join(',')!=='action,kind,targetId,value')throw Object.assign(Error('Input tidak valid.'),{status:400});res.json({ok:true,...await manualBuilder.prepare({guild:req.guild,userId:req.session.user.id,...b})})}catch(e){fail(res,e)}});
@@ -111,7 +105,7 @@ export function createAIApi(client,{auth,csrf,env=process.env,foundation=client.
  router.get('/search/settings',auth,owner,async(req,res)=>{try{res.json(await searchService.status(req.guild.id))}catch(e){fail(res,e)}});
  router.patch('/search/settings',auth,owner,csrf,async(req,res)=>{try{const settings=await searchService.store.save(req.guild.id,req.body);res.json({ok:true,settings})}catch(e){fail(res,e)}});
  router.post('/search',auth,owner,csrf,async(req,res)=>{try{const b=req.body;if(!b||Object.keys(b).sort().join(',')!=='confirmed,query'||b.confirmed!==true)throw Object.assign(Error('Konfirmasi diperlukan.'),{status:400});res.json({ok:true,...await searchService.search({guildId:req.guild.id,userId:req.session.user.id,query:b.query,consent:true})})}catch(e){fail(res,e)}});
- // "Fitur pintar": FAQ, reply cache, usage report, message menu, morning digest, greeting extras, auto-translate.
+ // "Fitur pintar": FAQ, reply cache, usage report, message menu settings, morning digest, greeting extras, auto-translate.
  // Each section is saved on its own; the FAQ gets a larger body limit for its 25 answers.
  const smart=client.aiSmart||createSmart({client,foundation:()=>foundation,searchService:()=>searchService});
  const textChannels=guild=>[...guild.channels.cache.values()].filter(c=>c.type===ChannelType.GuildText).map(({id,name})=>({id,name}));
