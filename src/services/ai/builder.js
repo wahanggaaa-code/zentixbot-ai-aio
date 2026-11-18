@@ -354,9 +354,13 @@ export function createBuilder({ client, foundation = client.aiFoundation, now = 
             }
             const channelNames = new Set(existing.map((channel) => String(channel.name || '').toLowerCase()));
             const roleNames = new Set([...guild.roles.cache.values()].map((role) => String(role.name || '').toLowerCase()));
-            const taken = plan.categories.some((category) => channelNames.has(category.name.toLowerCase()) || category.channels.some((channel) => channelNames.has(channel.name.toLowerCase())))
-                || plan.roles.some((role) => roleNames.has(role.name.toLowerCase()));
-            if (taken) throw err('Nama sudah ada di server. Buat rancangan lain atau sunting namanya.', 409);
+            const conflicts = [];
+            for (const category of plan.categories) {
+                if (channelNames.has(category.name.toLowerCase())) conflicts.push(`kategori: ${category.name}`);
+                for (const channel of category.channels) if (channelNames.has(channel.name.toLowerCase())) conflicts.push(`channel: ${channel.name}`);
+            }
+            for (const role of plan.roles) if (roleNames.has(role.name.toLowerCase())) conflicts.push(`role: ${role.name}`);
+            if (conflicts.length) throw err(`Nama sudah ada di server: ${conflicts.slice(0, 10).join(', ')}${conflicts.length > 10 ? ' dan lainnya' : ''}. Sunting nama lalu validasi lagi.`, 409, {code:'PLAN_NAME_CONFLICT'});
 
             // Consumed before the first side effect: no repeat even if Discord later reports an error.
             plans.delete(id);

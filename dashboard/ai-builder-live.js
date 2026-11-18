@@ -10,7 +10,7 @@
   const s = await window.ZentixSession;
   const r = await fetch(API + path, { method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json', 'x-csrf-token': s.csrf }, body: JSON.stringify(body) });
   const b = await r.json();
-  if (!r.ok) { const e = Error(b.error || 'Permintaan gagal'); e.created = b.created; e.recorded = b.recorded; throw e; }
+  if (!r.ok) { const e = Error(b.error || 'Permintaan gagal'); e.created = b.created; e.recorded = b.recorded; e.code = b.code; throw e; }
   return b;
  }
  async function read(path) {
@@ -189,6 +189,12 @@
     drawItems(result, 'Yang dibuat', r.created);
    } catch (err) {
     status.textContent = err.message;
+    // Only this explicit preflight rejection guarantees no Discord operation started.
+    // Timeouts, partial failures and unknown errors must never re-enable a blind retry.
+    if (err.code === 'PLAN_NAME_CONFLICT') {
+     planId = id; dirty = true; out.disabled = false; save.disabled = false; cancel.disabled = false;
+     out.closest('details').open = true;
+    }
     drawItems(result, 'Sudah dibuat sebelum berhenti', err.created);
    }
   };
