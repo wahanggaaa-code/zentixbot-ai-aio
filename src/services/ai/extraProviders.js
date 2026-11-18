@@ -1,6 +1,6 @@
-// Which outside service handles speech-to-text, web search and image generation.
+// Which outside service handles speech-to-text and image generation.
 // Each feature is chosen with its own environment variable. An empty variable keeps the original
-// provider (OpenAI for speech and images, Brave for search), so existing setups do not change.
+// provider (OpenAI for speech and images), so existing setups do not change.
 // Every provider reads its key from its own variable: a key is never sent to another provider.
 const clean=value=>String(value??'').trim();
 
@@ -8,17 +8,13 @@ const AUDIO=Object.freeze({
  openai:{label:'OpenAI',url:'https://api.openai.com/v1/audio/transcriptions',keyVariable:'AI_AUDIO_API_KEY',defaultModel:''},
  groq:{label:'Groq',url:'https://api.groq.com/openai/v1/audio/transcriptions',keyVariable:'AI_GROQ_API_KEY',defaultModel:'whisper-large-v3-turbo'}
 });
-const SEARCH=Object.freeze({
- brave:{label:'Brave Search',keyVariable:'AI_BRAVE_SEARCH_KEY'},
- tavily:{label:'Tavily',keyVariable:'AI_TAVILY_API_KEY'}
-});
 const IMAGE=Object.freeze({
  openai:{label:'OpenAI',canEdit:true},
  cloudflare:{label:'Cloudflare Workers AI',canEdit:false},
  pollinations:{label:'Pollinations',canEdit:false}
 });
 export const CLOUDFLARE_DEFAULT_IMAGE_MODEL='@cf/black-forest-labs/flux-1-schnell';
-export const EXTRA_PROVIDER_CHOICES=Object.freeze({AI_AUDIO_PROVIDER:Object.keys(AUDIO),AI_SEARCH_PROVIDER:Object.keys(SEARCH),AI_IMAGE_PROVIDER:Object.keys(IMAGE)});
+export const EXTRA_PROVIDER_CHOICES=Object.freeze({AI_AUDIO_PROVIDER:Object.keys(AUDIO),AI_IMAGE_PROVIDER:Object.keys(IMAGE)});
 
 function choose(env,variable,table,fallback){
  const id=clean(env[variable]).toLowerCase()||fallback;
@@ -32,12 +28,6 @@ export function resolveAudioProvider(env=process.env){
  if(!key)missing.push(provider.keyVariable);
  if(!/^[\w.-]{1,100}$/.test(model))missing.push('AI_AUDIO_MODEL');
  return {...provider,key,model,missing};
-}
-
-export function resolveSearchProvider(env=process.env){
- const provider=choose(env,'AI_SEARCH_PROVIDER',SEARCH,'brave');if(provider.unknown)return provider;
- const key=clean(env[provider.keyVariable]);
- return {...provider,key,missing:key?[]:[provider.keyVariable]};
 }
 
 export function resolveImageProvider(env=process.env){
@@ -63,10 +53,13 @@ export function resolveImageProvider(env=process.env){
 // One line per feature for the startup log. "configured" means the variables are filled in;
 // nothing here contacts the provider, so a wrong key or model still shows as configured.
 export function describeExtraProviders(env=process.env){
- const features=[['speech-to-text',resolveAudioProvider(env)],['web search',resolveSearchProvider(env)],['images',resolveImageProvider(env)]];
- return features.map(([feature,provider])=>{
+ const features=[['speech-to-text',resolveAudioProvider(env)],['images',resolveImageProvider(env)]];
+ const lines=features.map(([feature,provider])=>{
   if(provider.unknown)return {level:'warn',text:`${provider.variable}="${provider.id}" is not recognised (use ${provider.allowed.join(', ')}); ${feature} stays off.`};
   if(provider.missing.length)return {level:'info',text:`AI ${feature}: ${provider.label} off (missing or invalid: ${provider.missing.join(', ')})`};
   return {level:'info',text:`AI ${feature}: ${provider.label} configured${provider.model?` (${provider.model})`:''}`};
  });
+ const keys=['AI_TAVILY_API_KEY','AI_PARALLEL_API_KEY','AI_EXA_API_KEY'];
+ lines.splice(1,0,{level:'info',text:`AI web search keys configured: ${keys.filter(key=>clean(env[key])).length}/3 (provider order in dashboard)`});
+ return lines;
 }

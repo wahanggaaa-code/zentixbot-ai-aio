@@ -42,7 +42,7 @@ export function createActivityStore(client){
   releaseSchedule:(id,day)=>updateSchedule(id,v=>{if(v.day!==day)return {result:false};const {day:_,...rest}=v;return {write:rest,result:true};}),
   updateSchedule,
   async readSchedule(id){const r=await dbPool(client).query(`SELECT value FROM ${table} WHERE key=$1`,[scheduleKey(id)]);return scheduleValue(r.rows[0]?.value);},
-  async status(id,now=Date.now()){const r=await dbPool(client).query(`SELECT value FROM ${table} WHERE key=$1`,[roundKey(id)]);const v=r.rows[0]?.value;if(!v||!['pending','open','expired','solved','closed'].includes(v.state))return {state:'none'};const state=v.state==='open'&&v.expiresAt<=now?'expired':v.state;const quiz=validateQuiz(v.question);return {state,expiresAt:Number.isFinite(v.expiresAt)?v.expiresAt:null,...(quiz?{question:quiz.question,options:quiz.options,...(state!=='open'&&state!=='pending'?{answer:quiz.answer}:{})}:{})};},
+  async status(id,now=Date.now()){const r=await dbPool(client).query(`SELECT value FROM ${table} WHERE key=$1`,[roundKey(id)]);const v=r.rows[0]?.value;if(!v||!['pending','open','expired','solved','closed'].includes(v.state))return {state:'none'};const state=v.state==='open'&&v.expiresAt<=now?'expired':v.state;const quiz=validateQuiz(v.question);return {state,expiresAt:Number.isFinite(v.expiresAt)?v.expiresAt:null,...(quiz?{question:v.kind==='emoji'?formatEmojiQuestion(quiz.question):quiz.question,options:quiz.options,...(state!=='open'&&state!=='pending'?{answer:quiz.answer}:{})}:{})};},
   async points(id,userId){if(!/^\d{17,20}$/.test(userId||''))throw error('Anggota tidak valid.');const r=await dbPool(client).query(`SELECT value FROM ${table} WHERE key=$1`,[`ai:activity:points:${id}:${userId}`]);const n=r.rows[0]?.value?.points??0;if(!Number.isSafeInteger(n)||n<0)throw error('Saldo poin tidak valid.',503);return n;},
   reserve(id,roundId,now){return locked(id,v=>{if(['pending','open'].includes(v.state)&&v.expiresAt>now)throw roundActive();return {write:{state:'pending',id:roundId,expiresAt:now+150000},result:true};});},
   open(id,roundId,question,duration,now,rewardPoints=0,kind='trivia'){return locked(id,v=>{if(v.state!=='pending'||v.id!==roundId||v.expiresAt<=now)throw error('Reservasi ronde kedaluwarsa.',409);return {write:{state:'open',id:roundId,expiresAt:now+duration*1000,question,answered:[],winners:[],messageId:null,rewardPoints,kind:kind==='emoji'?'emoji':'trivia'},result:true}});},
@@ -93,13 +93,26 @@ export function shuffleQuiz(quiz,random=Math.random){
  return {...quiz,options:order.map(i=>quiz.options[i]),answer:order.indexOf(quiz.answer)};
 }
 export const ACTIVITY_TITLES=Object.freeze({trivia:'Kuis Trivia',emoji:'Tebak Emoji'});
+// Grapheme clusters keep flags, keycaps, skin tones and ZWJ sequences together as one emoji.
+const emojiSegmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+const isEmojiGrapheme = value => /\p{Extended_Pictographic}|\p{Regional_Indicator}|\u20e3/u.test(value);
+export function formatEmojiQuestion(question) {
+ const text=String(question??'');let result='',end=0,previousEmoji=false;
+ for(const {segment,index} of emojiSegmenter.segment(text)){
+  if(!isEmojiGrapheme(segment))continue;
+  const between=text.slice(end,index);
+  result+=previousEmoji&&/^[ \t]*(?:\+[ \t]*)?$/.test(between)?' + ':between;
+  result+=segment;end=index+segment.length;previousEmoji=true;
+ }
+ return result+text.slice(end);
+}
 // Mentions cap: ping at most this many winners in the ended message; the rest are named without pinging.
 const WINNERS_MENTION_CAP=8,WINNERS_LIST_CAP=10;
 export function quizPayload(quiz,roundId,{state='open',minutes=null,winners=null,reward=null}={}){
  const kind=quiz?.kind==='emoji'?'emoji':'trivia',ended=state!=='open';
  const correctLabel=`${String.fromCharCode(65+quiz.answer)}. ${quiz.options[quiz.answer]}`;
  const choices=quiz.options.map((o,i)=>`**${String.fromCharCode(65+i)}.** ${o}`).join('\n');
- const segments=[quiz.question];
+ const segments=[kind==='emoji'?formatEmojiQuestion(quiz.question):quiz.question];
  if(quiz.clue)segments.push(`**Clue:** ${quiz.clue}`);
  segments.push(choices);
  // One answer per user; everyone who got it right while the round was open shares the reward.
@@ -139,7 +152,7 @@ export function quizPrompt({kind,language,recent=[],random=Math.random}){
  // The newest questions first, within a budget that keeps the request well under the 4000 characters allowed.
  const earlier=[];let size=0;for(const q of [...recent].reverse()){const text=String(q).slice(0,120);if(earlier.length>=15||size+text.length>1500)break;earlier.unshift(text);size+=text.length;}
  const extra=kind==='emoji'?', clue (a short hint, required)':'';
- return `Generate one easy ${kind==='emoji'?'emoji guessing puzzle, where the question contains emoji representing a familiar object or phrase':'factual general-knowledge multiple choice question'} in ${language==='id'?'Indonesian':'English'}. Topic: ${topic}.${earlier.length?` It must be different from these earlier ones: ${JSON.stringify(earlier)}.`:''} Respond with only JSON object with keys question (string), options (array of exactly 4 short strings), answer (correct index 0 to 3)${extra} and explanation (one short sentence explaining the answer). The position of the correct option varies between rounds; never default to the same index. No URLs or mentions.`;
+ return `Generate one easy ${kind==='emoji'?'emoji guessing puzzle, where the question contains emoji representing a familiar object or phrase; separate each emoji with a plus sign, for example 👑 + ☃️ + 😭':'factual general-knowledge multiple choice question'} in ${language==='id'?'Indonesian':'English'}. Topic: ${topic}.${earlier.length?` It must be different from these earlier ones: ${JSON.stringify(earlier)}.`:''} Respond with only JSON object with keys question (string), options (array of exactly 4 short strings), answer (correct index 0 to 3)${extra} and explanation (one short sentence explaining the answer). The position of the correct option varies between rounds; never default to the same index. No URLs or mentions.`;
 }
 /** The quiz in a provider's answer. Models often wrap the JSON in a code fence or a sentence. */
 export function parseQuiz(text){

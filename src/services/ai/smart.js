@@ -69,7 +69,7 @@ export function createSmart({
     const personalLanguage = createPersonalLanguageStore(kv);
     const menus = createMenus({ client, settings, recap, interactiveSettings, foundation, searchService, personalLanguage });
     const digest = createDigest({ client, settings, kv, foundation, searchService, now, logger });
-    const facts = createDailyFacts({ client, settings, kv, foundation, now, logger });
+    const facts = createDailyFacts({ client, settings, kv, foundation, searchService, now, logger });
     const translate = createAutoTranslate({ client, settings, foundation, now, logger, ...(schedule ? { schedule } : {}) });
 
     /** The FAQ entry that answers `text`, or null (also when the FAQ is off). */

@@ -1,7 +1,7 @@
 // commandAccessService.js
 
 import { getGuildConfig, updateGuildConfig } from './config/guildConfig.js';
-import {isPostgresCommandAccess,mutatePostgresCommandAccess} from './config/commandAccessPostgres.js';
+import {isPostgresCommandAccess,mutatePostgresCommandAccess,migrateSearchAccess} from './config/commandAccessPostgres.js';
 import {
   normalizeCategoryKey,
   formatCategoryName,
@@ -122,7 +122,7 @@ export function isCommandEnabledInConfig(config, commandName, category) {
     return true;
   }
 
-  const disabledCommands = normalizeToggleRecord(config?.disabledCommands);
+  const disabledCommands = migrateSearchAccess(config || {}, {disabledCommands:normalizeToggleRecord(config?.disabledCommands)}).disabledCommands;
   const disabledCategories = normalizeToggleRecord(config?.disabledCategories);
 
   // Check if the specific command/subcommand is disabled
@@ -157,7 +157,7 @@ export async function isCommandEnabled(client, guildId, commandName, category = 
 
 export function getCommandAccessSnapshot(client, config) {
   const registry = buildCommandRegistry(client);
-  const disabledCommands = normalizeToggleRecord(config?.disabledCommands);
+  const disabledCommands = migrateSearchAccess(config || {}, {disabledCommands:normalizeToggleRecord(config?.disabledCommands)}).disabledCommands;
   const disabledCategories = normalizeToggleRecord(config?.disabledCategories);
 
   const categories = [];
@@ -238,10 +238,10 @@ export async function disableCommand(client, guildId, commandName, context = {})
     return { commandName: normalizedName, enabled: false };
   }
   const config = await getGuildConfig(client, guildId, context);
-  const disabledCommands = normalizeToggleRecord(config?.disabledCommands);
+  const disabledCommands = migrateSearchAccess(config || {}, {disabledCommands:normalizeToggleRecord(config?.disabledCommands)}).disabledCommands;
   disabledCommands[normalizedName] = true;
 
-  await persistAccessConfig(client, guildId, { disabledCommands }, context);
+  await persistAccessConfig(client, guildId, { disabledCommands, searchCommandsMigrated: true }, context);
   return { commandName: normalizedName, enabled: false };
 }
 
@@ -258,10 +258,10 @@ export async function enableCommand(client, guildId, commandName, context = {}) 
     return { commandName: normalizedName, enabled: true };
   }
   const config = await getGuildConfig(client, guildId, context);
-  const disabledCommands = normalizeToggleRecord(config?.disabledCommands);
+  const disabledCommands = migrateSearchAccess(config || {}, {disabledCommands:normalizeToggleRecord(config?.disabledCommands)}).disabledCommands;
   delete disabledCommands[normalizedName];
 
-  await persistAccessConfig(client, guildId, { disabledCommands }, context);
+  await persistAccessConfig(client, guildId, { disabledCommands, searchCommandsMigrated: true }, context);
   return { commandName: normalizedName, enabled: true };
 }
 
@@ -318,13 +318,13 @@ export async function resetCategoryCommands(client, guildId, categoryKey, contex
     return { categoryKey: normalizedKey, displayName: category.displayName };
   }
   const config = await getGuildConfig(client, guildId, context);
-  const disabledCommands = normalizeToggleRecord(config?.disabledCommands);
+  const disabledCommands = migrateSearchAccess(config || {}, {disabledCommands:normalizeToggleRecord(config?.disabledCommands)}).disabledCommands;
 
   for (const command of category.commands) {
     delete disabledCommands[command.name.toLowerCase()];
   }
 
-  await persistAccessConfig(client, guildId, { disabledCommands }, context);
+  await persistAccessConfig(client, guildId, { disabledCommands, searchCommandsMigrated: true }, context);
   return { categoryKey: normalizedKey, displayName: category.displayName };
 }
 

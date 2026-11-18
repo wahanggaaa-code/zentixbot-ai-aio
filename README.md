@@ -185,7 +185,9 @@ Kunci provider diisi di `.env`. Semua pengaturan lain ada di dashboard, **AI Stu
 
 - **Provider chat:** Groq, Gemini, OpenRouter dan NVIDIA NIM. Di **Provider & fallback** dipilih satu provider utama dan sampai tiga cadangan. Provider tanpa kunci di `.env` dilewati tanpa pesan; baris "Kunci server" di halaman itu menunjukkan kunci mana yang terbaca.
 - **Kapan bot pindah ke cadangan:** provider tidak menjawab dalam batas waktu, jaringan gagal, atau jawabannya 401, 403, 404, 408, 429 atau 5xx. Bila provider menolak isi permintaan, cadangan tidak dicoba.
-- **Kuota harian** dihitung satu kali per permintaan: bawaan 20 per anggota dan 200 per server. Pekerjaan otomatis bot (ronde Activities, koran pagi) memakai kuota atas nama bot sendiri, jadi naikkan batas per anggota bila jadwalnya lebih dari 20 permintaan per hari.
+- **Koran hari ini** dapat dijadwalkan 1–3 waktu berbeda di satu channel melalui Agent & chat. Jika sebelumnya memilih beberapa channel, hanya channel pertama yang dipertahankan. Jadwal lama tetap dipakai sebagai waktu pertama. Setiap edisi memakai satu permintaan AI dan satu pencarian berita; bot harus online, dan jadwal yang terlewat dicoba sampai 60 menit setelah waktunya. Berita selalu aktif; jika pencarian gagal atau tidak ada hasil, edisi dilewati. Fakta hari ini diatur terpisah. Kegagalan tidak diulang pada waktu yang sama.
+- **Fakta hari ini** dapat memakai topik opsional (maksimal 120 karakter); topik kosong menghasilkan fakta umum. AI membuat tiga kandidat, mencari masing-masing, lalu menilai dukungan dari minimal dua hostname per fakta. Jika ada pemeriksaan gagal, tidak ada pesan; cuplikan dan penilaian AI bisa keliru, dan hostname berbeda tidak selalu sumber independen atau tepercaya. Sumber pemeriksaan terakhir disimpan dan bisa dilihat owner di dashboard, tanpa link di Discord. Setiap kiriman dapat memakai 3 pencarian dan 4 permintaan AI (ditambah percobaan fallback), sehingga memerlukan kuota dan dapat berbiaya. Tiga jadwal dapat memakai 21 kuota bot per hari, melebihi batas bawaan 20 per anggota.
+- **Kuota harian** dihitung satu kali per permintaan: bawaan 20 per anggota dan 200 per server. Pekerjaan otomatis bot (ronde Activities, koran hari ini) memakai kuota atas nama bot sendiri, jadi naikkan batas per anggota bila jadwalnya lebih dari 20 permintaan per hari.
 - **Pesan anggota dikirim ke provider AI** pada fitur yang membaca channel (AI interaktif, terjemahan otomatis), tanpa persetujuan per pesan. Beri tahu anggota.
 - **Server Builder → Bongkar bersifat permanen:** channel dihapus beserta pesannya. Belum pernah dijalankan pada Discord sungguhan; coba dulu di server uji.
 
@@ -195,13 +197,16 @@ Transkrip suara, pencarian web dan gambar memakai layanan tersendiri:
 | --- | --- | --- | --- |
 | Transkrip suara | `AI_AUDIO_PROVIDER` | `openai` (bawaan) | `AI_AUDIO_API_KEY`, `AI_AUDIO_MODEL` |
 | | | `groq` | `AI_GROQ_API_KEY`; `AI_AUDIO_MODEL` boleh kosong, dan nama model OpenAI ditolak Groq |
-| Pencarian web | `AI_SEARCH_PROVIDER` | `brave` (bawaan) | `AI_BRAVE_SEARCH_KEY` |
-| | | `tavily` | `AI_TAVILY_API_KEY` |
+| Pencarian web | Dashboard → Provider & fallback → Pencarian web | Tavily, Parallel, Exa | `AI_TAVILY_API_KEY`, `AI_PARALLEL_API_KEY`, `AI_EXA_API_KEY` (isi yang dipakai) |
 | Gambar | `AI_IMAGE_PROVIDER` | `openai` (bawaan) | `AI_IMAGE_API_KEY`, `AI_IMAGE_MODEL` |
 | | | `cloudflare` | `AI_CLOUDFLARE_API_TOKEN`, `AI_CLOUDFLARE_ACCOUNT_ID` |
 | | | `pollinations` | Tidak ada |
 
-Nilai yang salah ketik mematikan fitur itu, dan log startup menyebutkannya. Edit gambar hanya tersedia dengan OpenAI. Dengan Pollinations, instruksi menjadi bagian alamat web yang dapat dibuka siapa pun, jadi jangan dipakai untuk hal pribadi.
+Pencarian bawaan memakai urutan Tavily → Parallel → Exa; provider tanpa kunci dilewati. Brave Search dan `AI_SEARCH_PROVIDER` tidak lagi digunakan, jadi pasang kunci baru untuk migrasi. Jika gagal, kata kunci dikirim ke provider cadangan; tiap percobaan dapat berbiaya dan memakan waktu hingga 10 detik. Hasil kosong yang valid tidak memicu fallback. Kuota pencarian bot dihitung satu kali per permintaan. Status kunci bukan tes koneksi; setelah mengubah environment, restart bot.
+
+Nilai pilihan transkrip atau gambar yang salah ketik mematikan fitur itu, dan log startup menyebutkannya. Edit gambar hanya tersedia dengan OpenAI. Dengan Pollinations, instruksi menjadi bagian alamat web yang dapat dibuka siapa pun, jadi jangan dipakai untuk hal pribadi.
+
+Perintah pencarian: `/search` membuat tautan Google (bukan hasil AI), `/define` mencari kata di kamus Inggris, dan `/urban` mencari istilah Urban Dictionary di channel age-restricted. Pendaftaran ulang command Discord diperlukan setelah pembaruan; status akses command lama dipertahankan.
 
 ## Musik
 

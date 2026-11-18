@@ -21,7 +21,6 @@ import { createSmart } from '../services/ai/smart.js';
 import { LANGUAGES, MAX_FAQ_ENTRIES, MAX_SMART_CHANNELS } from '../services/ai/smartSettings.js';
 import { MESSAGE_MENUS } from '../services/ai/menus.js';
 import { MAX_REPORT_DAYS } from '../services/ai/usage.js';
-import { resolveSearchProvider } from '../services/ai/extraProviders.js';
 
 export function createAIApi(client,{auth,csrf,env=process.env,foundation=client.aiFoundation||createAIFoundation({client,env}),welcomeStore=createAIWelcomeStore(client),goodbyeStore=createAIWelcomeStore(client,'goodbye'),activityStore=createActivityStore(client),chatStore=createChatStore(client),imageService=client.aiImageService||createImageService({client,foundation,env}),builder=createBuilder({client,foundation}),manualBuilder=createManualBuilder({client}),searchService=client.aiSearchService||createSearchService({client,foundation,env})}) {
  const router=express.Router();const json=express.json({limit:'24kb'});router.use((req,res,next)=>(['/image','/smart/faq'].includes(req.path)||req.path==='/knowledge'||req.path.startsWith('/knowledge/'))?next():json(req,res,next));
@@ -82,7 +81,7 @@ export function createAIApi(client,{auth,csrf,env=process.env,foundation=client.
  router.patch('/chat',auth,owner,csrf,async(req,res)=>{try{const settings=validateChatSettings(req.body,req.guild);await chatStore.save(req.guild.id,settings);res.json({ok:true,settings})}catch(e){fail(res,e)}});
  // Interactive AI in channels. Saving goes through the running handler so it applies to the next message.
  const interactive=client.aiInteractive||createInteractive({client,foundation});
- router.get('/interactive',auth,owner,async(req,res)=>{try{const settings=await interactive.store.read(req.guild.id);const channels=[...req.guild.channels.cache.values()].filter(c=>c.type===ChannelType.GuildText).map(({id,name})=>({id,name}));res.json({settings,channels,search:{configured:searchReady()}})}catch(e){fail(res,e)}});
+ router.get('/interactive',auth,owner,async(req,res)=>{try{const settings=await interactive.store.read(req.guild.id);const channels=[...req.guild.channels.cache.values()].filter(c=>c.type===ChannelType.GuildText).map(({id,name})=>({id,name}));res.json({settings,channels,search:{configured:await searchReady(req.guild.id)}})}catch(e){fail(res,e)}});
  router.patch('/interactive',auth,owner,csrf,async(req,res)=>{try{const settings=await interactive.saveSettings(validateInteractive(req.body,req.guild));res.json({ok:true,settings})}catch(e){fail(res,e)}});
  router.post('/chat/panel',auth,owner,csrf,async(req,res)=>{try{if(!req.body||Object.keys(req.body).length!==1||req.body.confirmed!==true)throw Object.assign(Error('Konfirmasi diperlukan.'),{status:400});const settings=await chatStore.read(req.guild.id);res.json({ok:true,...await sendDMPublicPanel({client,guild:req.guild,settings,confirmed:true})})}catch(e){fail(res,e)}});
  // Retired document endpoints never access stored documents or invoke a provider.
@@ -109,13 +108,15 @@ export function createAIApi(client,{auth,csrf,env=process.env,foundation=client.
  router.post('/builder/undo/prepare',auth,owner,csrf,async(req,res)=>{try{const b=req.body;if(!b||Object.keys(b).join(',')!=='confirmed'||b.confirmed!==true)throw Object.assign(Error('Konfirmasi diperlukan.'),{status:400});res.json({ok:true,...await builder.prepareUndo({guild:req.guild,userId:req.session.user.id})})}catch(e){fail(res,e)}});
  router.post('/builder/undo/apply',auth,owner,csrf,async(req,res)=>{try{const b=req.body;if(!b||Object.keys(b).sort().join(',')!=='confirmation,id')throw Object.assign(Error('Konfirmasi diperlukan.'),{status:400});res.json({ok:true,...await builder.undo({guild:req.guild,userId:req.session.user.id,id:b.id,confirmation:b.confirmation})})}catch(e){fail(res,e)}});
  router.post('/builder/undo/forget',auth,owner,csrf,async(req,res)=>{try{const b=req.body;if(!b||Object.keys(b).sort().join(',')!=='buildId,confirmed'||b.confirmed!==true)throw Object.assign(Error('Konfirmasi diperlukan.'),{status:400});res.json({ok:true,...await builder.forget({guild:req.guild,userId:req.session.user.id,buildId:b.buildId,confirmed:true})})}catch(e){fail(res,e)}});
+ router.get('/search/settings',auth,owner,async(req,res)=>{try{res.json(await searchService.status(req.guild.id))}catch(e){fail(res,e)}});
+ router.patch('/search/settings',auth,owner,csrf,async(req,res)=>{try{const settings=await searchService.store.save(req.guild.id,req.body);res.json({ok:true,settings})}catch(e){fail(res,e)}});
  router.post('/search',auth,owner,csrf,async(req,res)=>{try{const b=req.body;if(!b||Object.keys(b).sort().join(',')!=='confirmed,query'||b.confirmed!==true)throw Object.assign(Error('Konfirmasi diperlukan.'),{status:400});res.json({ok:true,...await searchService.search({guildId:req.guild.id,userId:req.session.user.id,query:b.query,consent:true})})}catch(e){fail(res,e)}});
  // "Fitur pintar": FAQ, reply cache, usage report, message menu, morning digest, greeting extras, auto-translate.
  // Each section is saved on its own; the FAQ gets a larger body limit for its 25 answers.
  const smart=client.aiSmart||createSmart({client,foundation:()=>foundation,searchService:()=>searchService});
  const textChannels=guild=>[...guild.channels.cache.values()].filter(c=>c.type===ChannelType.GuildText).map(({id,name})=>({id,name}));
- const searchReady=()=>{const provider=resolveSearchProvider(env);return !provider.unknown&&provider.missing.length===0};
- router.get('/smart',auth,owner,async(req,res)=>{try{res.json({settings:await smart.settings({strict:true}),channels:textChannels(req.guild),languages:LANGUAGES,menus:MESSAGE_MENUS,search:{configured:searchReady()},limits:{channels:MAX_SMART_CHANNELS,faqEntries:MAX_FAQ_ENTRIES}})}catch(e){fail(res,e)}});
+ const searchReady=async guildId=>searchService.status?(await searchService.status(guildId)).configured:Object.values({tavily:env.AI_TAVILY_API_KEY,parallel:env.AI_PARALLEL_API_KEY,exa:env.AI_EXA_API_KEY}).some(x=>Boolean(x?.trim()));
+ router.get('/smart',auth,owner,async(req,res)=>{try{res.json({settings:await smart.settings({strict:true}),channels:textChannels(req.guild),languages:LANGUAGES,menus:MESSAGE_MENUS,search:{configured:await searchReady(req.guild.id)},limits:{channels:MAX_SMART_CHANNELS,faqEntries:MAX_FAQ_ENTRIES}})}catch(e){fail(res,e)}});
  const saveSmart=async(req,res)=>{
   try{
    const section=req.params.section??'faq',before=(await smart.settings({strict:true})).menu;

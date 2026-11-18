@@ -1,17 +1,10 @@
-import {resolveSearchProvider} from './extraProviders.js';
+import {createSearchSettingsStore,SEARCH_PROVIDERS} from './searchSettings.js';
 const error=(message,status=400)=>Object.assign(new Error(message),{status});
 
 async function readJSON(response){
  const reader=response.body?.getReader();if(!reader)throw error('Respons pencarian tidak valid.',502);let size=0,chunks=[];
  try{while(true){const {done,value}=await reader.read();if(done)break;size+=value.length;if(size>524288)throw error('Respons pencarian terlalu besar.',502);chunks.push(Buffer.from(value));}}finally{await reader.cancel().catch(()=>{})}
  try{return JSON.parse(Buffer.concat(chunks).toString('utf8'))}catch{throw error('Respons pencarian tidak valid.',502)}
-}
-
-// Brave Search: GET with the key in X-Subscription-Token. Items carry title, url and description.
-async function brave({key,query,fetchImpl}){
- const url=new URL('https://api.search.brave.com/res/v1/web/search');url.searchParams.set('q',query);url.searchParams.set('count','5');url.searchParams.set('safesearch','moderate');
- const r=await fetchImpl(url.href,{headers:{Accept:'application/json','X-Subscription-Token':key},redirect:'error',signal:AbortSignal.timeout(10000)});if(!r.ok)throw error('Pencarian tidak tersedia.',503);
- const data=await readJSON(r);return (data?.web?.results||[]).map(item=>({title:item?.title,url:item?.url,description:item?.description}));
 }
 
 // Tavily: POST with a bearer key. Items carry title, url and content; "basic" depth costs one credit.
@@ -25,26 +18,43 @@ async function tavily({key,query,fetchImpl}){
   if([429,432,433].includes(r.status))throw error('Batas laju atau kuota Tavily tercapai.',429);
   throw error('Pencarian tidak tersedia.',503);
  }
- const data=await readJSON(r);return (Array.isArray(data?.results)?data.results:[]).map(item=>({title:item?.title,url:item?.url,description:item?.content}));
+ const data=await readJSON(r);if(!Array.isArray(data?.results))throw error('Respons Tavily tidak valid.',502);return data.results.map(item=>({title:item?.title,url:item?.url,description:item?.content}));
 }
 
-const callers={brave,tavily};
-
-export function createSearchService({client,foundation=client.aiFoundation,env=process.env,fetchImpl=globalThis.fetch}){
+// Fixed endpoints and provider-specific credentials; redirects are refused.
+async function exa({key,query,fetchImpl}){
+ const r=await fetchImpl('https://api.exa.ai/search',{method:'POST',headers:{Accept:'application/json','Content-Type':'application/json','x-api-key':key},body:JSON.stringify({query,type:'auto',numResults:5,contents:{highlights:true}}),redirect:'error',signal:AbortSignal.timeout(10000)});
+ if(!r.ok){await r.body?.cancel().catch(()=>{});throw error('Exa tidak tersedia.',503)}
+ const data=await readJSON(r);if(!Array.isArray(data?.results))throw error('Respons Exa tidak valid.',502);
+ return data.results.map(item=>({title:item?.title,url:item?.url,description:Array.isArray(item?.highlights)?item.highlights.filter(x=>typeof x==='string').join(' '):item?.text}));
+}
+async function parallel({key,query,fetchImpl}){
+ const keywords=query.trim().split(/\s+/u).slice(0,12).join(' ');
+ const r=await fetchImpl('https://api.parallel.ai/v1/search',{method:'POST',headers:{Accept:'application/json','Content-Type':'application/json','x-api-key':key},body:JSON.stringify({objective:`Cari sumber web yang relevan untuk: ${query}`,search_queries:[keywords],mode:'fast',advanced_settings:{max_results:5}}),redirect:'error',signal:AbortSignal.timeout(10000)});
+ if(!r.ok){await r.body?.cancel().catch(()=>{});throw error('Parallel tidak tersedia.',503)}
+ const data=await readJSON(r);if(!Array.isArray(data?.results))throw error('Respons Parallel tidak valid.',502);
+ return data.results.map(item=>({title:item?.title,url:item?.url,description:Array.isArray(item?.excerpts)?item.excerpts.filter(x=>typeof x==='string').join(' '):undefined}));
+}
+const callers={tavily,parallel,exa};
+export function createSearchService({client,foundation=client.aiFoundation,env=process.env,fetchImpl=globalThis.fetch,store=createSearchSettingsStore(client)}){
  let active=0;
- return {async search({guildId,userId,query,consent}){
+ const credentials=()=>Object.fromEntries(Object.entries(SEARCH_PROVIDERS).map(([id,p])=>[id,Boolean(env[p.key]?.trim())]));
+ return {store,credentials,async status(guildId){const settings=await store.read(guildId),keys=credentials();return {settings,credentials:keys,configured:[settings.primary,settings.backup,settings.backup2].some(id=>keys[id])};},async search({guildId,userId,query,consent}){
   if(guildId!==client.homeGuildId||!/^\d{17,20}$/.test(userId||'')||consent!==true)throw error('Server atau persetujuan tidak valid.',403);
   if(typeof query!=='string'||!query.trim()||query.length>300)throw error('Kata kunci harus 1–300 karakter.');
-  // Brave unless AI_SEARCH_PROVIDER names another provider; an unknown name keeps the feature off.
-  const provider=resolveSearchProvider(env);
-  if(provider.unknown)throw error(`AI_SEARCH_PROVIDER tidak dikenal. Pilihan: ${provider.allowed.join(', ')}.`,503);
-  if(provider.missing.length)throw error(`Kunci ${provider.label} belum dikonfigurasi.`,503);
   if(active>=2)throw error('Pencarian sedang sibuk.',429);active++;
-  try{const cfg=await foundation.store.read(guildId);if(!cfg.enabled||!cfg.providerDataConsent)throw error('Fondasi AI belum aktif atau disetujui.',403);await foundation.store.reserve(guildId,userId,cfg);
-   const items=await callers[provider.id]({key:provider.key,query,fetchImpl});
-   // The same filter for every provider: http(s) only, no credentials in the URL, text fields required and cut to size.
-   const results=[];for(const item of items){if(results.length>=5)break;try{const u=new URL(item.url);if(!['http:','https:'].includes(u.protocol)||u.username||u.password)continue;if(typeof item.title!=='string'||typeof item.description!=='string')continue;results.push({title:item.title.slice(0,200),url:u.href,description:item.description.slice(0,500)})}catch{}}
-   return {results,provider:provider.label};
-  }catch(e){if(e.status)throw e;throw error('Pencarian tidak tersedia atau timeout.',503)}finally{active--}
+  try{
+   const settings=await store.read(guildId);const chain=[settings.primary,settings.backup,settings.backup2].filter(id=>id!=='none'&&env[SEARCH_PROVIDERS[id].key]?.trim());
+   if(!chain.length)throw error('Kunci provider pencarian belum dikonfigurasi.',503);
+   const cfg=await foundation.store.read(guildId);if(!cfg.enabled||!cfg.providerDataConsent)throw error('Fondasi AI belum aktif atau disetujui.',403);await foundation.store.reserve(guildId,userId,cfg);
+   for(const id of chain){
+    try{
+     const items=await callers[id]({key:env[SEARCH_PROVIDERS[id].key].trim(),query:query.trim(),fetchImpl});
+     const results=[];for(const item of items){if(results.length>=5)break;try{const u=new URL(item.url);if(!['http:','https:'].includes(u.protocol)||u.username||u.password)continue;if(typeof item.title!=='string'||typeof item.description!=='string'||!item.title.trim()||!item.description.trim())continue;results.push({title:item.title.slice(0,200),url:u.href,description:item.description.slice(0,500)})}catch{}}
+     return {results,provider:SEARCH_PROVIDERS[id].label,usedFallback:id!==settings.primary};
+    }catch{/* Never include provider responses, keys or queries in errors. Try next provider. */}
+   }
+   throw error('Semua provider pencarian gagal atau timeout. Periksa kunci dan kuota masing-masing provider.',503);
+  }finally{active--}
  }};
 }

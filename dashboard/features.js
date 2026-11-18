@@ -22,7 +22,7 @@
   // Categories that were audited and get no page of their own. `note` says why and where their few settings live.
   const accessNote='Tiap perintahnya dapat dimatikan atau dinyalakan per server di <a href="#features/core">Akses perintah</a>.';
   const settled = [
-    {name:'Search',commands:['/search define','/search google','/search urban'],note:'tidak menyimpan pengaturan apa pun. '+accessNote},
+    {name:'Search',commands:['/search','/define','/urban'],note:'tidak menyimpan pengaturan apa pun. '+accessNote},
     {name:'Utility',commands:['/userinfo','/serverinfo','/firstmsg','/weather','/report','/wipedata'],note:'tidak punya pengaturan server sendiri. Channel tujuan <code>/report</code> diatur di <a href="#features/logging">Logging</a>. '+accessNote},
     {name:'Tools',commands:['/poll','/time'],note:'tidak menyimpan pengaturan apa pun: polling dan konversi zona waktu hanya hidup di pesan Discord-nya sendiri. '+accessNote},
   ];

@@ -23,10 +23,10 @@ export const DEFAULT_SMART = Object.freeze({
     usage: Object.freeze({ enabled: false }),
     // Entries in the menu of a message (press and hold, or right click → Apps).
     menu: Object.freeze({ translate: false, explain: false, factCheck: false, recap: false, language: 'id' }),
-    // News and a fact, once every morning.
-    digest: Object.freeze({ enabled: false, channelIds: Object.freeze([]), time: '07:00', zone: 'WIB', news: true, fact: true, topics: '' }),
-    // Independent daily facts; old Koran pagi configuration remains unchanged.
-    facts: Object.freeze({ enabled: false, channelId: null, times: Object.freeze(['07:00']), zone: 'WIB' }),
+    // News, up to three scheduled editions per day.
+    digest: Object.freeze({ enabled: false, channelIds: Object.freeze([]), times: Object.freeze(['07:00']), zone: 'WIB', topics: '' }),
+    // Independent daily facts.
+    facts: Object.freeze({ enabled: false, channelId: null, times: Object.freeze(['07:00']), zone: 'WIB', topics: '' }),
     // Additions to AI Welcome and AI Goodbye, written by the bot itself.
     greeting: Object.freeze({ multilingual: false, tenure: false }),
     // Translates what members write in the chosen channels.
@@ -113,14 +113,14 @@ const VALIDATORS = {
         return { ...v };
     },
     digest(v, guild) {
-        booleans(v, ['enabled', 'news', 'fact']);
-        const channelIds = channelList(v.channelIds, guild, 'Channel koran pagi');
-        if (typeof v.time !== 'string' || !CLOCK.test(v.time)) throw err('Jam kirim tidak valid.');
+        booleans(v, ['enabled']);
+        if (!Array.isArray(v.channelIds) || v.channelIds.length > 1) throw err('Pilih paling banyak satu channel koran hari ini.');
+        const channelIds = channelList(v.channelIds, guild, 'Channel koran hari ini');
+        if (!Array.isArray(v.times) || v.times.length < 1 || v.times.length > 3 || v.times.some(t => typeof t !== 'string' || !CLOCK.test(t)) || new Set(v.times).size !== v.times.length) throw err('Jam kirim harus 1–3 waktu yang valid dan berbeda.');
         if (!Object.hasOwn(ZONES, v.zone)) throw err('Zona waktu tidak valid.');
         if (typeof v.topics !== 'string' || v.topics.length > 120) throw err('Topik paling banyak 120 karakter.');
-        if (v.enabled && channelIds.length === 0) throw err('Koran pagi memerlukan minimal satu channel.');
-        if (v.enabled && !v.news && !v.fact) throw err('Pilih berita, fakta, atau keduanya.');
-        return { ...v, channelIds, topics: oneLine(v.topics) };
+        if (v.enabled && channelIds.length === 0) throw err('Koran hari ini memerlukan minimal satu channel.');
+        return { ...v, times: [...v.times], channelIds, topics: oneLine(v.topics) };
     },
     facts(v, guild) {
         booleans(v, ['enabled']);
@@ -129,7 +129,8 @@ const VALIDATORS = {
         if (v.enabled && !v.channelId) throw err('Pilih satu channel untuk fakta.');
         if (!Array.isArray(v.times) || v.times.length < 1 || v.times.length > 3 || v.times.some(t => typeof t !== 'string' || !CLOCK.test(t)) || new Set(v.times).size !== v.times.length) throw err('Pilih 1–3 jam fakta yang valid dan berbeda.');
         if (!Object.hasOwn(ZONES, v.zone)) throw err('Zona waktu fakta tidak valid.');
-        return {...v, times: [...v.times]};
+        if (typeof v.topics !== 'string' || v.topics.length > 120) throw err('Topik paling banyak 120 karakter.');
+        return {...v, times: [...v.times], topics: oneLine(v.topics)};
     },
     greeting(v) { booleans(v, ['multilingual', 'tenure']); return { ...v }; },
     translate(v, guild) {
@@ -161,8 +162,10 @@ export function upgradeSmart(stored) {
     for (const section of SMART_SECTIONS) {
         const known = Object.keys(DEFAULT_SMART[section]);
         let raw = plain(stored?.[section]) ? stored[section] : {};
+        // Preserve the first previously selected digest channel; extra legacy destinations are no longer used.
+        if (section === 'digest' && Array.isArray(raw.channelIds) && raw.channelIds.length > 1) raw = {...raw, channelIds: raw.channelIds.slice(0, 1)};
         // Keep a previously configured single time as the first slot without changing its enabled state.
-        if (section === 'facts' && !Object.hasOwn(raw, 'times') && Object.hasOwn(raw, 'time')) raw = {...raw, times: [raw.time]};
+        if ((section === 'facts' || section === 'digest') && !Object.hasOwn(raw, 'times') && Object.hasOwn(raw, 'time')) raw = {...raw, times: [raw.time]};
         try { out[section] = validateSmartSection(section, { ...copy(section), ...Object.fromEntries(known.filter((k) => Object.hasOwn(raw, k)).map((k) => [k, raw[k]])) }); }
         catch { out[section] = copy(section); }
     }
