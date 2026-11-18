@@ -70,6 +70,24 @@ async function boundedJSON(response){
  try{while(true){const {done,value}=await reader.read();if(done)break;size+=value.length;if(size>131072)throw error('PROVIDER_RESPONSE','Respons provider terlalu besar.',502);chunks.push(value);}}finally{await reader.cancel().catch(()=>{});}
  try{return JSON.parse(Buffer.concat(chunks.map(x=>Buffer.from(x))).toString('utf8'));}catch{throw error('PROVIDER_RESPONSE','Respons provider tidak valid.',502)}
 }
+// Known text-only models should not receive image data. Keep this narrow: model
+// catalogues change, and an unknown model must still be allowed to try vision.
+const TEXT_ONLY_IMAGE_MODELS = new Set(['openai/gpt-oss-120b','openai/gpt-oss-20b']);
+async function imageNotSupported(response) {
+ try {
+  const data = await boundedJSON(response);
+  const code = String(data?.error?.code ?? '').toLowerCase();
+  const type = String(data?.error?.type ?? '').toLowerCase();
+  const message = String(data?.error?.message ?? '').toLowerCase().slice(0, 2000);
+  // Never treat content/safety moderation as a capability failure.
+  if (/safety|policy|moderation|content[_ -]?filter/.test(`${code} ${type} ${message}`)) return false;
+  return ['image_not_supported','unsupported_image','unsupported_modality'].includes(code)
+   || /(?:image|vision|multimodal|modality)[^.!?]{0,80}(?:not supported|unsupported|not available)/.test(message)
+   || /(?:does not|doesn't|cannot|can't) (?:support|accept|process|handle)[^.!?]{0,50}(?:image|vision)/.test(message)
+   || /(?:only supports|supports only|text.only)[^.!?]{0,40}(?:text|input)/.test(message);
+ } catch { return false; }
+}
+
 export function createAIFoundation({client,store=createAIStore(client),env=process.env,fetchImpl=globalThis.fetch}={}){
  let active=0;
  return {
@@ -89,9 +107,10 @@ export function createAIFoundation({client,store=createAIStore(client),env=proce
     if(!chain.some(([id])=>env[PROVIDERS[id].key]?.trim()))throw error('NO_CREDENTIALS','Kredensial provider belum dikonfigurasi.',503);
     const usage=await store.reserve(guildId,userId,cfg);let attempted=0;
     for(const [id,model] of chain){const provider=PROVIDERS[id],key=env[provider.key]?.trim();if(!key)continue;attempted++;
+     if(image && TEXT_ONLY_IMAGE_MODELS.has(model.toLowerCase()))continue;
      try{
       const response=await fetchImpl(provider.url,{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${key}`},body:JSON.stringify({model,messages:[{role:'user',content:image?[{type:'text',text:prompt},{type:'image_url',image_url:{url:`data:${image.mime};base64,${image.base64}`}}]:prompt}],max_tokens:cfg.maxOutputTokens,stream:false}),redirect:'error',signal:AbortSignal.timeout(cfg.timeoutSeconds*1000)});
-      if(!response.ok){if([401,403,404,408,429].includes(response.status)||response.status>=500)continue;throw error('REQUEST_REJECTED','Provider menolak permintaan.',502);}
+      if(!response.ok){if([401,403,404,408,429].includes(response.status)||response.status>=500)continue;if(image && [400,422].includes(response.status) && await imageNotSupported(response))continue;throw error('REQUEST_REJECTED','Provider menolak permintaan.',502);}
       const data=await boundedJSON(response);const choice=data?.choices?.[0];
       if(choice?.finish_reason==='content_filter'||choice?.message?.refusal)throw error('FILTERED','Respons diblokir oleh kebijakan provider.',422);
       const output=choice?.message?.content;if(typeof output!=='string'||!output.trim()||output.length>32000)throw error('PROVIDER_RESPONSE','Respons provider tidak valid.',502);
