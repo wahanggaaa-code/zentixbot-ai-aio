@@ -87,9 +87,17 @@ export function validateQuiz(raw){
  return quiz;
 }
 /** The model loves putting the correct answer first; reorder with Fisher-Yates so the position is not a hint. `random` is injectable for tests. */
-export function shuffleQuiz(quiz,random=Math.random){
+export function shuffleQuiz(quiz,random=Math.random,previousAnswer=null){
  const order=[0,1,2,3];
  for(let i=order.length-1;i>0;i--){const j=Math.floor(random()*(i+1));[order[i],order[j]]=[order[j],order[i]];}
+ // If the random shuffle repeats the previous position, swap with one of the
+ // other three positions. This preserves the correct option and is uniform.
+ const answer=order.indexOf(quiz.answer);
+ if(Number.isInteger(previousAnswer)&&previousAnswer>=0&&previousAnswer<4&&answer===previousAnswer){
+  const alternatives=[0,1,2,3].filter(i=>i!==answer);
+  const target=alternatives[Math.floor(random()*alternatives.length)];
+  [order[answer],order[target]]=[order[target],order[answer]];
+ }
  return {...quiz,options:order.map(i=>quiz.options[i]),answer:order.indexOf(quiz.answer)};
 }
 export const ACTIVITY_TITLES=Object.freeze({trivia:'Kuis Trivia',emoji:'Tebak Emoji'});
@@ -176,34 +184,41 @@ export async function startActivity({client,guild,actorId,store=createActivitySt
  const game=kind??cfg.kind;if(!REPEAT_KINDS.includes(game))throw error('Jenis permainan tidak valid.');
  const roundId=crypto.randomBytes(10).toString('hex');await store.reserve(guild.id,roundId,Date.now());let sendAttempted=false;
  try{
-  const recent=await recentQuestions(store,guild.id,game),asked=new Set(recent.map(sameQuestion));
+  const schedule=await recentSchedule(store,guild.id),recent=recentQuestions(schedule,game),asked=new Set(recent.map(sameQuestion));
+  const previousAnswer=schedule.lastAnswerPosition;
   let question=null,source='ai',reason='AI tidak memberi soal.';
   for(let attempt=0;attempt<(requireAI?2:1)&&!question;attempt++){
    try{const r=await foundation.generate({guildId:guild.id,userId:actorId,consent:true,kind:'activity',prompt:quizPrompt({kind:game,language:cfg.language,recent,random})});const quiz=parseQuiz(r.text);
-    if(!quiz)reason='AI tidak memberi soal dengan format yang benar.';else if(requireAI&&asked.has(sameQuestion(quiz.question)))reason='AI mengulang soal yang baru saja dipakai.';else question=shuffleQuiz(quiz,random);
+    if(!quiz)reason='AI tidak memberi soal dengan format yang benar.';else if(requireAI&&asked.has(sameQuestion(quiz.question)))reason='AI mengulang soal yang baru saja dipakai.';else question=shuffleQuiz(quiz,random,previousAnswer);
    }catch(e){
     // The AI layer refuses with a code, a status and a text written for the owner (daily limit reached, AI switched
     // off, providers down). Anything else (a database driver's error, a bug) is not shown.
     reason=typeof e?.code==='string'&&Number.isInteger(e?.status)&&e.message?String(e.message).slice(0,200):'AI tidak dapat dihubungi.';break;}
   }
-  if(!question){if(requireAI)throw Object.assign(error(reason,503),{code:'NO_QUESTION'});question=shuffleQuiz(FALLBACKS[game][cfg.language==='en'?'en':'id'],random);source='fallback';}
+  if(!question){if(requireAI)throw Object.assign(error(reason,503),{code:'NO_QUESTION'});question=shuffleQuiz(FALLBACKS[game][cfg.language==='en'?'en':'id'],random,previousAnswer);source='fallback';}
   await store.open(guild.id,roundId,question,cfg.duration,Date.now(),cfg.rewardPoints,game);const channel=guild.channels.cache.get(cfg.channelId);sendAttempted=true;let message;
   try{message=await channel.send(quizPayload({...question,kind:game},roundId,{minutes:Math.max(1,Math.round(cfg.duration/60))}));}catch{throw error('Hasil pengiriman ronde tidak pasti; periksa channel sebelum mencoba lagi.',409)}
   try{await store.attach(guild.id,roundId,message.id);}catch{throw error('Ronde terkirim tetapi status gagal disimpan; periksa channel sebelum mencoba lagi.',409)}
-  if(source==='ai')await rememberQuestion(store,guild.id,game,question.question);
+  await rememberRound(store,guild.id,game,source==='ai'?question.question:null,question.answer);
   const timer=setTimeout(async()=>{try{const ended=await store.expire(guild.id,roundId,Date.now());if(ended)await message.edit(quizPayload(ended,roundId,{state:ended.winners?.length?'solved':'expired',winners:ended.winners??[],reward:ended.reward??0}));}catch{}},cfg.duration*1000+100);timer.unref?.();
   return {messageId:message.id,source,kind:game};
  }catch(e){if(!sendAttempted)await store.cancel(guild.id,roundId).catch(()=>{});throw e;}
 }
 // The questions asked lately, per game. Remembering them is a nicety: a store that cannot keep them, or a read
 // that fails, must never cost a round.
-async function recentQuestions(store,guildId,kind){
- if(!store.readSchedule)return [];
- try{const list=(await store.readSchedule(guildId)).recent?.[kind];return Array.isArray(list)?list.filter(q=>typeof q==='string'):[];}catch{return [];}
+async function recentSchedule(store,guildId){
+ if(!store.readSchedule)return {};
+ try{return scheduleValue(await store.readSchedule(guildId));}catch{return {};}
 }
-async function rememberQuestion(store,guildId,kind,question){
+function recentQuestions(schedule,kind){
+ const list=schedule.recent?.[kind];return Array.isArray(list)?list.filter(q=>typeof q==='string'):[];
+}
+async function rememberRound(store,guildId,kind,question,answer){
  if(!store.updateSchedule)return;
- try{await store.updateSchedule(guildId,v=>{const old=Array.isArray(v.recent?.[kind])?v.recent[kind].filter(q=>typeof q==='string'):[];return {write:{...v,recent:{...v.recent,[kind]:[...old,question].slice(-RECENT_KEPT)}},result:true};});}catch{}
+ try{await store.updateSchedule(guildId,v=>{
+  const old=Array.isArray(v.recent?.[kind])?v.recent[kind].filter(q=>typeof q==='string'):[];
+  return {write:{...v,lastAnswerPosition:answer,...(question?{recent:{...v.recent,[kind]:[...old,question].slice(-RECENT_KEPT)}}:{})},result:true};
+ });}catch{}
 }
 const ZONES={WIB:'Asia/Jakarta',WITA:'Asia/Makassar',WIT:'Asia/Jayapura'};
 // The check runs once a minute. A round is due from its minute until this many minutes later, so that a check

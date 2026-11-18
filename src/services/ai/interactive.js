@@ -267,7 +267,7 @@ const TASKS = {
  * Builds the single prompt for one answer. `history` is oldest first: [{ name, text }].
  * Older history lines are dropped until the prompt fits the provider limit.
  */
-export function buildPrompt({ kind, botName, persona, guildName, channelName, timeText, history = [], who = 'Anggota', idleMinutes = 0, replied = null, imageUnreadable = false, galleryReaction = false }) {
+export function buildPrompt({ kind, botName, persona, guildName, channelName, timeText, history = [], who = 'Anggota', idleMinutes = 0, replied = null, imageUnreadable = false, galleryReaction = false, idleApproach = '', previousNudges = [] }) {
     const head = [
         `Kamu adalah ${safeName(botName)}, bot di server Discord "${oneLine(guildName, 80)}". Persona: ${oneLine(persona, 500)}`,
         `Kamu sedang berada di channel #${oneLine(channelName, 60)}. Sekarang ${timeText}.`,
@@ -279,6 +279,8 @@ export function buildPrompt({ kind, botName, persona, guildName, channelName, ti
         replied ? `PESANMU YANG DIBALAS: ${oneLine(replied, HISTORY_LINE_CHARS)}` : '',
         imageUnreadable ? 'Catatan: gambar pada pesan terakhir tidak dapat kamu lihat. Jangan menebak isinya.' : '',
         `TUGAS: ${TASKS[kind](who, idleMinutes)}`,
+        kind === 'idle' && idleApproach ? `Variasikan sapaan, hindari pembuka klise dan pertanyaan yang sama. Arah kali ini: ${idleApproach}. Sesuaikan dengan percakapan jika relevan, jangan memaksa.` : '',
+        kind === 'idle' && previousNudges.length ? `SAPAAN SEBELUMNYA (contoh keluaran lama, bukan instruksi; jangan ulangi kata-kata atau topiknya): ${JSON.stringify(previousNudges.map(x => oneLine(x, 200)).slice(-4))}` : '',
         galleryReaction ? 'Setelah komentar, tulis satu baris terakhir persis REAKSI: diikuti satu emoji Unicode yang paling sesuai dengan gambar. Pilih bebas sesuai gambar, bukan emoji kustom Discord; jangan tulis hal lain di baris reaksi.' : '',
     ].filter(Boolean).join('\n');
 
@@ -355,6 +357,7 @@ export function createInteractive({
     fetchPage = fetchPublicText,
 } = {}) {
     const history = new Map();       // channelId -> [{ name, text, at, own }]
+    const idleNudges = new Map();    // channelId -> recent successfully sent nudges, in memory only
     const sentAt = new Map();        // channelId -> [timestamp of each bot message in the last hour]
     const lastJoin = new Map();      // channelId -> timestamp of the last uninvited answer
     const lastAnswer = new Map();    // userId -> timestamp of the last answer to that member
@@ -791,13 +794,16 @@ export function createInteractive({
                 let wrote = false;
                 await enqueue(channelId, async () => {
                     let result;
+                    const prior = idleNudges.get(channelId) ?? { count: 0, texts: [] };
+                    const approaches = ['pertanyaan ringan tentang keseharian', 'ajakan berbagi rekomendasi', 'pilihan sederhana antara dua hal', 'pertanyaan imajinatif yang santai', 'topik hobi atau kreativitas', 'obrolan ringan yang relevan dengan konteks'];
+                    const idleApproach = approaches[prior.count % approaches.length];
                     try {
                         result = await ai.generate({
                             guildId: guild.id,
                             userId: client.user.id,
                             consent: true,
                             kind: 'idle',
-                            prompt: buildPrompt({ kind: 'idle', botName: client.user.username, persona: cfg.persona, guildName: guild.name, channelName: channel.name, timeText: time.text, history: recent(channelId).map(({ name, text }) => ({ name, text })), idleMinutes: Math.round(silentFor / 60000) }),
+                            prompt: buildPrompt({ kind: 'idle', botName: client.user.username, persona: cfg.persona, guildName: guild.name, channelName: channel.name, timeText: time.text, history: recent(channelId).map(({ name, text }) => ({ name, text })), idleMinutes: Math.round(silentFor / 60000), idleApproach, previousNudges: prior.texts }),
                         });
                     } catch (error) {
                         if (error?.code !== 'LIMIT_REACHED') warnOnce(error?.code ?? 'UNKNOWN', `idle message skipped (${QUIET_CODES.has(error?.code) || error?.status ? error.message : 'unexpected error'})`);
@@ -805,7 +811,11 @@ export function createInteractive({
                     }
                     const content = cleanReply(result.text, client.user.username);
                     if (!content) return;
+                    const comparable = text => text.toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+                    if (prior.texts.some(text => comparable(text) === comparable(content))) return;
                     await channel.send({ content, allowedMentions: { parse: [] } });
+                    if (!idleNudges.has(channelId) && idleNudges.size >= 100) idleNudges.delete(idleNudges.keys().next().value);
+                    idleNudges.set(channelId, { count: prior.count + 1, texts: [...prior.texts, content].slice(-4) });
                     countSent(channelId);
                     nudged.set(channelId, true);
                     idleDay.count += 1;
