@@ -25,6 +25,9 @@ import {
     MentionableSelectMenuBuilder,
     ChannelSelectMenuBuilder,
     TextDisplayBuilder,
+    ModalBuilder,
+    TextInputBuilder,
+    TextInputStyle,
     WebhookClient,
 } from 'discord.js';
 import { createKV } from './ai/kv.js';
@@ -117,7 +120,7 @@ function normalizeSource(value, allowUploads) {
  * explicit so component custom IDs can never be supplied by a user as arbitrary bot handlers.
  */
 export function normalizeMessageDocument(value, { allowUploads = false, makeId = shortId } = {}) {
-    own(value, ['version', 'containers', 'before', 'after']);
+    own(value, ['version', 'containers', 'before', 'after', 'order']);
     if (value.version !== 1 || !Array.isArray(value.containers) || value.containers.length > MESSAGE_STUDIO_LIMITS.containers) throw err('Dokumen boleh berisi paling banyak 4 container.');
     const containerIds = new Set(), blockIds = new Set();
     let mediaItems = 0;
@@ -191,6 +194,7 @@ export function normalizeMessageDocument(value, { allowUploads = false, makeId =
             const options = block.options.map((option) => {
                 own(option, ['id', 'label', 'description', 'emoji', 'response', 'flow'], 'Pilihan menu tidak valid.');
                 if (option.flow !== undefined && option.response !== undefined) throw err('Gunakan flow atau respons, bukan keduanya.');
+                if (option.flow?.some?.((action) => action?.type === 'open_modal')) throw err('Open Modal hanya tersedia pada tombol.');
                 const optionId = mint(option.id, optionIds, 'ID pilihan', makeId);
                 return {
                     id: optionId,
@@ -203,7 +207,7 @@ export function normalizeMessageDocument(value, { allowUploads = false, makeId =
             const minValues = block.minValues === undefined ? 1 : block.minValues;
             const maxValues = block.maxValues === undefined ? 1 : block.maxValues;
             if (!Number.isInteger(minValues) || !Number.isInteger(maxValues) || minValues < 0 || maxValues < 1 || minValues > maxValues || maxValues > options.length) throw err('Batas pilihan menu tidak valid.');
-            if (options.some((option) => option.flow) && maxValues !== 1) throw err('Menu dengan flow hanya dapat memilih satu opsi.');
+            if (options.some((option) => option.flow) && maxValues > 5) throw err('Menu dengan flow maksimal 5 pilihan sekaligus.');
             return { id, type: 'select', placeholder: optionalText(block.placeholder, 150, 'Placeholder menu'), minValues, maxValues, options };
         }
         throw err('Jenis komponen tidak didukung.');
@@ -245,7 +249,18 @@ export function normalizeMessageDocument(value, { allowUploads = false, makeId =
     if (attachments.size > 10) throw err('Satu pesan dapat memuat paling banyak 10 file terlampir.');
     if (componentCount > 40) throw err('Satu pesan dapat memuat paling banyak 40 komponen Discord.');
     if (textLength > 4000) throw err('Total teks pesan maksimal 4.000 karakter.');
-    return { version: 1, containers, ...(value.before !== undefined ? { before } : {}), ...(value.after !== undefined ? { after } : {}) };
+    let order;
+    if (value.order !== undefined) {
+        const available = new Set([...containers.map((item) => `container:${item.id}`), ...[...before, ...after].map((item) => `block:${item.id}`)]);
+        if (!Array.isArray(value.order) || value.order.length !== available.size) throw err('Urutan komponen tidak lengkap.');
+        order = value.order.map((entry) => {
+            own(entry, ['kind', 'id'], 'Urutan komponen tidak valid.');
+            const key = `${entry.kind}:${entry.id}`;
+            if (!available.delete(key)) throw err('Urutan komponen tidak valid atau berulang.');
+            return { kind: entry.kind, id: entry.id };
+        });
+    }
+    return { version: 1, containers, ...(value.before !== undefined ? { before } : {}), ...(value.after !== undefined ? { after } : {}), ...(order ? { order } : {}) };
 }
 
 function allBlocks(document) {
@@ -375,7 +390,9 @@ function documentAssetIds(document) {
 
 function addTestNotice(document) {
     const copy = structuredClone(document);
-    copy.before = [{ id: `test-${shortId()}`, type: 'text', content: '-# PESAN UJI · Message Studio' }, ...(copy.before || [])];
+    const notice = { id: `test-${shortId()}`, type: 'text', content: '-# PESAN UJI · Message Studio' };
+    copy.before = [notice, ...(copy.before || [])];
+    if (copy.order) copy.order.unshift({ kind: 'block', id: notice.id });
     return copy;
 }
 
@@ -576,7 +593,9 @@ export function createMessageStudio({
             }
             return container;
         });
-        const components = [...(shown.before || []).map(outside), ...containers, ...(shown.after || []).map(outside)];
+        const components = shown.order
+            ? shown.order.map((entry) => entry.kind === 'container' ? containers[shown.containers.findIndex((item) => item.id === entry.id)] : outside([...(shown.before || []), ...(shown.after || [])].find((item) => item.id === entry.id)))
+            : [...(shown.before || []).map(outside), ...containers, ...(shown.after || []).map(outside)];
         const payload = v2Message(components);
         payload.allowedMentions = { parse: [], repliedUser: false };
         if (attached.size) payload.files = [...attached.values()].map((asset) => new AttachmentBuilder(asset.buffer, { name: asset.filename }));
@@ -783,9 +802,14 @@ export function createMessageStudio({
     }
     async function interactionRecord(interaction, recordId) {
         if (!interaction?.guildId || !safeId(recordId) || interaction.guildId !== client.homeGuildId) return null;
-        const record = (await readState(interaction.guildId)).messages.find((item) => item.id === recordId);
-        if (!record || record.sender !== 'bot' || record.messageId !== interaction.message?.id) return null;
-        return record;
+        const state = await readState(interaction.guildId);
+        const record = state.messages.find((item) => item.id === recordId);
+        if (record) return record.sender === 'bot' && record.messageId === interaction.message?.id ? record : null;
+        if (!recordId.startsWith('flow-')) return null;
+        const session = await kv.get(`message-studio:v1:reply:${interaction.guildId}:${recordId}`);
+        if (!plain(session) || session.version !== 1 || session.id !== recordId || session.messageId !== interaction.message?.id || !snowflake(session.messageId) || !Number.isFinite(session.expiresAt) || session.expiresAt <= now() || (session.userId !== null && session.userId !== interaction.user?.id) || !Number.isInteger(session.depth) || session.depth < 1 || session.depth > 3 || !state.messages.some((item) => item.id === session.rootId && item.sender === 'bot')) return null;
+        const document = cleanDocument(session.document);
+        return document ? { id: session.id, rootId: session.rootId, depth: session.depth, document } : null;
     }
     async function handleButton(interaction, args = []) {
         const [recordId, blockId, buttonId] = args;
@@ -794,10 +818,13 @@ export function createMessageStudio({
         const button = block?.buttons.find((item) => item.id === buttonId && item.style !== 'link' && !item.disabled);
         if (!button) return reply(interaction, 'Tombol ini tidak lagi aktif atau pesan sudah diubah.');
         if (!button.flow) return reply(interaction, button.response);
+        if (button.flow[0]?.type === 'open_modal') return openStudioModal(interaction, record, button.flow[0]);
         return executeInteractionFlows(interaction, record, [button.flow]);
     }
-    async function executeInteractionFlows(interaction, record, flows) {
+    async function executeInteractionFlows(interaction, record, flows, successContent = 'Flow selesai.') {
         if (!interaction.guild || interaction.guild.id !== client.homeGuildId || !snowflake(interaction.user?.id) || typeof interaction.deferReply !== 'function') return reply(interaction, 'Flow tidak dapat dijalankan tanpa konteks server yang valid.');
+        // Bound combined work across all selected options before acknowledging or side effects.
+        try { normalizeStudioFlow(flows.flat()); } catch { return reply(interaction, 'Gabungan flow melebihi batas atau tidak valid.'); }
         // Acknowledge before doing any side effects. Never execute if acknowledgement failed.
         await interaction.deferReply({ flags: MessageFlags.Ephemeral });
         try {
@@ -806,7 +833,7 @@ export function createMessageStudio({
             if (activeFlows >= 10 || flowCooldowns.has(key) || flowCooldowns.size >= 1000) throw Error('Flow terlalu sering dijalankan.');
             flowCooldowns.set(key, timestamp + 5000);
             activeFlows++;
-            try { await lock(`flow:${key}`, async () => {
+            try { await lock(`flow:${interaction.guildId}:${interaction.user.id}`, async () => {
                 const guild = interaction.guild;
                 const member = await guild.members?.fetch?.(interaction.user.id);
                 if (!member || member.id !== interaction.user.id) throw Error('Anggota tidak dapat diperiksa.');
@@ -825,17 +852,27 @@ export function createMessageStudio({
                     wait: (seconds) => new Promise((resolve) => setTimeout(resolve, seconds * 1000)),
                     hasRole: async (id) => { const role = await roleFor(id); return member.roles.cache.has(role.id); },
                     changeRole: async (action, id) => { const role = await roleFor(id); const has = member.roles.cache.has(role.id); if (action === 'add_role' && !has || action === 'toggle_role' && !has) await member.roles.add(role); else if (action === 'remove_role' && has || action === 'toggle_role' && has) await member.roles.remove(role); },
-                    sendTemplate: async (templateId, isPrivate) => {
+                    sendTemplate: async (templateId, isPrivate, channelId) => {
                         const template = (await readState(guild.id)).templates.find((item) => item.id === templateId);
                         if (!template) throw Error('Template tidak ditemukan.');
-                        // Interactive components need their own persistent message identity; do not emit dead controls.
-                        if (hasInteractive(template.document)) throw Error('Template respons tidak boleh berisi komponen interaktif.');
-                        if (typeof interaction.followUp !== 'function') throw Error('Respons interaksi tidak tersedia.');
-                        const payload = await buildPayload(guild.id, template.document);
-                        if (isPrivate) payload.flags |= MessageFlags.Ephemeral;
-                        const sent = await interaction.followUp(payload);
-                        if (!sent?.delete) throw Error('Respons terkirim tetapi tidak dapat dihapus oleh flow.');
-                        return { delete: () => sent.delete() };
+                        if (!channelId && typeof interaction.followUp !== 'function') throw Error('Respons interaksi tidak tersedia.');
+                        const interactive = hasInteractive(template.document), depth = (record.depth || 0) + 1;
+                        if (interactive && depth > 3) throw Error('Tingkat respons interaktif sudah mencapai batas.');
+                        // Follow-up interactions need their own snapshot and message binding. Sessions expire
+                        // after 15 minutes and never store the interaction token. Private sessions bind the user.
+                        const id = interactive ? `flow-${shortId()}` : null;
+                        const key = interactive ? `message-studio:v1:reply:${guild.id}:${id}` : null;
+                        const snapshot = interactive ? { version: 1, id, rootId: record.rootId || record.id, messageId: null, userId: !channelId && isPrivate ? interaction.user.id : null, depth, expiresAt: now() + 15 * 60 * 1000, document: template.document } : null;
+                        const payload = await buildPayload(guild.id, template.document, { recordId: id });
+                        if (!channelId && isPrivate) payload.flags |= MessageFlags.Ephemeral;
+                        if (interactive) await kv.set(key, snapshot, 15 * 60);
+                        const sent = channelId ? await destination(channelId).send(payload) : await interaction.followUp(payload);
+                        if (!sent?.delete || (interactive && !snowflake(sent.id))) throw Error('Respons terkirim tetapi identitasnya tidak tersedia.');
+                        if (interactive) {
+                            try { await kv.set(key, { ...snapshot, messageId: sent.id }, 15 * 60); }
+                            catch (error) { await sent.delete().catch(() => {}); throw error; }
+                        }
+                        return { delete: async () => { await sent.delete(); if (key) await kv.set(key, null, 1); } };
                     },
                     send: async (action, id, message) => {
                         if (!message.trim() || message.length > 4000) throw Error('Teks hasil flow tidak valid.');
@@ -850,9 +887,61 @@ export function createMessageStudio({
                     deleteMessage: async (message) => message.delete(),
                 });
             }); } finally { activeFlows--; }
-            return reply(interaction, 'Flow selesai.');
+            return reply(interaction, successContent);
         } catch {
             return reply(interaction, 'Flow berhenti karena izin, konfigurasi, atau Discord bermasalah. Sebagian action sebelumnya mungkin sudah berjalan; periksa server sebelum mencoba ulang.');
+        }
+    }
+    async function openStudioModal(interaction, record, action) {
+        if (!interaction.guild || interaction.guild.id !== client.homeGuildId || !snowflake(interaction.user?.id) || typeof interaction.showModal !== 'function') return reply(interaction, 'Formulir tidak dapat dibuka.');
+        const timestamp = now(), cooldownKey = `modal:${record.id}:${interaction.user.id}`;
+        for (const [id, until] of flowCooldowns) if (until <= timestamp) flowCooldowns.delete(id);
+        if (flowCooldowns.has(cooldownKey) || flowCooldowns.size >= 1000) return reply(interaction, 'Tunggu sebentar sebelum membuka formulir lagi.');
+        flowCooldowns.set(cooldownKey, timestamp + 5000);
+        const modalId = shortId(), key = `message-studio:v1:modal:${interaction.guildId}:${modalId}`;
+        const session = { version: 1, userId: interaction.user.id, rootId: record.rootId || record.id, expiresAt: timestamp + 600000, action };
+        const modal = new ModalBuilder().setCustomId(`ms_form:${modalId}`).setTitle(action.title);
+        for (const field of action.fields) {
+            const input = new TextInputBuilder().setCustomId(field.id).setLabel(field.label).setStyle(field.style === 'short' ? TextInputStyle.Short : TextInputStyle.Paragraph).setRequired(field.required).setMaxLength(500);
+            modal.addComponents(new ActionRowBuilder().addComponents(input));
+        }
+        await kv.set(key, session, 600);
+        await interaction.showModal(modal);
+    }
+    async function handleModal(interaction, args = []) {
+        const [id] = args;
+        if (!interaction?.guild || interaction.guild.id !== client.homeGuildId || interaction.guildId !== client.homeGuildId || !snowflake(interaction.user?.id) || !safeId(id)) return reply(interaction, 'Formulir tidak valid.');
+        const key = `message-studio:v1:modal:${interaction.guildId}:${id}`;
+        const session = await kv.get(key);
+        if (!plain(session) || session.version !== 1 || session.userId !== interaction.user.id || !Number.isFinite(session.expiresAt) || session.expiresAt <= now() || !(await readState(interaction.guildId)).messages.some((item) => item.id === session.rootId && item.sender === 'bot')) return reply(interaction, 'Formulir ini tidak aktif atau sudah kedaluwarsa.');
+        let action;
+        try { [action] = normalizeStudioFlow([session.action]); if (action.type !== 'open_modal') throw Error(); } catch { return reply(interaction, 'Formulir tidak valid.'); }
+        const values = [];
+        try {
+            for (const field of action.fields) {
+                const value = interaction.fields.getTextInputValue(field.id);
+                if (typeof value !== 'string' || value.length > 500 || value.includes('\0') || (field.required && !value.trim())) throw Error();
+                values.push(value);
+            }
+        } catch { return reply(interaction, 'Isi formulir tidak valid.'); }
+        const escape = (value) => value.replace(/[\\*_~`|>#]/g, '\\$&');
+        const content = [`## ${escape(action.title)}`, `Dari: <@${interaction.user.id}>`, ...action.fields.map((field, i) => `**${escape(field.label)}**\n${escape(values[i] || '—')}`)].join('\n\n');
+        if (content.length > 4000) return reply(interaction, 'Isi formulir terlalu panjang untuk dikirim.');
+        if (typeof interaction.deferReply !== 'function') return reply(interaction, 'Formulir tidak dapat dikirim.');
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+        // Atomically consume only this user's unexpired session before sending, so replays cannot duplicate reports.
+        const taken = await kv.update(key, (current) => {
+            if (!current || current.userId !== interaction.user.id || current.expiresAt <= now()) return undefined;
+            return null;
+        }, 1);
+        if (taken === undefined) return reply(interaction, 'Formulir ini sudah dikirim atau kedaluwarsa.');
+        try {
+            const channel = interaction.guild.channels?.cache?.get(action.channelId);
+            if (!channel || ![ChannelType.GuildText, ChannelType.GuildAnnouncement].includes(channel.type) || !channel.permissionsFor?.(interaction.guild.members.me)?.has?.([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages])) throw Error('Channel atau izin tidak tersedia.');
+            await channel.send({ ...v2Message([new ContainerBuilder().addTextDisplayComponents(new TextDisplayBuilder().setContent(content))]), allowedMentions: { parse: [], repliedUser: false } });
+            return reply(interaction, 'Formulir berhasil dikirim.');
+        } catch {
+            return reply(interaction, 'Formulir gagal atau hasil pengiriman tidak pasti. Periksa channel tujuan sebelum mencoba lagi.');
         }
     }
     async function handleSelect(interaction, args = []) {
@@ -866,16 +955,18 @@ export function createMessageStudio({
             return reply(interaction, block.response);
         }
         const values = Array.isArray(interaction.values) ? interaction.values : [];
-        if (!block || interaction.componentType !== 3 || !values.length || values.length < block.minValues || values.length > block.maxValues || new Set(values).size !== values.length) return reply(interaction, 'Pilihan ini tidak lagi aktif atau tidak valid.');
+        if (!block || interaction.componentType !== 3 || values.length < block.minValues || values.length > block.maxValues || new Set(values).size !== values.length) return reply(interaction, 'Pilihan ini tidak lagi aktif atau tidak valid.');
+        if (!values.length) return reply(interaction, 'Tidak ada pilihan. Tidak ada role yang diubah.');
         const picked = values.map((id) => block.options.find((item) => item.id === id));
         if (picked.some((item) => !item)) return reply(interaction, 'Pilihan ini tidak lagi aktif atau tidak valid.');
         if (picked.some((item) => item.flow)) {
-            const flows = picked.map((item) => item.flow);
-            // A mixed multi-select must not accidentally publish a legacy private response.
-            if (picked.some((item) => !item.flow)) return reply(interaction, 'Pilih opsi flow dan respons biasa secara terpisah.');
-            return executeInteractionFlows(interaction, record, flows);
+            const flows = picked.filter((item) => item.flow).map((item) => item.flow);
+            const messages = picked.filter((item) => !item.flow).map((item) => `**${item.label}**\n${item.response}`);
+            const success = ['Flow selesai.', ...messages].join('\n\n');
+            if (success.length > 4000) return reply(interaction, 'Gabungan respons terlalu panjang. Pilih lebih sedikit opsi.');
+            return executeInteractionFlows(interaction, record, flows, success);
         }
         return reply(interaction, picked.map((option) => `**${option.label}**\n${option.response}`).join('\n\n'));
     }
-    return { overview, asset, send, edit, remove, forget, saveTemplate, deleteTemplate, handleButton, handleSelect, normalizeDocument: normalizeMessageDocument };
+    return { overview, asset, send, edit, remove, forget, saveTemplate, deleteTemplate, handleButton, handleSelect, handleModal, normalizeDocument: normalizeMessageDocument };
 }

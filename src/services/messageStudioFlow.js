@@ -12,7 +12,7 @@ export function normalizeStudioFlow(value) {
         if (!Array.isArray(actions) || depth > 3) throw fail('Flow harus berupa daftar action dengan maksimal 3 tingkat kondisi.');
         return actions.map((action) => {
             if (++steps > 20) throw fail('Flow maksimal 20 action termasuk cabang.');
-            obj(action, ['type', 'seconds', 'roleId', 'channelId', 'message', 'name', 'value', 'condition', 'then', 'else', 'templateId', 'private']);
+            obj(action, ['type', 'seconds', 'roleId', 'channelId', 'message', 'name', 'value', 'condition', 'then', 'else', 'templateId', 'private', 'title', 'fields']);
             const { type } = action;
             const only = (allowed) => obj(action, ['type', ...allowed]);
             if (type === 'noop' || type === 'stop' || type === 'delete_message') { only([]); return { type }; }
@@ -27,9 +27,26 @@ export function normalizeStudioFlow(value) {
                 else throw fail('Jenis kondisi tidak didukung.');
                 return { type, condition: { ...c }, then: list(action.then || [], depth + 1), else: list(action.else || [], depth + 1) };
             }
+            if (type === 'open_modal') {
+                only(['title', 'channelId', 'fields']);
+                if (depth !== 0 || actions.length !== 1) throw fail('Open Modal harus menjadi satu-satunya action tombol.');
+                if (!snowflake(action.channelId) || !Array.isArray(action.fields) || !action.fields.length || action.fields.length > 5) throw fail('Formulir tidak valid.');
+                const title = text(action.title, 45), ids = new Set();
+                const fields = action.fields.map((field) => {
+                    obj(field, ['id', 'label', 'style', 'required']);
+                    if (!name(field.id) || ids.has(field.id) || !['short', 'paragraph'].includes(field.style) || typeof field.required !== 'boolean') throw fail('Kolom formulir tidak valid.');
+                    ids.add(field.id); return { id: field.id, label: text(field.label, 45), style: field.style, required: field.required };
+                });
+                return { type, title, channelId: action.channelId, fields };
+            }
             if (type === 'send_message' && action.templateId !== undefined) {
-                only(['templateId', 'private']);
-                if (typeof action.templateId !== 'string' || !/^[A-Za-z0-9_-]{1,48}$/.test(action.templateId) || typeof action.private !== 'boolean') throw fail('Template atau visibilitas flow tidak valid.');
+                only(['templateId', 'private', 'channelId']);
+                if (typeof action.templateId !== 'string' || !/^[A-Za-z0-9_-]{1,48}$/.test(action.templateId)) throw fail('Template flow tidak valid.');
+                if (action.channelId !== undefined) {
+                    if (!snowflake(action.channelId) || action.private !== undefined) throw fail('Channel template tidak valid.');
+                    return { type, templateId: action.templateId, channelId: action.channelId };
+                }
+                if (typeof action.private !== 'boolean') throw fail('Visibilitas template flow tidak valid.');
                 return { type, templateId: action.templateId, private: action.private };
             }
             if (type === 'send_message' || type === 'send_webhook_message') { only(['channelId', 'message']); if (!snowflake(action.channelId)) throw fail('Channel flow tidak valid.'); return { type, channelId: action.channelId, message: text(action.message, 4000) }; }
@@ -61,7 +78,7 @@ export async function runStudioFlow(flow, context) {
                     break;
                 }
                 case 'add_role': case 'remove_role': case 'toggle_role': await context.changeRole(action.type, action.roleId); break;
-                case 'send_message': case 'send_webhook_message': lastMessage = action.templateId ? await context.sendTemplate(action.templateId, action.private) : await context.send(action.type, action.channelId, interpolate(action.message)); break;
+                case 'send_message': case 'send_webhook_message': lastMessage = action.templateId ? await context.sendTemplate(action.templateId, action.private, action.channelId) : await context.send(action.type, action.channelId, interpolate(action.message)); break;
                 case 'create_thread': await context.createThread(action.channelId, interpolate(action.name)); break;
                 case 'delete_message': if (!lastMessage) throw new Error('Tidak ada pesan yang dibuat flow ini untuk dihapus.'); await context.deleteMessage(lastMessage); lastMessage = null; break;
                 default: throw fail('Action flow tidak dikenal.');

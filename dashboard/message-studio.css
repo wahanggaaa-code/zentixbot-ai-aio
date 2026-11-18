@@ -8,3 +8,6 @@
 .ms-md-spoiler{cursor:pointer}.ms-md-spoiler.revealed{color:#dbdee1;background:#4e5058}
 .ms-discord-file{border:1px solid #1e1f22;background:#2b2d31;color:#dbdee1;border-radius:5px;padding:12px;margin:8px 0;overflow-wrap:anywhere}
 .ms-add-options{width:100%;min-width:0;background:#d0d0c9;color:#141517;border:1px solid #141517;padding:8px;font:700 10px var(--mono);cursor:pointer}.ms-node-actions button[hidden]{display:none}
+
+.ms-order-title{padding:9px;border-bottom:1px solid var(--softline);font:700 10px var(--mono)}.ms-order-list{padding-bottom:7px}.ms-order-list>.ms-empty{padding:0 9px}.ms-order-row{display:flex;align-items:center;gap:4px;padding:4px 7px;font:10px var(--mono)}.ms-order-row span{flex:1;min-width:0;overflow-wrap:anywhere}.ms-order-row button:disabled{opacity:.45;cursor:not-allowed}
+.ms-flow-branch{border-left:2px solid #70736a;margin:10px 0;padding-left:10px}.ms-flow-branch h4{margin:8px 0}.ms-flow-branch .ms-item-card{padding:7px}
