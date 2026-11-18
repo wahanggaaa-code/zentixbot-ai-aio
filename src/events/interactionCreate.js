@@ -211,7 +211,7 @@ export default {
               handler: 'general'
             }, interactionTraceContext));
           }
-        } else if (interaction.isStringSelectMenu()) {
+        } else if (interaction.isStringSelectMenu() || (interaction.isAnySelectMenu?.() && interaction.customId?.startsWith('ms_sel:'))) {
           const [customId, ...args] = interaction.customId.split(':');
           const selectMenu = client.selectMenus.get(customId);
 

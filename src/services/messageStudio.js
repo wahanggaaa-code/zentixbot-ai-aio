@@ -11,18 +11,26 @@ import {
     ButtonStyle,
     ChannelType,
     ContainerBuilder,
+    FileBuilder,
     MediaGalleryBuilder,
     MediaGalleryItemBuilder,
     PermissionFlagsBits,
+    MessageFlags,
     SeparatorBuilder,
     SectionBuilder,
     ThumbnailBuilder,
     StringSelectMenuBuilder,
+    UserSelectMenuBuilder,
+    RoleSelectMenuBuilder,
+    MentionableSelectMenuBuilder,
+    ChannelSelectMenuBuilder,
     TextDisplayBuilder,
     WebhookClient,
 } from 'discord.js';
 import { createKV } from './ai/kv.js';
 import { createV2Container, v2Message } from '../utils/componentsV2.js';
+import { normalizeStudioFlow, runStudioFlow } from './messageStudioFlow.js';
+import { checkPanelRole, resolveRole } from './selfRoles/manage.js';
 
 const err = (message, status = 400, code = 'MESSAGE_STUDIO_INVALID', extra = {}) => Object.assign(new Error(message), { status, code, ...extra });
 const plain = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -54,6 +62,7 @@ const mint = (value, used, label, makeId) => {
 const HEX = /^#[0-9a-fA-F]{6}$/;
 const HTTPS = /^https:\/\//i;
 const BUTTON_STYLES = Object.freeze({ primary: ButtonStyle.Primary, secondary: ButtonStyle.Secondary, success: ButtonStyle.Success, danger: ButtonStyle.Danger, link: ButtonStyle.Link });
+const FILE_MIMES = Object.freeze({ 'application/pdf': 'pdf', 'text/plain': 'txt' });
 const IMAGE_MIMES = Object.freeze({ 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp', 'image/gif': 'gif' });
 
 export const MESSAGE_STUDIO_LIMITS = Object.freeze({
@@ -108,100 +117,143 @@ function normalizeSource(value, allowUploads) {
  * explicit so component custom IDs can never be supplied by a user as arbitrary bot handlers.
  */
 export function normalizeMessageDocument(value, { allowUploads = false, makeId = shortId } = {}) {
-    own(value, ['version', 'containers']);
-    if (value.version !== 1 || !Array.isArray(value.containers) || value.containers.length < 1 || value.containers.length > MESSAGE_STUDIO_LIMITS.containers) throw err('Dokumen harus berisi 1 sampai 4 container.');
+    own(value, ['version', 'containers', 'before', 'after']);
+    if (value.version !== 1 || !Array.isArray(value.containers) || value.containers.length > MESSAGE_STUDIO_LIMITS.containers) throw err('Dokumen boleh berisi paling banyak 4 container.');
     const containerIds = new Set(), blockIds = new Set();
     let mediaItems = 0;
+    const normalizeBlock = (block) => {
+        own(block, ['id', 'type', 'content', 'divider', 'spacing', 'items', 'buttons', 'placeholder', 'minValues', 'maxValues', 'options', 'kind', 'response', 'source', 'spoiler']);
+        const id = mint(block.id, blockIds, 'ID komponen', makeId);
+        if (block.type === 'text') {
+            if (Object.keys(block).some((key) => !['id', 'type', 'content'].includes(key))) throw err('Komponen teks tidak valid.');
+            return { id, type: 'text', content: text(block.content, 4000, 'Teks') };
+        }
+        if (block.type === 'file') {
+            if (Object.keys(block).some((key) => !['id', 'type', 'source', 'spoiler'].includes(key))) throw err('File tidak valid.');
+            if (block.spoiler !== undefined && typeof block.spoiler !== 'boolean') throw err('Status spoiler file tidak valid.');
+            const source = normalizeSource(block.source, allowUploads);
+            if (source.kind === 'url') throw err('File harus diunggah, bukan URL.');
+            return { id, type: 'file', source, spoiler: block.spoiler === true };
+        }
+        if (block.type === 'separator') {
+            if (Object.keys(block).some((key) => !['id', 'type', 'divider', 'spacing'].includes(key))) throw err('Pemisah tidak valid.');
+            if (block.divider !== undefined && typeof block.divider !== 'boolean') throw err('Pemisah tidak valid.');
+            if (block.spacing !== undefined && block.spacing !== 1 && block.spacing !== 2) throw err('Jarak pemisah tidak valid.');
+            return { id, type: 'separator', divider: block.divider !== false, spacing: block.spacing === 2 ? 2 : 1 };
+        }
+        if (block.type === 'media' || block.type === 'section') {
+            if (Object.keys(block).some((key) => !(block.type === 'section' ? ['id', 'type', 'items', 'content'] : ['id', 'type', 'items']).includes(key)) || !Array.isArray(block.items) || !block.items.length || block.items.length > (block.type === 'section' ? 1 : MESSAGE_STUDIO_LIMITS.mediaItemsPerBlock)) throw err('Galeri gambar tidak valid.');
+            const itemIds = new Set();
+            const items = block.items.map((item) => {
+                own(item, ['id', 'source', 'description', 'spoiler'], 'Item gambar tidak valid.');
+                const itemId = mint(item.id, itemIds, 'ID gambar', makeId);
+                if (item.spoiler !== undefined && typeof item.spoiler !== 'boolean') throw err('Status spoiler gambar tidak valid.');
+                return { id: itemId, source: normalizeSource(item.source, allowUploads), description: optionalText(item.description, 1024, 'Deskripsi gambar'), spoiler: item.spoiler === true };
+            });
+            mediaItems += items.length;
+            if (mediaItems > 10) throw err('Satu pesan dapat memuat paling banyak 10 gambar.');
+            return block.type === 'section' ? { id, type: 'section', content: text(block.content, 4000, 'Teks section'), items } : { id, type: 'media', items };
+        }
+        if (block.type === 'buttons') {
+            if (Object.keys(block).some((key) => !['id', 'type', 'buttons'].includes(key)) || !Array.isArray(block.buttons) || !block.buttons.length || block.buttons.length > 5) throw err('Baris tombol tidak valid.');
+            const buttonIds = new Set();
+            const buttons = block.buttons.map((button) => {
+                own(button, ['id', 'label', 'style', 'url', 'response', 'emoji', 'disabled', 'flow'], 'Tombol tidak valid.');
+                const buttonId = mint(button.id, buttonIds, 'ID tombol', makeId);
+                if (!Object.hasOwn(BUTTON_STYLES, button.style)) throw err('Gaya tombol tidak valid.');
+                if (button.disabled !== undefined && typeof button.disabled !== 'boolean') throw err('Status tombol tidak valid.');
+                const base = { id: buttonId, label: text(button.label, 80, 'Label tombol'), style: button.style, emoji: normalizeEmoji(button.emoji), disabled: button.disabled === true };
+                if (button.style === 'link') {
+                    if (typeof button.url !== 'string' || button.url.length > 2000 || !HTTPS.test(button.url) || (button.response !== undefined || button.flow !== undefined)) throw err('Tombol link memerlukan URL HTTPS.');
+                    return { ...base, url: button.url };
+                }
+                if (button.url !== undefined) throw err('Tombol respons tidak boleh memiliki URL.');
+                if (button.flow !== undefined) {
+                    if (button.response !== undefined) throw err('Gunakan flow atau respons, bukan keduanya.');
+                    return { ...base, flow: normalizeStudioFlow(button.flow) };
+                }
+                if (typeof button.response !== 'string' || button.response.length > 2000 || !button.response.trim()) throw err('Tombol respons memerlukan isi respons singkat.');
+                return { ...base, response: button.response };
+            });
+            return { id, type: 'buttons', buttons };
+        }
+        if (block.type === 'entity-select') {
+            if (Object.keys(block).some((key) => !['id', 'type', 'kind', 'placeholder', 'minValues', 'maxValues', 'response'].includes(key))) throw err('Menu pilihan tidak valid.');
+            if (!['user', 'role', 'mentionable', 'channel'].includes(block.kind)) throw err('Jenis menu pilihan tidak valid.');
+            const minValues = block.minValues === undefined ? 1 : block.minValues;
+            const maxValues = block.maxValues === undefined ? 1 : block.maxValues;
+            if (!Number.isInteger(minValues) || !Number.isInteger(maxValues) || minValues < 0 || maxValues < 1 || minValues > maxValues || maxValues > 25) throw err('Batas pilihan menu tidak valid.');
+            return { id, type: 'entity-select', kind: block.kind, placeholder: optionalText(block.placeholder, 150, 'Placeholder menu'), minValues, maxValues, response: text(block.response, 2000, 'Respons pilihan') };
+        }
+        if (block.type === 'select') {
+            if (Object.keys(block).some((key) => !['id', 'type', 'placeholder', 'minValues', 'maxValues', 'options'].includes(key)) || !Array.isArray(block.options) || !block.options.length || block.options.length > 25) throw err('Menu pilihan tidak valid.');
+            const optionIds = new Set();
+            const options = block.options.map((option) => {
+                own(option, ['id', 'label', 'description', 'emoji', 'response', 'flow'], 'Pilihan menu tidak valid.');
+                if (option.flow !== undefined && option.response !== undefined) throw err('Gunakan flow atau respons, bukan keduanya.');
+                const optionId = mint(option.id, optionIds, 'ID pilihan', makeId);
+                return {
+                    id: optionId,
+                    label: text(option.label, 100, 'Label pilihan'),
+                    description: optionalText(option.description, 100, 'Deskripsi pilihan'),
+                    emoji: normalizeEmoji(option.emoji),
+                    ...(option.flow !== undefined ? { flow: normalizeStudioFlow(option.flow) } : { response: text(option.response, 2000, 'Respons pilihan') }),
+                };
+            });
+            const minValues = block.minValues === undefined ? 1 : block.minValues;
+            const maxValues = block.maxValues === undefined ? 1 : block.maxValues;
+            if (!Number.isInteger(minValues) || !Number.isInteger(maxValues) || minValues < 0 || maxValues < 1 || minValues > maxValues || maxValues > options.length) throw err('Batas pilihan menu tidak valid.');
+            if (options.some((option) => option.flow) && maxValues !== 1) throw err('Menu dengan flow hanya dapat memilih satu opsi.');
+            return { id, type: 'select', placeholder: optionalText(block.placeholder, 150, 'Placeholder menu'), minValues, maxValues, options };
+        }
+        throw err('Jenis komponen tidak didukung.');
+    };
     const containers = value.containers.map((container) => {
         own(container, ['id', 'accentColor', 'spoiler', 'blocks']);
         const id = mint(container.id, containerIds, 'ID container', makeId);
         if (container.accentColor !== null && container.accentColor !== undefined && (typeof container.accentColor !== 'string' || !HEX.test(container.accentColor))) throw err('Warna container harus berupa kode hex seperti #5865F2.');
         if (container.spoiler !== undefined && typeof container.spoiler !== 'boolean') throw err('Status spoiler container tidak valid.');
         if (!Array.isArray(container.blocks) || !container.blocks.length || container.blocks.length > MESSAGE_STUDIO_LIMITS.blocksPerContainer) throw err('Setiap container harus berisi 1 sampai 10 komponen.');
-        const blocks = container.blocks.map((block) => {
-            own(block, ['id', 'type', 'content', 'divider', 'spacing', 'items', 'buttons', 'placeholder', 'minValues', 'maxValues', 'options']);
-            const id = mint(block.id, blockIds, 'ID komponen', makeId);
-            if (block.type === 'text') {
-                if (Object.keys(block).some((key) => !['id', 'type', 'content'].includes(key))) throw err('Komponen teks tidak valid.');
-                return { id, type: 'text', content: text(block.content, 4000, 'Teks') };
-            }
-            if (block.type === 'separator') {
-                if (Object.keys(block).some((key) => !['id', 'type', 'divider', 'spacing'].includes(key))) throw err('Pemisah tidak valid.');
-                if (block.divider !== undefined && typeof block.divider !== 'boolean') throw err('Pemisah tidak valid.');
-                if (block.spacing !== undefined && block.spacing !== 1 && block.spacing !== 2) throw err('Jarak pemisah tidak valid.');
-                return { id, type: 'separator', divider: block.divider !== false, spacing: block.spacing === 2 ? 2 : 1 };
-            }
-            if (block.type === 'media' || block.type === 'section') {
-                if (Object.keys(block).some((key) => !(block.type === 'section' ? ['id', 'type', 'items', 'content'] : ['id', 'type', 'items']).includes(key)) || !Array.isArray(block.items) || !block.items.length || block.items.length > (block.type === 'section' ? 1 : MESSAGE_STUDIO_LIMITS.mediaItemsPerBlock)) throw err('Galeri gambar tidak valid.');
-                const itemIds = new Set();
-                const items = block.items.map((item) => {
-                    own(item, ['id', 'source', 'description', 'spoiler'], 'Item gambar tidak valid.');
-                    const itemId = mint(item.id, itemIds, 'ID gambar', makeId);
-                    if (item.spoiler !== undefined && typeof item.spoiler !== 'boolean') throw err('Status spoiler gambar tidak valid.');
-                    return { id: itemId, source: normalizeSource(item.source, allowUploads), description: optionalText(item.description, 1024, 'Deskripsi gambar'), spoiler: item.spoiler === true };
-                });
-                mediaItems += items.length;
-                if (mediaItems > 10) throw err('Satu pesan dapat memuat paling banyak 10 gambar.');
-                return block.type === 'section' ? { id, type: 'section', content: text(block.content, 4000, 'Teks section'), items } : { id, type: 'media', items };
-            }
-            if (block.type === 'buttons') {
-                if (Object.keys(block).some((key) => !['id', 'type', 'buttons'].includes(key)) || !Array.isArray(block.buttons) || !block.buttons.length || block.buttons.length > 5) throw err('Baris tombol tidak valid.');
-                const buttonIds = new Set();
-                const buttons = block.buttons.map((button) => {
-                    own(button, ['id', 'label', 'style', 'url', 'response', 'emoji', 'disabled'], 'Tombol tidak valid.');
-                    const buttonId = mint(button.id, buttonIds, 'ID tombol', makeId);
-                    if (!Object.hasOwn(BUTTON_STYLES, button.style)) throw err('Gaya tombol tidak valid.');
-                    if (button.disabled !== undefined && typeof button.disabled !== 'boolean') throw err('Status tombol tidak valid.');
-                    const base = { id: buttonId, label: text(button.label, 80, 'Label tombol'), style: button.style, emoji: normalizeEmoji(button.emoji), disabled: button.disabled === true };
-                    if (button.style === 'link') {
-                        if (typeof button.url !== 'string' || button.url.length > 2000 || !HTTPS.test(button.url) || button.response !== undefined) throw err('Tombol link memerlukan URL HTTPS.');
-                        return { ...base, url: button.url };
-                    }
-                    if (button.url !== undefined || typeof button.response !== 'string' || button.response.length > 2000 || !button.response.trim()) throw err('Tombol respons memerlukan isi respons singkat.');
-                    return { ...base, response: button.response };
-                });
-                return { id, type: 'buttons', buttons };
-            }
-            if (block.type === 'select') {
-                if (Object.keys(block).some((key) => !['id', 'type', 'placeholder', 'minValues', 'maxValues', 'options'].includes(key)) || !Array.isArray(block.options) || !block.options.length || block.options.length > 25) throw err('Menu pilihan tidak valid.');
-                const optionIds = new Set();
-                const options = block.options.map((option) => {
-                    own(option, ['id', 'label', 'description', 'emoji', 'response'], 'Pilihan menu tidak valid.');
-                    const optionId = mint(option.id, optionIds, 'ID pilihan', makeId);
-                    return {
-                        id: optionId,
-                        label: text(option.label, 100, 'Label pilihan'),
-                        description: optionalText(option.description, 100, 'Deskripsi pilihan'),
-                        emoji: normalizeEmoji(option.emoji),
-                        response: text(option.response, 2000, 'Respons pilihan'),
-                    };
-                });
-                const minValues = block.minValues === undefined ? 1 : block.minValues;
-                const maxValues = block.maxValues === undefined ? 1 : block.maxValues;
-                if (!Number.isInteger(minValues) || !Number.isInteger(maxValues) || minValues < 0 || maxValues < 1 || minValues > maxValues || maxValues > options.length) throw err('Batas pilihan menu tidak valid.');
-                return { id, type: 'select', placeholder: optionalText(block.placeholder, 150, 'Placeholder menu'), minValues, maxValues, options };
-            }
-            throw err('Jenis komponen tidak didukung.');
-        });
+        const blocks = container.blocks.map(normalizeBlock);
         return { id, accentColor: container.accentColor || null, spoiler: container.spoiler === true, blocks };
     });
+    const normalizeOutside = (items) => {
+        if (items === undefined) return [];
+        if (!Array.isArray(items) || items.length > 10) throw err('Bagian luar container maksimal 10 komponen.');
+        return items.map((block) => {
+            if (!plain(block) || !['text', 'buttons', 'select', 'entity-select', 'media', 'separator', 'file'].includes(block.type)) throw err('Jenis komponen di luar container tidak didukung.');
+            return normalizeBlock(block);
+        });
+    };
+    const before = normalizeOutside(value.before), after = normalizeOutside(value.after);
+    if (!containers.length && !before.length && !after.length) throw err('Pesan harus memiliki setidaknya satu komponen.');
     // Discord limits the entire V2 message to 40 components, including nested children,
     // and 4,000 characters across all text displays.
     let componentCount = containers.length, textLength = 0;
-    for (const container of containers) for (const block of container.blocks) {
+    for (const block of [...before, ...containers.flatMap((container) => container.blocks), ...after]) {
         componentCount++;
         if (block.type === 'text' || block.type === 'section') textLength += block.content.length;
         if (block.type === 'section') componentCount += 2; // text display and thumbnail
         if (block.type === 'buttons') componentCount += block.buttons.length;
-        if (block.type === 'select') componentCount++;
+        if (block.type === 'select' || block.type === 'entity-select') componentCount++;
     }
+    const attachments = new Set();
+    for (const block of [...before, ...containers.flatMap((container) => container.blocks), ...after]) {
+        const sources = block.type === 'file' ? [block.source] : (block.type === 'media' || block.type === 'section') ? block.items.map((item) => item.source) : [];
+        for (const source of sources) if (source.kind === 'asset' || source.kind === 'upload') attachments.add(`${source.kind}:${source.assetId || source.uploadId}`);
+    }
+    if (attachments.size > 10) throw err('Satu pesan dapat memuat paling banyak 10 file terlampir.');
     if (componentCount > 40) throw err('Satu pesan dapat memuat paling banyak 40 komponen Discord.');
     if (textLength > 4000) throw err('Total teks pesan maksimal 4.000 karakter.');
-    return { version: 1, containers };
+    return { version: 1, containers, ...(value.before !== undefined ? { before } : {}), ...(value.after !== undefined ? { after } : {}) };
+}
+
+function allBlocks(document) {
+    return [...(document.before || []), ...document.containers.flatMap((container) => container.blocks), ...(document.after || [])];
 }
 
 function hasInteractive(document) {
-    return document.containers.some((container) => container.blocks.some((block) => block.type === 'select' || (block.type === 'buttons' && block.buttons.some((button) => button.style !== 'link'))));
+    return allBlocks(document).some((block) => (block.type === 'select' || block.type === 'entity-select') || (block.type === 'buttons' && block.buttons.some((button) => button.style !== 'link')));
 }
 
 function normalizeSender(value) {
@@ -221,7 +273,7 @@ function normalizeIdentity(value, sender) {
 
 function normalizeUpload(value) {
     own(value, ['id', 'name', 'mime', 'base64'], 'Gambar unggahan tidak valid.');
-    if (!safeId(value.id) || typeof value.mime !== 'string' || !Object.hasOwn(IMAGE_MIMES, value.mime)) throw err('Jenis gambar harus PNG, JPEG, WebP atau GIF.');
+    if (!safeId(value.id) || typeof value.mime !== 'string' || !(Object.hasOwn(IMAGE_MIMES, value.mime) || Object.hasOwn(FILE_MIMES, value.mime))) throw err('Jenis file tidak didukung.');
     if (value.name !== undefined && (typeof value.name !== 'string' || value.name.length > 100)) throw err('Nama gambar tidak valid.');
     const source = typeof value.base64 === 'string' ? value.base64.replace(/^data:[^,]*,/i, '') : '';
     if (!source || !/^[A-Za-z0-9+/=\r\n]+$/.test(source)) throw err('Data gambar tidak valid.');
@@ -234,7 +286,9 @@ function normalizeUpload(value) {
         if (buffer.length >= 12 && buffer.subarray(0, 4).toString('latin1') === 'RIFF' && buffer.subarray(8, 12).toString('latin1') === 'WEBP') return 'image/webp';
         return null;
     })();
-    if (magic !== value.mime) throw err('Isi file bukan gambar yang sesuai dengan jenisnya.');
+    if (Object.hasOwn(IMAGE_MIMES, value.mime) && magic !== value.mime) throw err('Isi file bukan gambar yang sesuai dengan jenisnya.');
+    if (value.mime === 'application/pdf' && buffer.subarray(0, 5).toString('ascii') !== '%PDF-') throw err('Isi file bukan PDF yang valid.');
+    if (value.mime === 'text/plain' && (buffer.includes(0) || !Buffer.from(buffer.toString('utf8'), 'utf8').equals(buffer))) throw err('File teks harus berupa UTF-8.');
     return { id: value.id, mime: value.mime, buffer };
 }
 
@@ -257,7 +311,7 @@ const ASSET_CHUNK_CHARS = 900000;
 
 function validAssetMeta(value) {
     return plain(value) && value.version === 1 && typeof value.filename === 'string' && /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/.test(value.filename)
-        && Object.hasOwn(IMAGE_MIMES, value.mime) && Number.isInteger(value.parts) && value.parts >= 1 && value.parts <= MESSAGE_STUDIO_LIMITS.uploadParts;
+        && (Object.hasOwn(IMAGE_MIMES, value.mime) || Object.hasOwn(FILE_MIMES, value.mime)) && Number.isInteger(value.parts) && value.parts >= 1 && value.parts <= MESSAGE_STUDIO_LIMITS.uploadParts;
 }
 
 function stateKey(guildId) { return `message-studio:v1:state:${guildId}`; }
@@ -312,15 +366,16 @@ function safeSummary(record) {
 
 function documentAssetIds(document) {
     const ids = new Set();
-    for (const container of document.containers) for (const block of container.blocks) if (block.type === 'media' || block.type === 'section') for (const item of block.items) if (item.source.kind === 'asset') ids.add(item.source.assetId);
+    for (const block of allBlocks(document)) {
+        if (block.type === 'media' || block.type === 'section') for (const item of block.items) if (item.source.kind === 'asset') ids.add(item.source.assetId);
+        if (block.type === 'file' && block.source.kind === 'asset') ids.add(block.source.assetId);
+    }
     return ids;
 }
 
 function addTestNotice(document) {
     const copy = structuredClone(document);
-    const first = copy.containers[0];
-    if (first.blocks.length < MESSAGE_STUDIO_LIMITS.blocksPerContainer) first.blocks.unshift({ id: `test-${shortId()}`, type: 'text', content: '-# PESAN UJI · Message Studio' });
-    else copy.containers.unshift({ id: `test-container-${shortId()}`, accentColor: '#FEE75C', spoiler: false, blocks: [{ id: `test-${shortId()}`, type: 'text', content: '-# PESAN UJI · Message Studio' }] });
+    copy.before = [{ id: `test-${shortId()}`, type: 'text', content: '-# PESAN UJI · Message Studio' }, ...(copy.before || [])];
     return copy;
 }
 
@@ -338,6 +393,8 @@ export function createMessageStudio({
 } = {}) {
     if (!client) throw Error('Message Studio membutuhkan client Discord.');
     const changing = new Set();
+    const flowCooldowns = new Map();
+    let activeFlows = 0;
     const home = (guild) => guild?.id === client.homeGuildId;
     const lock = async (key, task) => {
         if (changing.has(key)) throw err('Pesan ini sedang diubah. Tunggu sebentar lalu muat ulang.', 429, 'MESSAGE_STUDIO_BUSY');
@@ -370,7 +427,7 @@ export function createMessageStudio({
         if (!parts.length || parts.length > MESSAGE_STUDIO_LIMITS.uploadParts) throw err('Gambar terlalu besar untuk disimpan.', 400, 'MESSAGE_STUDIO_IMAGE');
         try {
             for (let index = 0; index < parts.length; index++) await kv.set(assetPartKey(guildId, assetId, index), parts[index]);
-            const filename = `studio-${assetId}.${IMAGE_MIMES[upload.mime]}`;
+            const filename = `studio-${assetId}.${IMAGE_MIMES[upload.mime] || FILE_MIMES[upload.mime]}`;
             await kv.set(assetMetaKey(guildId, assetId), { version: 1, filename, mime: upload.mime, parts: parts.length });
             return { id: assetId, filename, mime: upload.mime, buffer: upload.buffer };
         } catch { throw err('Gambar tidak dapat disimpan. Tidak ada pesan Discord yang dikirim.', 503, 'MESSAGE_STUDIO_STORAGE'); }
@@ -396,14 +453,18 @@ export function createMessageStudio({
         const uploads = normalizeUploads(uploadsValue);
         const doc = structuredClone(document), map = new Map();
         const wanted = new Set();
-        for (const container of doc.containers) for (const block of container.blocks) if (block.type === 'media' || block.type === 'section') for (const item of block.items) if (item.source.kind === 'upload') wanted.add(item.source.uploadId);
+        for (const block of allBlocks(doc)) {
+            if (block.type === 'media' || block.type === 'section') for (const item of block.items) if (item.source.kind === 'upload') wanted.add(item.source.uploadId);
+            if (block.type === 'file' && block.source.kind === 'upload') wanted.add(block.source.uploadId);
+        }
         for (const uploadId of wanted) {
             const upload = uploads.get(uploadId);
             if (!upload) throw err('Satu gambar unggahan tidak ditemukan dalam permintaan.');
             const assetId = makeId();
             map.set(uploadId, await saveAsset(guildId, assetId, upload));
         }
-        for (const container of doc.containers) for (const block of container.blocks) if (block.type === 'media' || block.type === 'section') for (const item of block.items) if (item.source.kind === 'upload') item.source = { kind: 'asset', assetId: map.get(item.source.uploadId).id };
+        for (const block of allBlocks(doc)) if (block.type === 'media' || block.type === 'section') for (const item of block.items) if (item.source.kind === 'upload') item.source = { kind: 'asset', assetId: map.get(item.source.uploadId).id };
+        for (const block of allBlocks(doc)) if (block.type === 'file' && block.source.kind === 'upload') block.source = { kind: 'asset', assetId: map.get(block.source.uploadId).id };
         return normalizeMessageDocument(doc);
     }
     async function assetsFor(guildId, document) {
@@ -437,19 +498,68 @@ export function createMessageStudio({
         const shown = test ? normalizeMessageDocument(addTestNotice(document)) : document;
         const assets = await assetsFor(guildId, shown);
         const attached = new Map();
-        const components = shown.containers.map((source) => {
+        function buttonRow(block) {
+            const row = new ActionRowBuilder();
+            for (const button of block.buttons) {
+                const built = new ButtonBuilder().setLabel(button.label).setStyle(BUTTON_STYLES[button.style]).setDisabled(button.disabled);
+                if (button.style === 'link') built.setURL(button.url);
+                else built.setCustomId(`ms_btn:${recordId}:${block.id}:${button.id}`);
+                if (button.emoji) built.setEmoji(button.emoji);
+                row.addComponents(built);
+            }
+            return row;
+        }
+        function selectRow(block) {
+            const Builder = block.type === 'select' ? StringSelectMenuBuilder : ({ user: UserSelectMenuBuilder, role: RoleSelectMenuBuilder, mentionable: MentionableSelectMenuBuilder, channel: ChannelSelectMenuBuilder })[block.kind];
+            const menu = new Builder().setCustomId(`ms_sel:${recordId}:${block.id}`).setMinValues(block.minValues).setMaxValues(block.maxValues);
+            if (block.placeholder) menu.setPlaceholder(block.placeholder);
+            if (block.type === 'select') menu.addOptions(block.options.map((option) => ({ label: option.label, value: option.id, ...(option.description ? { description: option.description } : {}), ...(option.emoji ? { emoji: option.emoji } : {}) })));
+            return new ActionRowBuilder().addComponents(menu);
+        }
+        function mediaGallery(block) {
+        const gallery = new MediaGalleryBuilder();
+        for (const item of block.items) {
+            const media = new MediaGalleryItemBuilder();
+            if (item.source.kind === 'url') media.setURL(item.source.url);
+            else {
+                const asset = assets.get(item.source.assetId);
+                if (!asset || !Object.hasOwn(IMAGE_MIMES, asset.mime)) throw err('Gambar unggahan tidak tersedia.', 409, 'MESSAGE_STUDIO_ASSET_MISSING');
+                media.setURL(`attachment://${asset.filename}`);
+                attached.set(asset.id, asset);
+            }
+            if (item.description) media.setDescription(item.description);
+            if (item.spoiler) media.setSpoiler(true);
+            gallery.addItems(media);
+        }
+        return gallery;
+        }
+        function fileComponent(block) {
+            const asset = assets.get(block.source.assetId);
+            if (!asset || !Object.hasOwn(FILE_MIMES, asset.mime)) throw err('File unggahan tidak tersedia.', 409, 'MESSAGE_STUDIO_ASSET_MISSING');
+            attached.set(asset.id, asset);
+            return new FileBuilder().setURL(`attachment://${asset.filename}`).setSpoiler(block.spoiler);
+        }
+        const outside = (block) => {
+            if (block.type === 'text') return new TextDisplayBuilder().setContent(block.content);
+            if (block.type === 'separator') return new SeparatorBuilder().setDivider(block.divider).setSpacing(block.spacing);
+            if (block.type === 'media') return mediaGallery(block);
+            if (block.type === 'file') return fileComponent(block);
+            return block.type === 'buttons' ? buttonRow(block) : selectRow(block);
+        };
+        const containers = shown.containers.map((source) => {
             const container = new ContainerBuilder();
             if (source.accentColor) container.setAccentColor(colorNumber(source.accentColor));
             if (source.spoiler) container.setSpoiler(true);
             for (const block of source.blocks) {
                 if (block.type === 'text') container.addTextDisplayComponents(new TextDisplayBuilder().setContent(block.content));
+                else if (block.type === 'file') container.addFileComponents(fileComponent(block));
                 else if (block.type === 'separator') container.addSeparatorComponents(new SeparatorBuilder().setDivider(block.divider).setSpacing(block.spacing));
                 else if (block.type === 'section') {
                     const item = block.items[0], thumbnail = new ThumbnailBuilder();
                     if (item.source.kind === 'url') thumbnail.setURL(item.source.url);
                     else {
                         const asset = assets.get(item.source.assetId);
-                        if (!asset) throw err('Gambar unggahan tidak tersedia.', 409, 'MESSAGE_STUDIO_ASSET_MISSING');
+                        if (!asset || !Object.hasOwn(IMAGE_MIMES, asset.mime)) throw err('Gambar unggahan tidak tersedia.', 409, 'MESSAGE_STUDIO_ASSET_MISSING');
                         thumbnail.setURL(`attachment://${asset.filename}`); attached.set(asset.id, asset);
                     }
                     if (item.description) thumbnail.setDescription(item.description);
@@ -457,40 +567,16 @@ export function createMessageStudio({
                     container.addSectionComponents(new SectionBuilder().addTextDisplayComponents(new TextDisplayBuilder().setContent(block.content)).setThumbnailAccessory(thumbnail));
                 }
                 else if (block.type === 'media') {
-                    const gallery = new MediaGalleryBuilder();
-                    for (const item of block.items) {
-                        const media = new MediaGalleryItemBuilder();
-                        if (item.source.kind === 'url') media.setURL(item.source.url);
-                        else {
-                            const asset = assets.get(item.source.assetId);
-                            if (!asset) throw err('Gambar unggahan tidak tersedia.', 409, 'MESSAGE_STUDIO_ASSET_MISSING');
-                            media.setURL(`attachment://${asset.filename}`);
-                            attached.set(asset.id, asset);
-                        }
-                        if (item.description) media.setDescription(item.description);
-                        if (item.spoiler) media.setSpoiler(true);
-                        gallery.addItems(media);
-                    }
-                    container.addMediaGalleryComponents(gallery);
+                    container.addMediaGalleryComponents(mediaGallery(block));
                 } else if (block.type === 'buttons') {
-                    const row = new ActionRowBuilder();
-                    for (const button of block.buttons) {
-                        const built = new ButtonBuilder().setLabel(button.label).setStyle(BUTTON_STYLES[button.style]).setDisabled(button.disabled);
-                        if (button.style === 'link') built.setURL(button.url);
-                        else built.setCustomId(`ms_btn:${recordId}:${block.id}:${button.id}`);
-                        if (button.emoji) built.setEmoji(button.emoji);
-                        row.addComponents(built);
-                    }
-                    container.addActionRowComponents(row);
-                } else if (block.type === 'select') {
-                    const menu = new StringSelectMenuBuilder().setCustomId(`ms_sel:${recordId}:${block.id}`).setMinValues(block.minValues).setMaxValues(block.maxValues);
-                    if (block.placeholder) menu.setPlaceholder(block.placeholder);
-                    menu.addOptions(block.options.map((option) => ({ label: option.label, value: option.id, ...(option.description ? { description: option.description } : {}), ...(option.emoji ? { emoji: option.emoji } : {}) })));
-                    container.addActionRowComponents(new ActionRowBuilder().addComponents(menu));
+                    container.addActionRowComponents(buttonRow(block));
+                } else if (block.type === 'select' || block.type === 'entity-select') {
+                    container.addActionRowComponents(selectRow(block));
                 }
             }
             return container;
         });
+        const components = [...(shown.before || []).map(outside), ...containers, ...(shown.after || []).map(outside)];
         const payload = v2Message(components);
         payload.allowedMentions = { parse: [], repliedUser: false };
         if (attached.size) payload.files = [...attached.values()].map((asset) => new AttachmentBuilder(asset.buffer, { name: asset.filename }));
@@ -704,17 +790,91 @@ export function createMessageStudio({
     async function handleButton(interaction, args = []) {
         const [recordId, blockId, buttonId] = args;
         const record = await interactionRecord(interaction, recordId);
-        const block = record?.document.containers.flatMap((container) => container.blocks).find((item) => item.id === blockId && item.type === 'buttons');
-        const button = block?.buttons.find((item) => item.id === buttonId && item.style !== 'link');
+        const block = (record ? allBlocks(record.document) : []).find((item) => item.id === blockId && item.type === 'buttons');
+        const button = block?.buttons.find((item) => item.id === buttonId && item.style !== 'link' && !item.disabled);
         if (!button) return reply(interaction, 'Tombol ini tidak lagi aktif atau pesan sudah diubah.');
-        return reply(interaction, button.response);
+        if (!button.flow) return reply(interaction, button.response);
+        return executeInteractionFlows(interaction, record, [button.flow]);
+    }
+    async function executeInteractionFlows(interaction, record, flows) {
+        if (!interaction.guild || interaction.guild.id !== client.homeGuildId || !snowflake(interaction.user?.id) || typeof interaction.deferReply !== 'function') return reply(interaction, 'Flow tidak dapat dijalankan tanpa konteks server yang valid.');
+        // Acknowledge before doing any side effects. Never execute if acknowledgement failed.
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+        try {
+            const key = `${record.id}:${interaction.user.id}`, timestamp = Date.now();
+            for (const [id, until] of flowCooldowns) if (until <= timestamp) flowCooldowns.delete(id);
+            if (activeFlows >= 10 || flowCooldowns.has(key) || flowCooldowns.size >= 1000) throw Error('Flow terlalu sering dijalankan.');
+            flowCooldowns.set(key, timestamp + 5000);
+            activeFlows++;
+            try { await lock(`flow:${key}`, async () => {
+                const guild = interaction.guild;
+                const member = await guild.members?.fetch?.(interaction.user.id);
+                if (!member || member.id !== interaction.user.id) throw Error('Anggota tidak dapat diperiksa.');
+                const roleFor = async (id) => {
+                    const { role } = await resolveRole(guild, id);
+                    if (!checkPanelRole(guild, role).ok) throw Error('Role tidak aman atau izin bot tidak mencukupi.');
+                    return role;
+                };
+                const destination = (id, extra = []) => {
+                    const channel = guild.channels?.cache?.get(id);
+                    if (!channel || ![ChannelType.GuildText, ChannelType.GuildAnnouncement].includes(channel.type)) throw Error('Channel flow tidak ditemukan.');
+                    if (!channel.permissionsFor?.(guild.members.me)?.has?.([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, ...extra])) throw Error('Izin bot untuk channel flow tidak mencukupi.');
+                    return channel;
+                };
+                for (const flow of flows) await runStudioFlow(flow, {
+                    wait: (seconds) => new Promise((resolve) => setTimeout(resolve, seconds * 1000)),
+                    hasRole: async (id) => { const role = await roleFor(id); return member.roles.cache.has(role.id); },
+                    changeRole: async (action, id) => { const role = await roleFor(id); const has = member.roles.cache.has(role.id); if (action === 'add_role' && !has || action === 'toggle_role' && !has) await member.roles.add(role); else if (action === 'remove_role' && has || action === 'toggle_role' && has) await member.roles.remove(role); },
+                    sendTemplate: async (templateId, isPrivate) => {
+                        const template = (await readState(guild.id)).templates.find((item) => item.id === templateId);
+                        if (!template) throw Error('Template tidak ditemukan.');
+                        // Interactive components need their own persistent message identity; do not emit dead controls.
+                        if (hasInteractive(template.document)) throw Error('Template respons tidak boleh berisi komponen interaktif.');
+                        if (typeof interaction.followUp !== 'function') throw Error('Respons interaksi tidak tersedia.');
+                        const payload = await buildPayload(guild.id, template.document);
+                        if (isPrivate) payload.flags |= MessageFlags.Ephemeral;
+                        const sent = await interaction.followUp(payload);
+                        if (!sent?.delete) throw Error('Respons terkirim tetapi tidak dapat dihapus oleh flow.');
+                        return { delete: () => sent.delete() };
+                    },
+                    send: async (action, id, message) => {
+                        if (!message.trim() || message.length > 4000) throw Error('Teks hasil flow tidak valid.');
+                        const channel = destination(id, action === 'send_webhook_message' ? [PermissionFlagsBits.ManageWebhooks] : []);
+                        const payload = { ...v2Message([new TextDisplayBuilder().setContent(message)]), allowedMentions: { parse: [], repliedUser: false } };
+                        if (action === 'send_message') { const sent = await channel.send(payload); return { delete: () => sent.delete() }; }
+                        const webhook = await webhookFor(guild.id, channel, { create: true }); const sent = await webhook.client.send({ ...payload, withComponents: true });
+                        if (!snowflake(sent?.id)) throw Error('Pesan webhook mungkin terkirim tetapi ID tidak tersedia.');
+                        return { delete: () => webhook.client.deleteMessage(sent.id) };
+                    },
+                    createThread: async (id, name) => { if (!name.trim() || name.length > 100) throw Error('Nama thread tidak valid.'); const channel = destination(id, [PermissionFlagsBits.CreatePublicThreads]); if (!channel.threads?.create) throw Error('Channel tidak mendukung thread.'); await channel.threads.create({ name, type: ChannelType.PublicThread }); },
+                    deleteMessage: async (message) => message.delete(),
+                });
+            }); } finally { activeFlows--; }
+            return reply(interaction, 'Flow selesai.');
+        } catch {
+            return reply(interaction, 'Flow berhenti karena izin, konfigurasi, atau Discord bermasalah. Sebagian action sebelumnya mungkin sudah berjalan; periksa server sebelum mencoba ulang.');
+        }
     }
     async function handleSelect(interaction, args = []) {
         const [recordId, blockId] = args;
         const record = await interactionRecord(interaction, recordId);
-        const block = record?.document.containers.flatMap((container) => container.blocks).find((item) => item.id === blockId && item.type === 'select');
-        const picked = (Array.isArray(interaction.values) ? interaction.values : []).map((id) => block?.options.find((item) => item.id === id)).filter(Boolean);
-        if (!block || !picked.length) return reply(interaction, 'Pilihan ini tidak lagi aktif atau pesan sudah diubah.');
+        const block = (record ? allBlocks(record.document) : []).find((item) => item.id === blockId && (item.type === 'select' || item.type === 'entity-select'));
+        if (block?.type === 'entity-select') {
+            const expected = { user: 5, role: 6, mentionable: 7, channel: 8 }[block.kind];
+            const values = Array.isArray(interaction.values) ? interaction.values : [];
+            if (interaction.componentType !== expected || values.length < block.minValues || values.length > block.maxValues || values.some((value) => !snowflake(value))) return reply(interaction, 'Pilihan ini tidak lagi aktif atau tidak valid.');
+            return reply(interaction, block.response);
+        }
+        const values = Array.isArray(interaction.values) ? interaction.values : [];
+        if (!block || interaction.componentType !== 3 || !values.length || values.length < block.minValues || values.length > block.maxValues || new Set(values).size !== values.length) return reply(interaction, 'Pilihan ini tidak lagi aktif atau tidak valid.');
+        const picked = values.map((id) => block.options.find((item) => item.id === id));
+        if (picked.some((item) => !item)) return reply(interaction, 'Pilihan ini tidak lagi aktif atau tidak valid.');
+        if (picked.some((item) => item.flow)) {
+            const flows = picked.map((item) => item.flow);
+            // A mixed multi-select must not accidentally publish a legacy private response.
+            if (picked.some((item) => !item.flow)) return reply(interaction, 'Pilih opsi flow dan respons biasa secara terpisah.');
+            return executeInteractionFlows(interaction, record, flows);
+        }
         return reply(interaction, picked.map((option) => `**${option.label}**\n${option.response}`).join('\n\n'));
     }
     return { overview, asset, send, edit, remove, forget, saveTemplate, deleteTemplate, handleButton, handleSelect, normalizeDocument: normalizeMessageDocument };

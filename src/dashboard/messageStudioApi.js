@@ -42,7 +42,7 @@ export function createMessageStudioApi(client, { auth, csrf, env = process.env, 
             if (!validId(req.params.id)) throw bad('Gambar tidak valid.');
             const asset = await studio.asset(req.guild, req.params.id);
             if (!asset) throw bad('Gambar tidak ditemukan.', 404, 'MESSAGE_STUDIO_ASSET_MISSING');
-            res.set({ 'Content-Type': asset.mime, 'Content-Disposition': `inline; filename="${asset.filename}"`, 'X-Content-Type-Options': 'nosniff' }).send(asset.buffer);
+            res.set({ 'Content-Type': asset.mime, 'Content-Disposition': `${asset.mime.startsWith('image/') ? 'inline' : 'attachment'}; filename="${asset.filename}"`, 'X-Content-Type-Options': 'nosniff' }).send(asset.buffer);
         } catch (error) { fail(res, error); }
     });
     router.post('/templates', auth, owner, csrf, async (req, res) => {
