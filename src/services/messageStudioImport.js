@@ -66,6 +66,16 @@ export function importDiscordMessage(raw) {
             }) };
             if (children.length !== 1) throw invalid('Action Row menu hanya boleh berisi satu menu.');
             const menu = children[0];
+            if ([5, 6, 7, 8].includes(menu.type)) {
+                object(menu, ['type', 'id', 'custom_id', 'placeholder', 'min_values', 'max_values', 'channel_types', 'default_values', 'disabled', 'flow'], 'Menu entitas');
+                // Studio does not model these Discord fields; reject rather than
+                // silently enabling a disabled menu or widening a channel filter.
+                if (menu.disabled !== undefined && menu.disabled !== false) throw invalid('Menu entitas nonaktif belum didukung importer.');
+                if (menu.channel_types !== undefined && (!Array.isArray(menu.channel_types) || menu.channel_types.length)) throw invalid('Filter channel belum didukung importer.');
+                if (menu.default_values !== undefined && (!Array.isArray(menu.default_values) || menu.default_values.length)) throw invalid('Pilihan default belum didukung importer.');
+                interactions = true;
+                return { id: blockId, type: 'entity-select', kind: {5:'user',6:'role',7:'mentionable',8:'channel'}[menu.type], placeholder: menu.placeholder ?? null, minValues: menu.min_values ?? 1, maxValues: menu.max_values ?? 1, response: 'Pilihan impor belum dikonfigurasi.' };
+            }
             object(menu, ['type', 'id', 'custom_id', 'placeholder', 'min_values', 'max_values', 'options', 'flow'], 'Menu');
             if (menu.type !== 3) throw invalid('Jenis menu ini belum didukung importer.');
             interactions = true;

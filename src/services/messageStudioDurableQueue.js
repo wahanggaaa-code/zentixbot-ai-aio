@@ -3,7 +3,7 @@
 // A lost lease becomes uncertain, never eligible for automatic retry: Discord side effects
 // may have succeeded even when a worker died before recording success.
 import crypto from 'node:crypto';
-import { normalizeStudioCheckpoint } from './messageStudioFlow.js';
+import { normalizeStudioCheckpoint, normalizeStudioFlow, supportsDurableStudioFlow } from './messageStudioFlow.js';
 
 const MAX_JOBS = 100;
 const RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
@@ -26,8 +26,14 @@ export function createStudioDurableQueue({ kv, guildId, now = Date.now, makeToke
         return { channelId: payload.channelId, message: payload.message };
     };
     const cleanFlow = payload => {
-        if (!payload || typeof payload !== 'object' || Array.isArray(payload) || Object.keys(payload).some(k => !['userId','rootId','depth','snapshot'].includes(k)) || !snowflake(payload.userId) || !safeId(payload.rootId) || (payload.depth !== undefined && (!Number.isInteger(payload.depth) || payload.depth < 0 || payload.depth > 3))) throw fail('Isi kelanjutan flow tidak valid.');
-        return { userId: payload.userId, rootId: payload.rootId, depth: payload.depth ?? 0, snapshot: normalizeStudioCheckpoint(payload.snapshot) };
+        if (!payload || typeof payload !== 'object' || Array.isArray(payload) || Object.keys(payload).some(k => !['userId','rootId','depth','snapshot','followingFlows'].includes(k)) || !snowflake(payload.userId) || !safeId(payload.rootId) || (payload.depth !== undefined && (!Number.isInteger(payload.depth) || payload.depth < 0 || payload.depth > 3))) throw fail('Isi kelanjutan flow tidak valid.');
+        const snapshot = normalizeStudioCheckpoint(payload.snapshot);
+        const next = payload.followingFlows ?? [];
+        if (!Array.isArray(next) || next.length > 5 || next.some(flow => !supportsDurableStudioFlow(flow))) throw fail('Flow berikutnya tidak valid.');
+        const followingFlows = next.map(normalizeStudioFlow);
+        normalizeStudioFlow([...snapshot.remaining, ...followingFlows.flat()]); // Combined work remains bounded.
+        return { userId: payload.userId, rootId: payload.rootId, depth: payload.depth ?? 0, snapshot, followingFlows };
+
     };
     async function schedule({ id, runAt, payload, kind = 'message' }) {
         const timestamp = now();
@@ -77,6 +83,10 @@ export function createStudioDurableQueue({ kv, guildId, now = Date.now, makeToke
             if (!job || job.status !== 'running' || job.token !== token) return undefined;
             // Expired workers cannot report success after another observer marks an uncertain outcome.
             job.status = job.leaseUntil <= timestamp ? 'uncertain' : outcome;
+            // Form fields and selected IDs are needed only while a flow may resume.
+            // Retain them for uncertain jobs until reviewed; successful/failed jobs
+            // keep history without retaining these submitted variable values.
+            if (job.kind === 'flow' && ['done', 'failed'].includes(job.status) && job.payload?.snapshot) job.payload.snapshot.variables = {};
             job.finishedAt = timestamp; delete job.token; delete job.leaseUntil; updated = true;
             return queue;
         });

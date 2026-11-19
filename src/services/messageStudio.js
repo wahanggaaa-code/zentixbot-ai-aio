@@ -139,7 +139,7 @@ export function normalizeMessageDocument(value, { allowUploads = false, makeId =
     const containerIds = new Set(), blockIds = new Set();
     let mediaItems = 0;
     const normalizeBlock = (block) => {
-        own(block, ['id', 'type', 'content', 'divider', 'spacing', 'items', 'buttons', 'placeholder', 'minValues', 'maxValues', 'options', 'kind', 'response', 'source', 'spoiler', 'roleSync']);
+        own(block, ['id', 'type', 'content', 'divider', 'spacing', 'items', 'buttons', 'placeholder', 'minValues', 'maxValues', 'options', 'kind', 'response', 'source', 'spoiler', 'roleSync', 'flow']);
         const id = mint(block.id, blockIds, 'ID komponen', makeId);
         if (block.type === 'text') {
             if (Object.keys(block).some((key) => !['id', 'type', 'content'].includes(key))) throw err('Komponen teks tidak valid.');
@@ -195,12 +195,14 @@ export function normalizeMessageDocument(value, { allowUploads = false, makeId =
             return { id, type: 'buttons', buttons };
         }
         if (block.type === 'entity-select') {
-            if (Object.keys(block).some((key) => !['id', 'type', 'kind', 'placeholder', 'minValues', 'maxValues', 'response'].includes(key))) throw err('Menu pilihan tidak valid.');
+            if (Object.keys(block).some((key) => !['id', 'type', 'kind', 'placeholder', 'minValues', 'maxValues', 'response', 'flow'].includes(key))) throw err('Menu pilihan tidak valid.');
             if (!['user', 'role', 'mentionable', 'channel'].includes(block.kind)) throw err('Jenis menu pilihan tidak valid.');
             const minValues = block.minValues === undefined ? 1 : block.minValues;
             const maxValues = block.maxValues === undefined ? 1 : block.maxValues;
             if (!Number.isInteger(minValues) || !Number.isInteger(maxValues) || minValues < 0 || maxValues < 1 || minValues > maxValues || maxValues > 25) throw err('Batas pilihan menu tidak valid.');
-            return { id, type: 'entity-select', kind: block.kind, placeholder: optionalText(block.placeholder, 150, 'Placeholder menu'), minValues, maxValues, response: text(block.response, 2000, 'Respons pilihan') };
+            if (block.flow !== undefined && block.response !== undefined) throw err('Gunakan flow atau respons, bukan keduanya.');
+            if (block.flow?.some?.(action => action?.type === 'open_modal')) throw err('Open Modal hanya tersedia pada tombol.');
+            return { id, type: 'entity-select', kind: block.kind, placeholder: optionalText(block.placeholder, 150, 'Placeholder menu'), minValues, maxValues, ...(block.flow !== undefined ? { flow: normalizeStudioFlow(block.flow) } : { response: text(block.response, 2000, 'Respons pilihan') }) };
         }
         if (block.type === 'select') {
             if (Object.keys(block).some((key) => !['id', 'type', 'placeholder', 'minValues', 'maxValues', 'options', 'roleSync'].includes(key)) || !Array.isArray(block.options) || !block.options.length || block.options.length > 25 || (block.roleSync !== undefined && block.roleSync !== true)) throw err('Menu pilihan tidak valid.');
@@ -856,6 +858,7 @@ export function createMessageStudio({
     // are uncertain because Discord writes may already have happened.
     async function resumeDurableFlow(guild, job) {
         const { userId, rootId, snapshot } = job.payload;
+        let followingFlows = job.payload.followingFlows ?? [];
         const depth = job.payload.depth ?? 0;
         return lock(`flow:${guild.id}:${userId}`, async () => {
             const state = await readState(guild.id);
@@ -868,12 +871,12 @@ export function createMessageStudio({
                 if (!channel || ![ChannelType.GuildText, ChannelType.GuildAnnouncement].includes(channel.type) || !channel.permissionsFor?.(guild.members.me)?.has?.([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, ...extra])) throw flowError('channel');
                 return channel;
             };
-            const result = await runStudioFlow(null, {
-                discardLastMessageOnCheckpoint: true,
+            const context = {
+                get checkpointOnFinalWait() { return followingFlows.length > 0; },
                 wait: seconds => new Promise(resolve => setTimeout(resolve, seconds * 1000)),
                 checkpoint: async (seconds, next) => {
                     if (!seconds) return false;
-                    if (!await queue().suspend(job.id, job.token, now() + seconds * 1000, { userId, rootId, depth, snapshot: next })) throw Error('Checkpoint tidak tersimpan.');
+                    if (!await queue().suspend(job.id, job.token, now() + seconds * 1000, { userId, rootId, depth, snapshot: next, followingFlows })) throw Error('Checkpoint tidak tersimpan.');
                     return true;
                 },
                 scheduleMessage: async (seconds, id, message) => { destination(id); await queue().schedule({ id: shortId(), runAt: now() + seconds * 1000, payload: { channelId: id, message } }); },
@@ -884,11 +887,15 @@ export function createMessageStudio({
                     if (!message.trim() || message.length > 4000) throw Error('Teks flow tidak valid.');
                     const channel = destination(id, type === 'send_webhook_message' ? [PermissionFlagsBits.ManageWebhooks] : []);
                     const payload = { ...v2Message([new TextDisplayBuilder().setContent(message)]), allowedMentions: { parse: [], repliedUser: false } };
-                    if (type === 'send_message') return channel.send(payload);
+                    if (type === 'send_message') {
+                        const sent = await channel.send(payload);
+                        if (!snowflake(sent?.id)) throw Error('Pesan mungkin terkirim tetapi ID tidak tersedia.');
+                        return { checkpointRef: { kind:'bot', channelId:id, messageId:sent.id } };
+                    }
                     const webhook = await webhookFor(guild.id, channel, { create: true });
                     const sent = await webhook.client.send({ ...payload, withComponents: true });
                     if (!snowflake(sent?.id)) throw Error('Pesan webhook mungkin terkirim tetapi ID tidak tersedia.');
-                    return sent;
+                    return { checkpointRef: { kind:'webhook', channelId:id, messageId:sent.id, webhookId:webhook.id } };
                 },
                 // Templates sent to a channel don't need an interaction token. Use the
                 // latest template, just like a normal flow, and bind interactive sessions.
@@ -910,29 +917,51 @@ export function createMessageStudio({
                         try { await kv.set(key, { ...session, messageId: sent.id }, 15 * 60); }
                         catch (error) { await sent.delete().catch(() => {}); throw error; }
                     }
-                    return sent;
+                    return { checkpointRef: { kind:'bot', channelId, messageId:sent.id, ...(id ? {sessionId:id} : {}) } };
+                },
+                deleteMessage: async message => {
+                    const ref = message?.checkpointRef || message;
+                    const channel = destination(ref.channelId, ref.kind === 'webhook' ? [PermissionFlagsBits.ManageWebhooks] : []);
+                    if (!channel.messages?.fetch) throw Error('Pesan flow tidak dapat diperiksa.');
+                    const target = await channel.messages.fetch(ref.messageId);
+                    if (ref.kind === 'bot') {
+                        if (target?.author?.id !== client.user?.id || !target.delete) throw Error('Pesan bukan milik bot.');
+                        await target.delete();
+                        if (ref.sessionId) await kv.set(`message-studio:v1:reply:${guild.id}:${ref.sessionId}`, null, 1);
+                    } else {
+                        const webhook = await webhookFor(guild.id, channel, { create:false });
+                        if (webhook.id !== ref.webhookId || (target?.webhookId || target?.author?.id) !== webhook.id) throw Error('Pesan bukan milik webhook flow.');
+                        await webhook.client.deleteMessage(ref.messageId);
+                    }
                 },
                 createThread: async (id, name) => { if (!name.trim() || name.length > 100) throw Error('Nama thread tidak valid.'); const channel = destination(id, [PermissionFlagsBits.CreatePublicThreads]); if (!channel.threads?.create) throw Error('Channel tidak mendukung thread.'); await channel.threads.create({ name, type: ChannelType.PublicThread }); },
-            }, snapshot);
-            return result?.paused ? 'paused' : 'done';
+            };
+            let result = await runStudioFlow(null, context, snapshot);
+            if (result?.paused) return 'paused';
+            while (followingFlows.length) {
+                const [flow, ...rest] = followingFlows; followingFlows = rest;
+                result = await runStudioFlow(flow, context);
+                if (result?.paused) return 'paused';
+            }
+            return 'done';
         });
     }
-    async function executeInteractionFlows(interaction, record, flows, successContent = 'Flow selesai.') {
+    async function executeInteractionFlows(interaction, record, flows, successContent = 'Flow selesai.', initialVariables = undefined, alreadyDeferred = false, preface = '') {
         if (!interaction.guild || interaction.guild.id !== client.homeGuildId || !snowflake(interaction.user?.id) || typeof interaction.deferReply !== 'function') return reply(interaction, 'Flow tidak dapat dijalankan tanpa konteks server yang valid.');
         // Bound combined work across all selected options before acknowledging or side effects.
-        try { normalizeStudioFlow(flows.flat()); } catch { return reply(interaction, 'Gabungan flow melebihi batas atau tidak valid.'); }
+        try { normalizeStudioFlow(flows.flat()); } catch { return reply(interaction, preface + 'Gabungan flow melebihi batas atau tidak valid.'); }
         // Acknowledge before doing any side effects. Never execute if acknowledgement failed.
-        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+        if (!alreadyDeferred) await interaction.deferReply({ flags: MessageFlags.Ephemeral });
         try {
             const key = `${record.id}:${interaction.user.id}`, timestamp = now();
             for (const [id, until] of flowCooldowns) if (until <= timestamp) flowCooldowns.delete(id);
             const expiresAt = flowCooldowns.get(key);
-            if (expiresAt) return reply(interaction, `Flow sedang cooldown. Tunggu ${Math.ceil((expiresAt - timestamp) / 1000)} detik sebelum mencoba lagi. Tidak ada action yang dijalankan pada percobaan ini.`);
-            if (activeFlows >= 10 || flowCooldowns.size >= 1000) return reply(interaction, 'Flow sedang sibuk. Coba lagi sebentar lagi. Tidak ada action yang dijalankan pada percobaan ini.');
+            if (expiresAt) return reply(interaction, preface + `Flow sedang cooldown. Tunggu ${Math.ceil((expiresAt - timestamp) / 1000)} detik sebelum mencoba lagi. Tidak ada action yang dijalankan pada percobaan ini.`);
+            if (activeFlows >= 10 || flowCooldowns.size >= 1000) return reply(interaction, preface + 'Flow sedang sibuk. Coba lagi sebentar lagi. Tidak ada action yang dijalankan pada percobaan ini.');
             flowCooldowns.set(key, timestamp + 5000);
             activeFlows++;
             let scheduled = false, paused = false, initialResponseCompleted = false;
-            const durable = flows.length === 1 && supportsDurableStudioFlow(flows[0]);
+            const durable = flows.every(supportsDurableStudioFlow);
             try { await lock(`flow:${interaction.guildId}:${interaction.user.id}`, async () => {
                 const guild = interaction.guild;
                 const member = await guild.members?.fetch?.(interaction.user.id);
@@ -948,11 +977,12 @@ export function createMessageStudio({
                     if (!channel.permissionsFor?.(guild.members.me)?.has?.([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, ...extra])) throw flowError('channel');
                     return channel;
                 };
-                for (const flow of flows) {
+                for (const [index, flow] of flows.entries()) {
                   const result = await runStudioFlow(flow, {
-                    ...(durable ? { discardLastMessageOnCheckpoint: true, checkpoint: async (seconds, snapshot) => {
+                    ...(index === 0 && initialVariables !== undefined ? { initialVariables } : {}),
+                    ...(durable ? { checkpointOnFinalWait: index < flows.length - 1, checkpoint: async (seconds, snapshot) => {
                         if (!seconds) return false;
-                        await queue().schedule({ id: shortId(), runAt: now() + seconds * 1000, kind: 'flow', payload: { userId: interaction.user.id, rootId: record.rootId || record.id, depth: record.depth || 0, snapshot } });
+                        await queue().schedule({ id: shortId(), runAt: now() + seconds * 1000, kind: 'flow', payload: { userId: interaction.user.id, rootId: record.rootId || record.id, depth: record.depth || 0, snapshot, followingFlows: flows.slice(index + 1) } });
                         paused = true; return true;
                     }} : {}),
                     wait: (seconds) => new Promise((resolve) => setTimeout(resolve, seconds * 1000)),
@@ -998,16 +1028,16 @@ export function createMessageStudio({
                             try { await kv.set(key, { ...snapshot, messageId: sent.id }, 15 * 60); }
                             catch (error) { await sent.delete().catch(() => {}); throw error; }
                         }
-                        return { delete: async () => { await sent.delete(); if (key) await kv.set(key, null, 1); } };
+                        return { delete: async () => { await sent.delete(); if (key) await kv.set(key, null, 1); }, ...(channelId && snowflake(sent.id) ? { checkpointRef: { kind:'bot', channelId, messageId:sent.id, ...(id ? {sessionId:id} : {}) } } : {}) };
                     },
                     send: async (action, id, message) => {
                         if (!message.trim() || message.length > 4000) throw Error('Teks hasil flow tidak valid.');
                         const channel = destination(id, action === 'send_webhook_message' ? [PermissionFlagsBits.ManageWebhooks] : []);
                         const payload = { ...v2Message([new TextDisplayBuilder().setContent(message)]), allowedMentions: { parse: [], repliedUser: false } };
-                        if (action === 'send_message') { const sent = await channel.send(payload); return { delete: () => sent.delete() }; }
+                        if (action === 'send_message') { const sent = await channel.send(payload); return { delete: () => sent.delete(), ...(snowflake(sent?.id) ? {checkpointRef:{kind:'bot',channelId:id,messageId:sent.id}} : {}) }; }
                         const webhook = await webhookFor(guild.id, channel, { create: true }); const sent = await webhook.client.send({ ...payload, withComponents: true });
                         if (!snowflake(sent?.id)) throw Error('Pesan webhook mungkin terkirim tetapi ID tidak tersedia.');
-                        return { delete: () => webhook.client.deleteMessage(sent.id) };
+                        return { delete: () => webhook.client.deleteMessage(sent.id), checkpointRef:{kind:'webhook',channelId:id,messageId:sent.id,webhookId:webhook.id} };
                     },
                     createThread: async (id, name) => { if (!name.trim() || name.length > 100) throw Error('Nama thread tidak valid.'); const channel = destination(id, [PermissionFlagsBits.CreatePublicThreads]); if (!channel.threads?.create) throw Error('Channel tidak mendukung thread.'); await channel.threads.create({ name, type: ChannelType.PublicThread }); },
                     deleteMessage: async (message) => message.delete(),
@@ -1015,11 +1045,15 @@ export function createMessageStudio({
                   if (result?.paused) break;
                 }
             }); } finally { activeFlows--; }
-            if (paused) return reply(interaction, 'Flow dijeda dan disimpan; akan dilanjutkan setelah waktunya, termasuk setelah restart.');
+            if (paused) {
+                const notice = preface + 'Flow dijeda dan disimpan; akan dilanjutkan setelah waktunya, termasuk setelah restart.';
+                const responses = successContent.startsWith('Flow selesai.\n\n') ? successContent.slice('Flow selesai.'.length) : '';
+                return reply(interaction, notice.length + responses.length <= 4000 ? notice + responses : notice + '\nSebagian respons pilihan tidak ditampilkan karena terlalu panjang.');
+            }
             const scheduledNote = '\nPesan terjadwal disimpan; pengiriman belum terjadi.';
             return reply(interaction, scheduled ? (successContent.length + scheduledNote.length <= 4000 ? successContent : 'Flow selesai.') + scheduledNote : successContent);
         } catch (error) {
-            return reply(interaction, flowFailureMessage(error));
+            return reply(interaction, preface + flowFailureMessage(error));
         }
     }
     async function openStudioModal(interaction, record, action) {
@@ -1029,7 +1063,7 @@ export function createMessageStudio({
         if (flowCooldowns.has(cooldownKey) || flowCooldowns.size >= 1000) return reply(interaction, 'Tunggu sebentar sebelum membuka formulir lagi.');
         flowCooldowns.set(cooldownKey, timestamp + 5000);
         const modalId = shortId(), key = `message-studio:v1:modal:${interaction.guildId}:${modalId}`;
-        const session = { version: 1, userId: interaction.user.id, rootId: record.rootId || record.id, expiresAt: timestamp + 600000, action };
+        const session = { version: 1, userId: interaction.user.id, rootId: record.rootId || record.id, depth: record.depth || 0, expiresAt: timestamp + 600000, action };
         const modal = new ModalBuilder().setCustomId(`ms_form:${modalId}`).setTitle(action.title);
         for (const field of action.fields) {
             const input = new TextInputBuilder().setCustomId(field.id).setLabel(field.label).setStyle(field.style === 'short' ? TextInputStyle.Short : TextInputStyle.Paragraph).setRequired(field.required).setMaxLength(500);
@@ -1043,7 +1077,7 @@ export function createMessageStudio({
         if (!interaction?.guild || interaction.guild.id !== client.homeGuildId || interaction.guildId !== client.homeGuildId || !snowflake(interaction.user?.id) || !safeId(id)) return reply(interaction, 'Formulir tidak valid.');
         const key = `message-studio:v1:modal:${interaction.guildId}:${id}`;
         const session = await kv.get(key);
-        if (!plain(session) || session.version !== 1 || session.userId !== interaction.user.id || !Number.isFinite(session.expiresAt) || session.expiresAt <= now() || !(await readState(interaction.guildId)).messages.some((item) => item.id === session.rootId && item.sender === 'bot')) return reply(interaction, 'Formulir ini tidak aktif atau sudah kedaluwarsa.');
+        if (!plain(session) || session.version !== 1 || session.userId !== interaction.user.id || !Number.isFinite(session.expiresAt) || session.expiresAt <= now() || (session.depth !== undefined && (!Number.isInteger(session.depth) || session.depth < 0 || session.depth > 3)) || !(await readState(interaction.guildId)).messages.some((item) => item.id === session.rootId && item.sender === 'bot')) return reply(interaction, 'Formulir ini tidak aktif atau sudah kedaluwarsa.');
         let action;
         try { [action] = normalizeStudioFlow([session.action]); if (action.type !== 'open_modal') throw Error(); } catch { return reply(interaction, 'Formulir tidak valid.'); }
         const values = [];
@@ -1069,10 +1103,15 @@ export function createMessageStudio({
             const channel = interaction.guild.channels?.cache?.get(action.channelId);
             if (!channel || ![ChannelType.GuildText, ChannelType.GuildAnnouncement].includes(channel.type) || !channel.permissionsFor?.(interaction.guild.members.me)?.has?.([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages])) throw Error('Channel atau izin tidak tersedia.');
             await channel.send({ ...v2Message([new ContainerBuilder().addTextDisplayComponents(new TextDisplayBuilder().setContent(content))]), allowedMentions: { parse: [], repliedUser: false } });
-            return reply(interaction, 'Formulir berhasil dikirim.');
         } catch {
             return reply(interaction, 'Formulir gagal atau hasil pengiriman tidak pasti. Periksa channel tujuan sebelum mencoba lagi.');
         }
+        if (action.onSubmit) {
+            const variables = Object.fromEntries(action.fields.map((field, index) => [field.id, values[index]]));
+            const record = { id: session.rootId, rootId: session.rootId, depth: session.depth || 0 };
+            return executeInteractionFlows(interaction, record, [action.onSubmit], 'Formulir berhasil dikirim. Flow selesai.', variables, true, 'Formulir berhasil dikirim. ');
+        }
+        return reply(interaction, 'Formulir berhasil dikirim.');
     }
     async function syncSelectedRoles(interaction, record, block, picked) {
         if (!interaction.guild || interaction.guild.id !== client.homeGuildId || !snowflake(interaction.user?.id) || typeof interaction.deferReply !== 'function') return reply(interaction, 'Sinkronisasi role memerlukan konteks server yang valid.');
@@ -1110,7 +1149,13 @@ export function createMessageStudio({
         if (block?.type === 'entity-select') {
             const expected = { user: 5, role: 6, mentionable: 7, channel: 8 }[block.kind];
             const values = Array.isArray(interaction.values) ? interaction.values : [];
-            if (interaction.componentType !== expected || values.length < block.minValues || values.length > block.maxValues || values.some((value) => !snowflake(value))) return reply(interaction, 'Pilihan ini tidak lagi aktif atau tidak valid.');
+            if (interaction.componentType !== expected || values.length < block.minValues || values.length > block.maxValues || new Set(values).size !== values.length || values.some((value) => !snowflake(value))) return reply(interaction, 'Pilihan ini tidak lagi aktif atau tidak valid.');
+            if (block.flow) {
+                // Selected IDs are data only; role actions still target the interacting
+                // member and fixed, permission-checked role IDs, never selected users.
+                const variables = { selected_ids: values.join(', '), selected_first: values[0] || '', selected_count: String(values.length) };
+                return executeInteractionFlows(interaction, record, [block.flow], 'Flow selesai.', variables);
+            }
             return reply(interaction, block.response);
         }
         const values = Array.isArray(interaction.values) ? interaction.values : [];

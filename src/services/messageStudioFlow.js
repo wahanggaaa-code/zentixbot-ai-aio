@@ -12,7 +12,7 @@ export function normalizeStudioFlow(value) {
         if (!Array.isArray(actions) || depth > 3) throw fail('Flow harus berupa daftar action dengan maksimal 3 tingkat kondisi.');
         return actions.map((action) => {
             if (++steps > 20) throw fail('Flow maksimal 20 action termasuk cabang.');
-            obj(action, ['type', 'seconds', 'roleId', 'roleIds', 'channelId', 'message', 'name', 'value', 'condition', 'then', 'else', 'templateId', 'private', 'title', 'fields']);
+            obj(action, ['type', 'seconds', 'roleId', 'roleIds', 'channelId', 'message', 'name', 'value', 'condition', 'then', 'else', 'templateId', 'private', 'title', 'fields', 'onSubmit']);
             const { type } = action;
             const only = (allowed) => obj(action, ['type', ...allowed]);
             if (type === 'noop' || type === 'stop' || type === 'delete_message') { only([]); return { type }; }
@@ -35,7 +35,7 @@ export function normalizeStudioFlow(value) {
                 return { type, condition: { ...c }, then: list(action.then || [], depth + 1), else: list(action.else || [], depth + 1) };
             }
             if (type === 'open_modal') {
-                only(['title', 'channelId', 'fields']);
+                only(['title', 'channelId', 'fields', 'onSubmit']);
                 if (depth !== 0 || actions.length !== 1) throw fail('Open Modal harus menjadi satu-satunya action tombol.');
                 if (!snowflake(action.channelId) || !Array.isArray(action.fields) || !action.fields.length || action.fields.length > 5) throw fail('Formulir tidak valid.');
                 const title = text(action.title, 45), ids = new Set();
@@ -44,7 +44,9 @@ export function normalizeStudioFlow(value) {
                     if (!name(field.id) || ids.has(field.id) || !['short', 'paragraph'].includes(field.style) || typeof field.required !== 'boolean') throw fail('Kolom formulir tidak valid.');
                     ids.add(field.id); return { id: field.id, label: text(field.label, 45), style: field.style, required: field.required };
                 });
-                return { type, title, channelId: action.channelId, fields };
+                const onSubmit = action.onSubmit === undefined ? undefined : list(action.onSubmit, depth + 1);
+                if (onSubmit && !onSubmit.length) throw fail('Flow formulir harus berisi action.');
+                return { type, title, channelId: action.channelId, fields, ...(onSubmit ? { onSubmit } : {}) };
             }
             if (type === 'send_message' && action.templateId !== undefined) {
                 only(['templateId', 'private', 'channelId']);
@@ -69,12 +71,12 @@ export function normalizeStudioFlow(value) {
 // Continuations cannot use interaction tokens, message handles or foreign webhooks.
 // Unsupported flows retain the existing in-memory wait behavior.
 export function supportsDurableStudioFlow(flow) {
-    const allowed = new Set(['noop','stop','wait','schedule_message','set_variable','check','add_role','remove_role','toggle_role','select_unique_role','send_message','send_webhook_message','create_thread']);
+    const allowed = new Set(['noop','stop','wait','schedule_message','set_variable','check','add_role','remove_role','toggle_role','select_unique_role','send_message','send_webhook_message','create_thread','delete_message']);
     const visit = list => list.every(action => allowed.has(action.type) && !(action.type === 'send_message' && action.templateId !== undefined && action.channelId === undefined) && (action.type !== 'check' || (visit(action.then) && visit(action.else))));
     try { return visit(normalizeStudioFlow(flow)); } catch { return false; }
 }
 export function normalizeStudioCheckpoint(resume) {
-    obj(resume, ['version', 'remaining', 'variables']);
+    obj(resume, ['version', 'remaining', 'variables', 'lastMessage']);
     if (resume.version !== 1 || !resume.variables || typeof resume.variables !== 'object' || Array.isArray(resume.variables) || Object.keys(resume.variables).length > 20) throw fail('Checkpoint flow tidak valid.');
     const variables = Object.create(null);
     for (const [key, value] of Object.entries(resume.variables)) {
@@ -83,20 +85,34 @@ export function normalizeStudioCheckpoint(resume) {
     }
     const remaining = normalizeStudioFlow(resume.remaining);
     if (!supportsDurableStudioFlow(remaining)) throw fail('Action checkpoint belum didukung.');
-    return { version: 1, remaining, variables: { ...variables } };
+    let lastMessage;
+    if (resume.lastMessage !== undefined && resume.lastMessage !== null) {
+        obj(resume.lastMessage, ['kind', 'channelId', 'messageId', 'webhookId', 'sessionId']);
+        const ref=resume.lastMessage;
+        if (!['bot','webhook'].includes(ref.kind) || !snowflake(ref.channelId) || !snowflake(ref.messageId) || (ref.kind === 'webhook' ? !snowflake(ref.webhookId) : ref.webhookId !== undefined) || (ref.sessionId !== undefined && (ref.kind !== 'bot' || typeof ref.sessionId !== 'string' || !/^flow-[A-Za-z0-9_-]{1,43}$/.test(ref.sessionId)))) throw fail('Referensi pesan checkpoint tidak valid.');
+        lastMessage = { ...ref };
+    }
+    return { version: 1, remaining, variables: { ...variables }, ...(lastMessage ? { lastMessage } : {}) };
 }
 
 /** Dependencies are supplied by the service; lastMessage never accepts an arbitrary message ID. */
 export async function runStudioFlow(flow, context, resume = null) {
     // Checkpoints contain only validated actions and variables; interaction tokens
     // and message handles never become part of a continuation.
-    let actions, variables = Object.create(null);
+    let actions, variables = Object.create(null), restoredLastMessage = null;
     if (resume !== null) {
         const valid = normalizeStudioCheckpoint(resume);
         Object.assign(variables, valid.variables);
         actions = valid.remaining;
-    } else actions = normalizeStudioFlow(flow);
-    let lastMessage = null;
+        restoredLastMessage = valid.lastMessage ?? null;
+    } else {
+        actions = normalizeStudioFlow(flow);
+        if (context.initialVariables !== undefined) {
+            const valid = normalizeStudioCheckpoint({ version: 1, remaining: [{type:'noop'}], variables: context.initialVariables });
+            Object.assign(variables, valid.variables);
+        }
+    }
+    let lastMessage = restoredLastMessage;
     // Bound expansion while building, not after allocating a potentially huge string.
     const interpolate = (s) => {
         let result = '', offset = 0;
@@ -119,10 +135,12 @@ export async function runStudioFlow(flow, context, resume = null) {
             case 'noop': break;
             case 'stop': return;
             case 'wait': {
-                if (context.checkpoint && pending.length) {
-                    // Message handles and interaction tokens cannot be serialized safely.
-                    if (lastMessage !== null && !context.discardLastMessageOnCheckpoint) throw Error('Checkpoint setelah pesan flow belum didukung.');
-                    const snapshot = { version: 1, remaining: structuredClone(pending), variables: { ...variables } };
+                if (context.checkpoint && (pending.length || context.checkpointOnFinalWait)) {
+                    // Store only an internal reference to a message produced by this
+                    // flow, never interaction tokens or executable message handles.
+                    const ref = lastMessage?.checkpointRef || (lastMessage?.kind ? lastMessage : null);
+                    if (lastMessage !== null && !ref && !context.discardLastMessageOnCheckpoint) throw Error('Checkpoint setelah pesan flow belum didukung.');
+                    const snapshot = { version: 1, remaining: structuredClone(pending.length ? pending : [{ type: 'noop' }]), variables: { ...variables }, ...(ref ? { lastMessage: structuredClone(ref) } : {}) };
                     if (await context.checkpoint(action.seconds, snapshot)) return { paused: true };
                 }
                 await context.wait(action.seconds); break;
