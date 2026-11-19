@@ -107,8 +107,9 @@ async function fetchOnce(u, {lookup, request, github}) {
  });
 }
 
-export async function fetchPublicText(input, {lookup=dns.lookup, request=https.request} = {}) {
+export async function fetchPublicText(input, {lookup=dns.lookup, request=https.request, allowUrl=()=>true} = {}) {
  const original = publicUrl(input);
+ if (!allowUrl(original)) throw err('Domain halaman tidak diizinkan.',403);
  if (active >= 2) throw err('Pembacaan halaman sedang sibuk.',429);
  active++;
  try {
@@ -123,6 +124,7 @@ export async function fetchPublicText(input, {lookup=dns.lookup, request=https.r
    if (typeof result.redirect !== 'string' || !result.redirect.trim()) throw err('Redirect halaman tidak memiliki tujuan.',502);
    let next; try { next = new URL(result.redirect, u).href; } catch { throw err('Tujuan redirect tidak valid.',502); }
    u = publicUrl(next);
+   if (!allowUrl(u)) throw err('Domain redirect tidak diizinkan.',403);
    // README API redirects may only stay on the official API host; never leak API requests to another site.
    if (api && u.hostname !== 'api.github.com') throw err('Redirect README GitHub tidak diizinkan.',403);
   }

@@ -35,7 +35,7 @@ import { createV2Container, v2Message } from '../utils/componentsV2.js';
 import { normalizeStudioFlow, runStudioFlow } from './messageStudioFlow.js';
 import { createStudioDurableQueue } from './messageStudioDurableQueue.js';
 import { createStudioDurableWorker } from './messageStudioDurableWorker.js';
-import { checkPanelRole, resolveRole } from './selfRoles/manage.js';
+import { checkPanelRole, resolveRole, roleReason } from './selfRoles/manage.js';
 import { logger } from '../utils/logger.js';
 
 const err = (message, status = 400, code = 'MESSAGE_STUDIO_INVALID', extra = {}) => Object.assign(new Error(message), { status, code, ...extra });
@@ -809,10 +809,19 @@ export function createMessageStudio({
                 return { id: channel.id, name: String(channel.name || '').slice(0, 100), botUsable: Boolean(permissions?.has?.([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages])), webhookUsable: Boolean(permissions?.has?.([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ManageWebhooks])) };
             });
     }
+    function roles(guild) {
+        const available = [...(guild.roles?.cache?.values?.() ?? [])]
+            .filter(role => snowflake(role.id))
+            .sort((a, b) => (b.position ?? 0) - (a.position ?? 0) || String(a.id).localeCompare(String(b.id)));
+        return { roles: available.slice(0, 250).map(role => {
+            const check = checkPanelRole(guild, role);
+            return { id: role.id, name: String(role.name || '').slice(0, 100), usable: check.ok, reason: check.ok ? null : roleReason(check.code, 'id') };
+        }), rolesTruncated: available.length > 250 };
+    }
     async function overview(guild) {
         ensureGuild(guild);
         const state = await readState(guild.id);
-        return { limits: MESSAGE_STUDIO_LIMITS, channels: channels(guild), templates: state.templates.map(safeSummary), messages: state.messages.map(safeSummary) };
+        return { limits: MESSAGE_STUDIO_LIMITS, channels: channels(guild), ...roles(guild), templates: state.templates.map(safeSummary), messages: state.messages.map(safeSummary) };
     }
     async function asset(guild, id) { ensureGuild(guild); return readAsset(guild.id, id); }
     async function reply(interaction, content) {
