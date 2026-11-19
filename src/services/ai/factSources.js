@@ -25,7 +25,7 @@ export async function discoverFactSources({search,guildId,userId,topics='',read=
  const articles=[];
  for(const url of arranged.slice(0,9)){
   counts.readAttempted++;
-  try{const page=await read(url,{allowUrl:allowedFactUrl});if(typeof page.text==='string'&&page.text.trim().length>=150){articles.push({url,text:page.text.slice(0,2500)});counts.readOk++}else counts.readShort++;if(articles.length===5)break}catch{counts.readFailed++}
+  try{const page=await read(url,{allowUrl:allowedFactUrl});if(page.source!=='metadata'&&page.source!=='pdf'&&page.source!=='captions'&&typeof page.text==='string'&&page.text.trim().length>=150){articles.push({url,text:page.text.slice(0,2500)});counts.readOk++}else counts.readShort++;if(articles.length===5)break}catch{counts.readFailed++}
  }
  onDiagnostics(counts);
  return articles;
