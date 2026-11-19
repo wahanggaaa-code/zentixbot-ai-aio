@@ -69,8 +69,8 @@ export function normalizeStudioFlow(value) {
 // Continuations cannot use interaction tokens, message handles or foreign webhooks.
 // Unsupported flows retain the existing in-memory wait behavior.
 export function supportsDurableStudioFlow(flow) {
-    const allowed = new Set(['noop','stop','wait','schedule_message','set_variable','check','add_role','remove_role','toggle_role','select_unique_role','send_message','create_thread']);
-    const visit = list => list.every(action => allowed.has(action.type) && !(action.type === 'send_message' && action.templateId !== undefined) && (action.type !== 'check' || (visit(action.then) && visit(action.else))));
+    const allowed = new Set(['noop','stop','wait','schedule_message','set_variable','check','add_role','remove_role','toggle_role','select_unique_role','send_message','send_webhook_message','create_thread']);
+    const visit = list => list.every(action => allowed.has(action.type) && !(action.type === 'send_message' && action.templateId !== undefined && action.channelId === undefined) && (action.type !== 'check' || (visit(action.then) && visit(action.else))));
     try { return visit(normalizeStudioFlow(flow)); } catch { return false; }
 }
 export function normalizeStudioCheckpoint(resume) {

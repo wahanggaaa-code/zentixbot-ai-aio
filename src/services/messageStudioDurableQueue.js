@@ -26,8 +26,8 @@ export function createStudioDurableQueue({ kv, guildId, now = Date.now, makeToke
         return { channelId: payload.channelId, message: payload.message };
     };
     const cleanFlow = payload => {
-        if (!payload || typeof payload !== 'object' || Array.isArray(payload) || Object.keys(payload).some(k => !['userId','rootId','snapshot'].includes(k)) || !snowflake(payload.userId) || !safeId(payload.rootId)) throw fail('Isi kelanjutan flow tidak valid.');
-        return { userId: payload.userId, rootId: payload.rootId, snapshot: normalizeStudioCheckpoint(payload.snapshot) };
+        if (!payload || typeof payload !== 'object' || Array.isArray(payload) || Object.keys(payload).some(k => !['userId','rootId','depth','snapshot'].includes(k)) || !snowflake(payload.userId) || !safeId(payload.rootId) || (payload.depth !== undefined && (!Number.isInteger(payload.depth) || payload.depth < 0 || payload.depth > 3))) throw fail('Isi kelanjutan flow tidak valid.');
+        return { userId: payload.userId, rootId: payload.rootId, depth: payload.depth ?? 0, snapshot: normalizeStudioCheckpoint(payload.snapshot) };
     };
     async function schedule({ id, runAt, payload, kind = 'message' }) {
         const timestamp = now();

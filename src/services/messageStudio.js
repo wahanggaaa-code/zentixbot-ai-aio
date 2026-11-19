@@ -856,6 +856,7 @@ export function createMessageStudio({
     // are uncertain because Discord writes may already have happened.
     async function resumeDurableFlow(guild, job) {
         const { userId, rootId, snapshot } = job.payload;
+        const depth = job.payload.depth ?? 0;
         return lock(`flow:${guild.id}:${userId}`, async () => {
             const state = await readState(guild.id);
             if (!state.messages.some(item => item.id === rootId && item.sender === 'bot')) throw Error('Pesan asal tidak aktif.');
@@ -872,14 +873,45 @@ export function createMessageStudio({
                 wait: seconds => new Promise(resolve => setTimeout(resolve, seconds * 1000)),
                 checkpoint: async (seconds, next) => {
                     if (!seconds) return false;
-                    if (!await queue().suspend(job.id, job.token, now() + seconds * 1000, { userId, rootId, snapshot: next })) throw Error('Checkpoint tidak tersimpan.');
+                    if (!await queue().suspend(job.id, job.token, now() + seconds * 1000, { userId, rootId, depth, snapshot: next })) throw Error('Checkpoint tidak tersimpan.');
                     return true;
                 },
                 scheduleMessage: async (seconds, id, message) => { destination(id); await queue().schedule({ id: shortId(), runAt: now() + seconds * 1000, payload: { channelId: id, message } }); },
                 hasRole: async id => { const role = await roleFor(id); return member.roles.cache.has(role.id); },
                 changeRole: async (action, id) => { const role = await roleFor(id), has = member.roles.cache.has(role.id); if (action === 'add_role' && !has || action === 'toggle_role' && !has) await member.roles.add(role); else if (action === 'remove_role' && has || action === 'toggle_role' && has) await member.roles.remove(role); },
                 selectUniqueRole: async (selectedId, ids) => { const roles = []; for (const id of ids) roles.push(await roleFor(id)); for (const role of roles) if (role.id !== selectedId && member.roles.cache.has(role.id)) await member.roles.remove(role); if (!member.roles.cache.has(selectedId)) await member.roles.add(roles.find(role => role.id === selectedId)); },
-                send: async (_type, id, message) => { if (!message.trim() || message.length > 4000) throw Error('Teks flow tidak valid.'); const sent = await destination(id).send({ ...v2Message([new TextDisplayBuilder().setContent(message)]), allowedMentions: { parse: [], repliedUser: false } }); return sent; },
+                send: async (type, id, message) => {
+                    if (!message.trim() || message.length > 4000) throw Error('Teks flow tidak valid.');
+                    const channel = destination(id, type === 'send_webhook_message' ? [PermissionFlagsBits.ManageWebhooks] : []);
+                    const payload = { ...v2Message([new TextDisplayBuilder().setContent(message)]), allowedMentions: { parse: [], repliedUser: false } };
+                    if (type === 'send_message') return channel.send(payload);
+                    const webhook = await webhookFor(guild.id, channel, { create: true });
+                    const sent = await webhook.client.send({ ...payload, withComponents: true });
+                    if (!snowflake(sent?.id)) throw Error('Pesan webhook mungkin terkirim tetapi ID tidak tersedia.');
+                    return sent;
+                },
+                // Templates sent to a channel don't need an interaction token. Use the
+                // latest template, just like a normal flow, and bind interactive sessions.
+                sendTemplate: async (templateId, _isPrivate, channelId) => {
+                    if (!channelId) throw flowError('template');
+                    const template = (await readState(guild.id)).templates.find(item => item.id === templateId);
+                    if (!template) throw flowError('template');
+                    const interactive = hasInteractive(template.document), nextDepth = depth + 1;
+                    if (interactive && nextDepth > 3) throw flowError('template');
+                    const id = interactive ? `flow-${shortId()}` : null;
+                    const key = interactive ? `message-studio:v1:reply:${guild.id}:${id}` : null;
+                    const session = interactive ? { version: 1, id, rootId, messageId: null, userId: null, depth: nextDepth, expiresAt: now() + 15 * 60 * 1000, document: template.document } : null;
+                    const payload = await buildPayload(guild.id, template.document, { recordId: id });
+                    const channel = destination(channelId);
+                    if (interactive) await kv.set(key, session, 15 * 60);
+                    const sent = await channel.send(payload);
+                    if (!sent?.delete || (interactive && !snowflake(sent.id))) throw Error('Respons terkirim tetapi identitasnya tidak tersedia.');
+                    if (interactive) {
+                        try { await kv.set(key, { ...session, messageId: sent.id }, 15 * 60); }
+                        catch (error) { await sent.delete().catch(() => {}); throw error; }
+                    }
+                    return sent;
+                },
                 createThread: async (id, name) => { if (!name.trim() || name.length > 100) throw Error('Nama thread tidak valid.'); const channel = destination(id, [PermissionFlagsBits.CreatePublicThreads]); if (!channel.threads?.create) throw Error('Channel tidak mendukung thread.'); await channel.threads.create({ name, type: ChannelType.PublicThread }); },
             }, snapshot);
             return result?.paused ? 'paused' : 'done';
@@ -920,7 +952,7 @@ export function createMessageStudio({
                   const result = await runStudioFlow(flow, {
                     ...(durable ? { discardLastMessageOnCheckpoint: true, checkpoint: async (seconds, snapshot) => {
                         if (!seconds) return false;
-                        await queue().schedule({ id: shortId(), runAt: now() + seconds * 1000, kind: 'flow', payload: { userId: interaction.user.id, rootId: record.rootId || record.id, snapshot } });
+                        await queue().schedule({ id: shortId(), runAt: now() + seconds * 1000, kind: 'flow', payload: { userId: interaction.user.id, rootId: record.rootId || record.id, depth: record.depth || 0, snapshot } });
                         paused = true; return true;
                     }} : {}),
                     wait: (seconds) => new Promise((resolve) => setTimeout(resolve, seconds * 1000)),
