@@ -33,9 +33,23 @@ import {
 import { createKV } from './ai/kv.js';
 import { createV2Container, v2Message } from '../utils/componentsV2.js';
 import { normalizeStudioFlow, runStudioFlow } from './messageStudioFlow.js';
+import { createStudioDurableQueue } from './messageStudioDurableQueue.js';
+import { createStudioDurableWorker } from './messageStudioDurableWorker.js';
 import { checkPanelRole, resolveRole } from './selfRoles/manage.js';
+import { logger } from '../utils/logger.js';
 
 const err = (message, status = 400, code = 'MESSAGE_STUDIO_INVALID', extra = {}) => Object.assign(new Error(message), { status, code, ...extra });
+// Only explicitly tagged errors are shown to users; never expose Discord errors or tokens.
+const flowError = (reason) => Object.assign(new Error('Message Studio flow failed'), { studioFlowReason: reason });
+const flowFailureMessage = (error) => {
+    let reason;
+    if (error?.studioFlowReason === 'role') reason = 'Role tidak tersedia atau tidak aman dikelola bot. Periksa izin dan posisi role bot.';
+    else if (error?.studioFlowReason === 'channel') reason = 'Channel tujuan tidak tersedia atau izin bot tidak mencukupi.';
+    else if (error?.studioFlowReason === 'template') reason = 'Template tujuan tidak ditemukan atau respons interaktif mencapai batas.';
+    else if ([50001, 50013].includes(error?.code)) reason = 'Discord menolak akses atau izin bot. Periksa izin dan hierarki role.';
+    else reason = 'Izin, konfigurasi, atau Discord bermasalah.';
+    return `Flow berhenti. ${reason} Sebagian action sebelumnya mungkin sudah berjalan, atau action yang gagal mungkin sudah membuat sebagian perubahan; periksa server sebelum mencoba ulang.`;
+};
 const plain = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
 const own = (value, keys, message = 'Format pesan tidak valid.') => {
     if (!plain(value) || Object.keys(value).some((key) => !keys.includes(key))) throw err(message);
@@ -409,6 +423,11 @@ export function createMessageStudio({
     webhookClientFactory = (data) => new WebhookClient(data, client?.rest ? { rest: client.rest } : undefined),
 } = {}) {
     if (!client) throw Error('Message Studio membutuhkan client Discord.');
+    let durableQueue, durableWorker;
+    const queue = () => durableQueue ||= createStudioDurableQueue({ kv, guildId: client.homeGuildId, now });
+    let lastWorkerWarning = 0;
+    const startDurableWorker = () => { if (!durableWorker) durableWorker = createStudioDurableWorker({ client, queue: queue(), onError: () => { if (Date.now() - lastWorkerWarning >= 60000) { lastWorkerWarning = Date.now(); logger.warn('Message Studio: antrean terjadwal tidak dapat diproses; akan diperiksa lagi.'); } } }); durableWorker.start(); };
+    const stopDurableWorker = async () => { if (durableWorker) await durableWorker.stop(); };
     const changing = new Set();
     const flowCooldowns = new Map();
     let activeFlows = 0;
@@ -828,36 +847,51 @@ export function createMessageStudio({
         // Acknowledge before doing any side effects. Never execute if acknowledgement failed.
         await interaction.deferReply({ flags: MessageFlags.Ephemeral });
         try {
-            const key = `${record.id}:${interaction.user.id}`, timestamp = Date.now();
+            const key = `${record.id}:${interaction.user.id}`, timestamp = now();
             for (const [id, until] of flowCooldowns) if (until <= timestamp) flowCooldowns.delete(id);
-            if (activeFlows >= 10 || flowCooldowns.has(key) || flowCooldowns.size >= 1000) throw Error('Flow terlalu sering dijalankan.');
+            const expiresAt = flowCooldowns.get(key);
+            if (expiresAt) return reply(interaction, `Flow sedang cooldown. Tunggu ${Math.ceil((expiresAt - timestamp) / 1000)} detik sebelum mencoba lagi. Tidak ada action yang dijalankan pada percobaan ini.`);
+            if (activeFlows >= 10 || flowCooldowns.size >= 1000) return reply(interaction, 'Flow sedang sibuk. Coba lagi sebentar lagi. Tidak ada action yang dijalankan pada percobaan ini.');
             flowCooldowns.set(key, timestamp + 5000);
             activeFlows++;
+            let scheduled = false;
             try { await lock(`flow:${interaction.guildId}:${interaction.user.id}`, async () => {
                 const guild = interaction.guild;
                 const member = await guild.members?.fetch?.(interaction.user.id);
                 if (!member || member.id !== interaction.user.id) throw Error('Anggota tidak dapat diperiksa.');
                 const roleFor = async (id) => {
                     const { role } = await resolveRole(guild, id);
-                    if (!checkPanelRole(guild, role).ok) throw Error('Role tidak aman atau izin bot tidak mencukupi.');
+                    if (!checkPanelRole(guild, role).ok) throw flowError('role');
                     return role;
                 };
                 const destination = (id, extra = []) => {
                     const channel = guild.channels?.cache?.get(id);
-                    if (!channel || ![ChannelType.GuildText, ChannelType.GuildAnnouncement].includes(channel.type)) throw Error('Channel flow tidak ditemukan.');
-                    if (!channel.permissionsFor?.(guild.members.me)?.has?.([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, ...extra])) throw Error('Izin bot untuk channel flow tidak mencukupi.');
+                    if (!channel || ![ChannelType.GuildText, ChannelType.GuildAnnouncement].includes(channel.type)) throw flowError('channel');
+                    if (!channel.permissionsFor?.(guild.members.me)?.has?.([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, ...extra])) throw flowError('channel');
                     return channel;
                 };
                 for (const flow of flows) await runStudioFlow(flow, {
                     wait: (seconds) => new Promise((resolve) => setTimeout(resolve, seconds * 1000)),
+                    scheduleMessage: async (seconds, id, message) => {
+                        destination(id); // Validate permissions now; the worker checks them again before delivery.
+                        await queue().schedule({ id: shortId(), runAt: now() + seconds * 1000, payload: { channelId: id, message } });
+                        scheduled = true;
+                    },
                     hasRole: async (id) => { const role = await roleFor(id); return member.roles.cache.has(role.id); },
                     changeRole: async (action, id) => { const role = await roleFor(id); const has = member.roles.cache.has(role.id); if (action === 'add_role' && !has || action === 'toggle_role' && !has) await member.roles.add(role); else if (action === 'remove_role' && has || action === 'toggle_role' && has) await member.roles.remove(role); },
+                    selectUniqueRole: async (selectedId, ids) => {
+                        // Validate the entire group before any write. Discord role changes are not atomic.
+                        const roles = [];
+                        for (const id of ids) roles.push(await roleFor(id));
+                        for (const role of roles) if (role.id !== selectedId && member.roles.cache.has(role.id)) await member.roles.remove(role);
+                        if (!member.roles.cache.has(selectedId)) await member.roles.add(roles.find((role) => role.id === selectedId));
+                    },
                     sendTemplate: async (templateId, isPrivate, channelId) => {
                         const template = (await readState(guild.id)).templates.find((item) => item.id === templateId);
-                        if (!template) throw Error('Template tidak ditemukan.');
+                        if (!template) throw flowError('template');
                         if (!channelId && typeof interaction.followUp !== 'function') throw Error('Respons interaksi tidak tersedia.');
                         const interactive = hasInteractive(template.document), depth = (record.depth || 0) + 1;
-                        if (interactive && depth > 3) throw Error('Tingkat respons interaktif sudah mencapai batas.');
+                        if (interactive && depth > 3) throw flowError('template');
                         // Follow-up interactions need their own snapshot and message binding. Sessions expire
                         // after 15 minutes and never store the interaction token. Private sessions bind the user.
                         const id = interactive ? `flow-${shortId()}` : null;
@@ -887,9 +921,10 @@ export function createMessageStudio({
                     deleteMessage: async (message) => message.delete(),
                 });
             }); } finally { activeFlows--; }
-            return reply(interaction, successContent);
-        } catch {
-            return reply(interaction, 'Flow berhenti karena izin, konfigurasi, atau Discord bermasalah. Sebagian action sebelumnya mungkin sudah berjalan; periksa server sebelum mencoba ulang.');
+            const scheduledNote = '\nPesan terjadwal disimpan; pengiriman belum terjadi.';
+            return reply(interaction, scheduled ? (successContent.length + scheduledNote.length <= 4000 ? successContent : 'Flow selesai.') + scheduledNote : successContent);
+        } catch (error) {
+            return reply(interaction, flowFailureMessage(error));
         }
     }
     async function openStudioModal(interaction, record, action) {
@@ -968,5 +1003,7 @@ export function createMessageStudio({
         }
         return reply(interaction, picked.map((option) => `**${option.label}**\n${option.response}`).join('\n\n'));
     }
-    return { overview, asset, send, edit, remove, forget, saveTemplate, deleteTemplate, handleButton, handleSelect, handleModal, normalizeDocument: normalizeMessageDocument };
+    async function listScheduled(guild) { ensureGuild(guild); return queue().list(); }
+    async function removeScheduled(guild, id) { ensureGuild(guild); if (!await queue().remove(id)) throw err('Jadwal tidak ditemukan atau sedang diproses.', 409, 'MESSAGE_STUDIO_JOB_BUSY'); }
+    return { overview, asset, send, edit, remove, forget, saveTemplate, deleteTemplate, handleButton, handleSelect, handleModal, listScheduled, removeScheduled, startDurableWorker, stopDurableWorker, normalizeDocument: normalizeMessageDocument };
 }

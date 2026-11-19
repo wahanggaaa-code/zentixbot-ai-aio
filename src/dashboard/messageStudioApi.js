@@ -1,5 +1,6 @@
 import express from 'express';
 import { createMessageStudio } from '../services/messageStudio.js';
+import { importDiscordMessage } from '../services/messageStudioImport.js';
 
 const isObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
 const own = (body, required, optional = []) => {
@@ -44,6 +45,21 @@ export function createMessageStudioApi(client, { auth, csrf, env = process.env, 
             if (!asset) throw bad('Gambar tidak ditemukan.', 404, 'MESSAGE_STUDIO_ASSET_MISSING');
             res.set({ 'Content-Type': asset.mime, 'Content-Disposition': `${asset.mime.startsWith('image/') ? 'inline' : 'attachment'}; filename="${asset.filename}"`, 'X-Content-Type-Options': 'nosniff' }).send(asset.buffer);
         } catch (error) { fail(res, error); }
+    });
+    router.get('/scheduled', auth, owner, async (req, res) => {
+        try { noQuery(req); res.json({ jobs: await studio.listScheduled(req.guild) }); }
+        catch (error) { fail(res, error); }
+    });
+    router.delete('/scheduled/:id', auth, owner, csrf, async (req, res) => {
+        try {
+            noQuery(req); if (!validId(req.params.id)) throw bad('ID jadwal tidak valid.');
+            own(req.body, ['confirmed']); if (req.body.confirmed !== true) throw bad('Konfirmasi diperlukan.');
+            await studio.removeScheduled(req.guild, req.params.id); res.json({ ok: true });
+        } catch (error) { fail(res, error); }
+    });
+    router.post('/import-discord', auth, owner, csrf, (req, res) => {
+        try { noQuery(req); own(req.body, ['message']); res.json({ ok: true, ...importDiscordMessage(req.body.message) }); }
+        catch (error) { fail(res, error); }
     });
     router.post('/templates', auth, owner, csrf, async (req, res) => {
         try {

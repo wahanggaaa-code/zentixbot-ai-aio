@@ -12,18 +12,25 @@ export function normalizeStudioFlow(value) {
         if (!Array.isArray(actions) || depth > 3) throw fail('Flow harus berupa daftar action dengan maksimal 3 tingkat kondisi.');
         return actions.map((action) => {
             if (++steps > 20) throw fail('Flow maksimal 20 action termasuk cabang.');
-            obj(action, ['type', 'seconds', 'roleId', 'channelId', 'message', 'name', 'value', 'condition', 'then', 'else', 'templateId', 'private', 'title', 'fields']);
+            obj(action, ['type', 'seconds', 'roleId', 'roleIds', 'channelId', 'message', 'name', 'value', 'condition', 'then', 'else', 'templateId', 'private', 'title', 'fields']);
             const { type } = action;
             const only = (allowed) => obj(action, ['type', ...allowed]);
             if (type === 'noop' || type === 'stop' || type === 'delete_message') { only([]); return { type }; }
             if (type === 'wait') { only(['seconds']); if (!Number.isInteger(action.seconds) || action.seconds < 0 || action.seconds > 10 || (seconds += action.seconds) > 20) throw fail('Jeda maksimal 10 detik per action dan 20 detik per flow.'); return { type, seconds: action.seconds }; }
+            if (type === 'schedule_message') { only(['seconds', 'channelId', 'message']); if (!Number.isInteger(action.seconds) || action.seconds < 1 || action.seconds > 604800 || !snowflake(action.channelId)) throw fail('Jadwal pesan harus 1–604800 detik dengan channel valid.'); return { type, seconds: action.seconds, channelId: action.channelId, message: text(action.message, 4000) }; }
             if (['add_role', 'remove_role', 'toggle_role'].includes(type)) { only(['roleId']); if (!snowflake(action.roleId)) throw fail('Role flow tidak valid.'); return { type, roleId: action.roleId }; }
+            if (type === 'select_unique_role') {
+                only(['roleId', 'roleIds']);
+                if (!snowflake(action.roleId) || !Array.isArray(action.roleIds) || action.roleIds.length < 2 || action.roleIds.length > 10 || action.roleIds.some((id) => !snowflake(id)) || new Set(action.roleIds).size !== action.roleIds.length || !action.roleIds.includes(action.roleId)) throw fail('Grup role unik harus berisi 2–10 ID berbeda termasuk role pilihan.');
+                return { type, roleId: action.roleId, roleIds: [...action.roleIds] };
+            }
             if (type === 'set_variable') { only(['name', 'value']); if (!name(action.name)) throw fail('Nama variabel tidak valid.'); return { type, name: action.name, value: text(action.value, 500) }; }
             if (type === 'check') {
                 only(['condition', 'then', 'else']); obj(action.condition, ['type', 'roleId', 'name', 'value']);
                 const c = action.condition;
                 if (c.type === 'has_role') { obj(c, ['type', 'roleId']); if (!snowflake(c.roleId)) throw fail('Role kondisi tidak valid.'); }
-                else if (c.type === 'variable_equals') { obj(c, ['type', 'name', 'value']); if (!name(c.name)) throw fail('Variabel kondisi tidak valid.'); text(c.value, 500); }
+                else if (['variable_equals', 'variable_not_equals', 'variable_contains'].includes(c.type)) { obj(c, ['type', 'name', 'value']); if (!name(c.name)) throw fail('Variabel kondisi tidak valid.'); text(c.value, 500); }
+                else if (c.type === 'variable_exists') { obj(c, ['type', 'name']); if (!name(c.name)) throw fail('Variabel kondisi tidak valid.'); }
                 else throw fail('Jenis kondisi tidak didukung.');
                 return { type, condition: { ...c }, then: list(action.then || [], depth + 1), else: list(action.else || [], depth + 1) };
             }
@@ -63,21 +70,42 @@ export function normalizeStudioFlow(value) {
 export async function runStudioFlow(flow, context) {
     const actions = normalizeStudioFlow(flow), variables = Object.create(null);
     let lastMessage = null;
-    const interpolate = (s) => s.replace(/\{([A-Za-z][A-Za-z0-9_]{0,31})\}/g, (m, key) => Object.hasOwn(variables, key) ? variables[key] : m);
+    // Bound expansion while building, not after allocating a potentially huge string.
+    const interpolate = (s) => {
+        let result = '', offset = 0;
+        const pattern = /\{([A-Za-z][A-Za-z0-9_]{0,31})\}/g;
+        const append = (part) => { if (result.length + part.length > 4000) throw new Error('Hasil variabel flow terlalu panjang.'); result += part; };
+        for (const match of s.matchAll(pattern)) {
+            append(s.slice(offset, match.index));
+            append(Object.hasOwn(variables, match[1]) ? variables[match[1]] : match[0]);
+            offset = match.index + match[0].length;
+        }
+        append(s.slice(offset));
+        return result;
+    };
     async function run(list) {
         for (const action of list) {
             switch (action.type) {
                 case 'noop': break;
                 case 'stop': return false;
                 case 'wait': await context.wait(action.seconds); break;
+                case 'schedule_message': await context.scheduleMessage(action.seconds, action.channelId, interpolate(action.message)); break;
                 case 'set_variable': variables[action.name] = interpolate(action.value); break;
                 case 'check': {
                     const c = action.condition;
-                    const ok = c.type === 'has_role' ? await context.hasRole(c.roleId) : variables[c.name] === interpolate(c.value);
+                    let ok;
+                    if (c.type === 'has_role') ok = await context.hasRole(c.roleId);
+                    else if (c.type === 'variable_exists') ok = Object.hasOwn(variables, c.name);
+                    else if (!Object.hasOwn(variables, c.name)) ok = false;
+                    else {
+                        const expected = interpolate(c.value), actual = variables[c.name];
+                        ok = c.type === 'variable_equals' ? actual === expected : c.type === 'variable_not_equals' ? actual !== expected : actual.includes(expected);
+                    }
                     if (!await run(ok ? action.then : action.else)) return false;
                     break;
                 }
                 case 'add_role': case 'remove_role': case 'toggle_role': await context.changeRole(action.type, action.roleId); break;
+                case 'select_unique_role': await context.selectUniqueRole(action.roleId, action.roleIds); break;
                 case 'send_message': case 'send_webhook_message': lastMessage = action.templateId ? await context.sendTemplate(action.templateId, action.private, action.channelId) : await context.send(action.type, action.channelId, interpolate(action.message)); break;
                 case 'create_thread': await context.createThread(action.channelId, interpolate(action.name)); break;
                 case 'delete_message': if (!lastMessage) throw new Error('Tidak ada pesan yang dibuat flow ini untuk dihapus.'); await context.deleteMessage(lastMessage); lastMessage = null; break;

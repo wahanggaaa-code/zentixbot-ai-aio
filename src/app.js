@@ -322,6 +322,9 @@ class ZentixBot extends Client {
       cron.getTasks().forEach(task => task.stop());
       stopped.push('scheduled jobs');
 
+      await this.messageStudio?.stopDurableWorker();
+      stopped.push('Message Studio scheduled worker');
+
       await shutdownMusic(this);
       stopped.push('music players');
 

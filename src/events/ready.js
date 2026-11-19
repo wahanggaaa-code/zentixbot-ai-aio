@@ -31,6 +31,10 @@ export default {
         initRiffyAfterReady(client);
       }
 
+      // A failed queue must not prevent other startup work.
+      try { client.messageStudio?.startDurableWorker(); }
+      catch { logger.warn('Message Studio: worker jadwal tidak dapat dimulai.'); }
+
       // Isolated: social alerts must not keep the bot from booting when the poll cannot start.
       try {
         client.socialAlertsPoller = createSocialAlertsPoller(client);
