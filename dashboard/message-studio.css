@@ -11,3 +11,6 @@
 
 .ms-order-title{padding:9px;border-bottom:1px solid var(--softline);font:700 10px var(--mono)}.ms-order-list{padding-bottom:7px}.ms-order-list>.ms-empty{padding:0 9px}.ms-order-row{display:flex;align-items:center;gap:4px;padding:4px 7px;font:10px var(--mono)}.ms-order-row span{flex:1;min-width:0;overflow-wrap:anywhere}.ms-order-row button:disabled{opacity:.45;cursor:not-allowed}
 .ms-flow-branch{border-left:2px solid #70736a;margin:10px 0;padding-left:10px}.ms-flow-branch h4{margin:8px 0}.ms-flow-branch .ms-item-card{padding:7px}
+
+/* Match Discord: disabled buttons must not look actionable in previews. */
+.ms-discord-buttons button:disabled{opacity:.5;cursor:not-allowed}

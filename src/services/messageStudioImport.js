@@ -19,11 +19,13 @@ const emoji = (value) => {
 };
 
 export function importDiscordMessage(raw) {
-    object(raw, ['components', 'flags', 'attachments'], 'Pesan');
+    object(raw, ['components', 'flags', 'attachments', 'username', 'avatar_url'], 'Pesan');
+    if (raw.username !== undefined && (typeof raw.username !== 'string' || raw.username.length > 80)) throw invalid('Nama pengirim tidak valid.');
+    if (raw.avatar_url !== undefined && (typeof raw.avatar_url !== 'string' || raw.avatar_url.length > 2000 || !/^https:\/\//i.test(raw.avatar_url))) throw invalid('URL avatar tidak valid.');
     if (raw.flags !== undefined && raw.flags !== 32768) throw invalid('Flag pesan tidak didukung; gunakan Components V2 tanpa flag lain.');
     if (raw.attachments !== undefined && (!Array.isArray(raw.attachments) || raw.attachments.length)) throw invalid('Attachment tidak dapat diimpor; unggah file ulang di composer.');
     const top = array(raw.components, 30, 'Komponen');
-    let counter = 0, interactions = false;
+    let counter = 0, interactions = false, placeholderLabel = false;
     const id = () => `import${++counter}`;
     const source = (media) => {
         object(media, ['url'], 'Media');
@@ -54,8 +56,9 @@ export function importDiscordMessage(raw) {
             if (children.every(c => c?.type === 2)) return { id: blockId, type: 'buttons', buttons: children.map(button => {
                 object(button, ['type', 'id', 'style', 'label', 'emoji', 'url', 'custom_id', 'disabled', 'flow'], 'Tombol');
                 const style = { 1: 'primary', 2: 'secondary', 3: 'success', 4: 'danger', 5: 'link' }[button.style];
-                if (!style || typeof button.label !== 'string' || !button.label.trim()) throw invalid('Tombol harus memiliki label dan gaya yang didukung.');
-                const base = { id: id(), label: button.label, style, emoji: emoji(button.emoji), disabled: button.disabled ?? false };
+                if (!style || (button.label !== undefined && (typeof button.label !== 'string' || !button.label.trim()))) throw invalid('Label atau gaya tombol tidak valid.');
+                if (!button.label) placeholderLabel = true;
+                const base = { id: id(), label: button.label || 'Tombol impor', style, emoji: emoji(button.emoji), disabled: button.disabled ?? false };
                 if (style === 'link') { if (button.custom_id !== undefined || button.flow !== undefined) throw invalid('Tombol link tidak boleh memiliki flow atau custom_id.'); return { ...base, url: button.url }; }
                 if (button.url !== undefined) throw invalid('Tombol interaktif tidak boleh memiliki URL.');
                 interactions = true;
@@ -86,5 +89,9 @@ export function importDiscordMessage(raw) {
             const component = block(entry, false); document.before.push(component); document.order.push({ kind: 'block', id: component.id });
         }
     }
-    return { document: normalizeMessageDocument(document), warnings: interactions ? ['Flow dan custom_id asing diabaikan. Tombol interaktif dinonaktifkan; menu menggunakan respons sementara. Atur ulang action sebelum digunakan.'] : [] };
+    const warnings = [];
+    if (interactions) warnings.push('Flow dan custom_id asing diabaikan. Tombol interaktif dinonaktifkan; menu menggunakan respons sementara. Atur ulang action sebelum digunakan.');
+    if (placeholderLabel) warnings.push('Tombol tanpa label diberi label sementara “Tombol impor”; periksa dan ubah sebelum digunakan.');
+    if (raw.username !== undefined || raw.avatar_url !== undefined) warnings.push('Nama dan avatar pengirim dari JSON diabaikan; atur pengirim sendiri di dashboard.');
+    return { document: normalizeMessageDocument(document), warnings };
 }

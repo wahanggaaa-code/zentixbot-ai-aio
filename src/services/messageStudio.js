@@ -139,7 +139,7 @@ export function normalizeMessageDocument(value, { allowUploads = false, makeId =
     const containerIds = new Set(), blockIds = new Set();
     let mediaItems = 0;
     const normalizeBlock = (block) => {
-        own(block, ['id', 'type', 'content', 'divider', 'spacing', 'items', 'buttons', 'placeholder', 'minValues', 'maxValues', 'options', 'kind', 'response', 'source', 'spoiler']);
+        own(block, ['id', 'type', 'content', 'divider', 'spacing', 'items', 'buttons', 'placeholder', 'minValues', 'maxValues', 'options', 'kind', 'response', 'source', 'spoiler', 'roleSync']);
         const id = mint(block.id, blockIds, 'ID komponen', makeId);
         if (block.type === 'text') {
             if (Object.keys(block).some((key) => !['id', 'type', 'content'].includes(key))) throw err('Komponen teks tidak valid.');
@@ -203,10 +203,12 @@ export function normalizeMessageDocument(value, { allowUploads = false, makeId =
             return { id, type: 'entity-select', kind: block.kind, placeholder: optionalText(block.placeholder, 150, 'Placeholder menu'), minValues, maxValues, response: text(block.response, 2000, 'Respons pilihan') };
         }
         if (block.type === 'select') {
-            if (Object.keys(block).some((key) => !['id', 'type', 'placeholder', 'minValues', 'maxValues', 'options'].includes(key)) || !Array.isArray(block.options) || !block.options.length || block.options.length > 25) throw err('Menu pilihan tidak valid.');
-            const optionIds = new Set();
+            if (Object.keys(block).some((key) => !['id', 'type', 'placeholder', 'minValues', 'maxValues', 'options', 'roleSync'].includes(key)) || !Array.isArray(block.options) || !block.options.length || block.options.length > 25 || (block.roleSync !== undefined && block.roleSync !== true)) throw err('Menu pilihan tidak valid.');
+            const optionIds = new Set(), roleIds = new Set();
             const options = block.options.map((option) => {
-                own(option, ['id', 'label', 'description', 'emoji', 'response', 'flow'], 'Pilihan menu tidak valid.');
+                own(option, block.roleSync ? ['id', 'label', 'description', 'emoji', 'roleId'] : ['id', 'label', 'description', 'emoji', 'response', 'flow'], 'Pilihan menu tidak valid.');
+                if (block.roleSync && (!snowflake(option.roleId) || roleIds.has(option.roleId))) throw err('Setiap pilihan sinkronisasi memerlukan ID role yang valid dan berbeda.');
+                if (block.roleSync) roleIds.add(option.roleId);
                 if (option.flow !== undefined && option.response !== undefined) throw err('Gunakan flow atau respons, bukan keduanya.');
                 if (option.flow?.some?.((action) => action?.type === 'open_modal')) throw err('Open Modal hanya tersedia pada tombol.');
                 const optionId = mint(option.id, optionIds, 'ID pilihan', makeId);
@@ -215,14 +217,14 @@ export function normalizeMessageDocument(value, { allowUploads = false, makeId =
                     label: text(option.label, 100, 'Label pilihan'),
                     description: optionalText(option.description, 100, 'Deskripsi pilihan'),
                     emoji: normalizeEmoji(option.emoji),
-                    ...(option.flow !== undefined ? { flow: normalizeStudioFlow(option.flow) } : { response: text(option.response, 2000, 'Respons pilihan') }),
+                    ...(block.roleSync ? { roleId: option.roleId } : option.flow !== undefined ? { flow: normalizeStudioFlow(option.flow) } : { response: text(option.response, 2000, 'Respons pilihan') }),
                 };
             });
             const minValues = block.minValues === undefined ? 1 : block.minValues;
             const maxValues = block.maxValues === undefined ? 1 : block.maxValues;
             if (!Number.isInteger(minValues) || !Number.isInteger(maxValues) || minValues < 0 || maxValues < 1 || minValues > maxValues || maxValues > options.length) throw err('Batas pilihan menu tidak valid.');
             if (options.some((option) => option.flow) && maxValues > 5) throw err('Menu dengan flow maksimal 5 pilihan sekaligus.');
-            return { id, type: 'select', placeholder: optionalText(block.placeholder, 150, 'Placeholder menu'), minValues, maxValues, options };
+            return { id, type: 'select', placeholder: optionalText(block.placeholder, 150, 'Placeholder menu'), minValues, maxValues, options, ...(block.roleSync ? { roleSync: true } : {}) };
         }
         throw err('Jenis komponen tidak didukung.');
     };
@@ -987,6 +989,35 @@ export function createMessageStudio({
             return reply(interaction, 'Formulir gagal atau hasil pengiriman tidak pasti. Periksa channel tujuan sebelum mencoba lagi.');
         }
     }
+    async function syncSelectedRoles(interaction, record, block, picked) {
+        if (!interaction.guild || interaction.guild.id !== client.homeGuildId || !snowflake(interaction.user?.id) || typeof interaction.deferReply !== 'function') return reply(interaction, 'Sinkronisasi role memerlukan konteks server yang valid.');
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+        const key = `${record.id}:${interaction.user.id}`, timestamp = now();
+        for (const [id, until] of flowCooldowns) if (until <= timestamp) flowCooldowns.delete(id);
+        const until = flowCooldowns.get(key);
+        if (until) return reply(interaction, `Flow sedang cooldown. Tunggu ${Math.ceil((until - timestamp) / 1000)} detik sebelum mencoba lagi. Tidak ada action yang dijalankan pada percobaan ini.`);
+        if (activeFlows >= 10 || flowCooldowns.size >= 1000) return reply(interaction, 'Flow sedang sibuk. Coba lagi sebentar lagi. Tidak ada action yang dijalankan pada percobaan ini.');
+        flowCooldowns.set(key, timestamp + 5000); activeFlows++;
+        try {
+            await lock(`flow:${interaction.guildId}:${interaction.user.id}`, async () => {
+                const guild = interaction.guild;
+                const member = await guild.members.fetch({ user: interaction.user.id, force: true });
+                if (!member || member.id !== interaction.user.id) throw Error('Anggota tidak dapat diperiksa.');
+                const roles = [];
+                for (const option of block.options) {
+                    const { role } = await resolveRole(guild, option.roleId);
+                    if (!checkPanelRole(guild, role).ok) throw flowError('role');
+                    roles.push(role);
+                }
+                const selected = new Set(picked.map(option => option.roleId));
+                // All roles are validated first; Discord writes are separate and may partially fail.
+                for (const role of roles) if (!selected.has(role.id) && member.roles.cache.has(role.id)) await member.roles.remove(role);
+                for (const role of roles) if (selected.has(role.id) && !member.roles.cache.has(role.id)) await member.roles.add(role);
+            });
+            return reply(interaction, 'Pilihan role berhasil disinkronkan.');
+        } catch (error) { return reply(interaction, flowFailureMessage(error)); }
+        finally { activeFlows--; }
+    }
     async function handleSelect(interaction, args = []) {
         const [recordId, blockId] = args;
         const record = await interactionRecord(interaction, recordId);
@@ -999,9 +1030,10 @@ export function createMessageStudio({
         }
         const values = Array.isArray(interaction.values) ? interaction.values : [];
         if (!block || interaction.componentType !== 3 || values.length < block.minValues || values.length > block.maxValues || new Set(values).size !== values.length) return reply(interaction, 'Pilihan ini tidak lagi aktif atau tidak valid.');
-        if (!values.length) return reply(interaction, 'Tidak ada pilihan. Tidak ada role yang diubah.');
         const picked = values.map((id) => block.options.find((item) => item.id === id));
         if (picked.some((item) => !item)) return reply(interaction, 'Pilihan ini tidak lagi aktif atau tidak valid.');
+        if (block.roleSync) return syncSelectedRoles(interaction, record, block, picked);
+        if (!values.length) return reply(interaction, 'Tidak ada pilihan. Tidak ada role yang diubah.');
         if (picked.some((item) => item.flow)) {
             const flows = picked.filter((item) => item.flow).map((item) => item.flow);
             const messages = picked.filter((item) => !item.flow).map((item) => `**${item.label}**\n${item.response}`);
