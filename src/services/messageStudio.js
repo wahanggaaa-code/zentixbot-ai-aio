@@ -854,7 +854,7 @@ export function createMessageStudio({
             if (activeFlows >= 10 || flowCooldowns.size >= 1000) return reply(interaction, 'Flow sedang sibuk. Coba lagi sebentar lagi. Tidak ada action yang dijalankan pada percobaan ini.');
             flowCooldowns.set(key, timestamp + 5000);
             activeFlows++;
-            let scheduled = false;
+            let scheduled = false, initialResponseCompleted = false;
             try { await lock(`flow:${interaction.guildId}:${interaction.user.id}`, async () => {
                 const guild = interaction.guild;
                 const member = await guild.members?.fetch?.(interaction.user.id);
@@ -899,6 +899,14 @@ export function createMessageStudio({
                         const snapshot = interactive ? { version: 1, id, rootId: record.rootId || record.id, messageId: null, userId: !channelId && isPrivate ? interaction.user.id : null, depth, expiresAt: now() + 15 * 60 * 1000, document: template.document } : null;
                         const payload = await buildPayload(guild.id, template.document, { recordId: id });
                         if (!channelId && isPrivate) payload.flags |= MessageFlags.Ephemeral;
+                        if (!channelId && !initialResponseCompleted) {
+                            // Discord may treat the first follow-up after a defer as an edit of the
+                            // original response, ignoring its visibility flag. Finish that response
+                            // first so the template is a separate message and cannot be overwritten.
+                            if (typeof interaction.editReply !== 'function') throw Error('Respons interaksi tidak tersedia.');
+                            await reply(interaction, 'Flow sedang berjalan.');
+                            initialResponseCompleted = true;
+                        }
                         if (interactive) await kv.set(key, snapshot, 15 * 60);
                         const sent = channelId ? await destination(channelId).send(payload) : await interaction.followUp(payload);
                         if (!sent?.delete || (interactive && !snowflake(sent.id))) throw Error('Respons terkirim tetapi identitasnya tidak tersedia.');
