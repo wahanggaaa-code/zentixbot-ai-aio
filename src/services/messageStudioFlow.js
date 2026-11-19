@@ -66,9 +66,36 @@ export function normalizeStudioFlow(value) {
     return result;
 }
 
+// Continuations cannot use interaction tokens, message handles or foreign webhooks.
+// Unsupported flows retain the existing in-memory wait behavior.
+export function supportsDurableStudioFlow(flow) {
+    const allowed = new Set(['noop','stop','wait','schedule_message','set_variable','check','add_role','remove_role','toggle_role','select_unique_role','send_message','create_thread']);
+    const visit = list => list.every(action => allowed.has(action.type) && !(action.type === 'send_message' && action.templateId !== undefined) && (action.type !== 'check' || (visit(action.then) && visit(action.else))));
+    try { return visit(normalizeStudioFlow(flow)); } catch { return false; }
+}
+export function normalizeStudioCheckpoint(resume) {
+    obj(resume, ['version', 'remaining', 'variables']);
+    if (resume.version !== 1 || !resume.variables || typeof resume.variables !== 'object' || Array.isArray(resume.variables) || Object.keys(resume.variables).length > 20) throw fail('Checkpoint flow tidak valid.');
+    const variables = Object.create(null);
+    for (const [key, value] of Object.entries(resume.variables)) {
+        if (!name(key) || typeof value !== 'string' || value.length > 4000 || value.includes('\0')) throw fail('Variabel checkpoint tidak valid.');
+        variables[key] = value;
+    }
+    const remaining = normalizeStudioFlow(resume.remaining);
+    if (!supportsDurableStudioFlow(remaining)) throw fail('Action checkpoint belum didukung.');
+    return { version: 1, remaining, variables: { ...variables } };
+}
+
 /** Dependencies are supplied by the service; lastMessage never accepts an arbitrary message ID. */
-export async function runStudioFlow(flow, context) {
-    const actions = normalizeStudioFlow(flow), variables = Object.create(null);
+export async function runStudioFlow(flow, context, resume = null) {
+    // Checkpoints contain only validated actions and variables; interaction tokens
+    // and message handles never become part of a continuation.
+    let actions, variables = Object.create(null);
+    if (resume !== null) {
+        const valid = normalizeStudioCheckpoint(resume);
+        Object.assign(variables, valid.variables);
+        actions = valid.remaining;
+    } else actions = normalizeStudioFlow(flow);
     let lastMessage = null;
     // Bound expansion while building, not after allocating a potentially huge string.
     const interpolate = (s) => {
@@ -83,36 +110,44 @@ export async function runStudioFlow(flow, context) {
         append(s.slice(offset));
         return result;
     };
-    async function run(list) {
-        for (const action of list) {
-            switch (action.type) {
-                case 'noop': break;
-                case 'stop': return false;
-                case 'wait': await context.wait(action.seconds); break;
-                case 'schedule_message': await context.scheduleMessage(action.seconds, action.channelId, interpolate(action.message)); break;
-                case 'set_variable': variables[action.name] = interpolate(action.value); break;
-                case 'check': {
-                    const c = action.condition;
-                    let ok;
-                    if (c.type === 'has_role') ok = await context.hasRole(c.roleId);
-                    else if (c.type === 'variable_exists') ok = Object.hasOwn(variables, c.name);
-                    else if (!Object.hasOwn(variables, c.name)) ok = false;
-                    else {
-                        const expected = interpolate(c.value), actual = variables[c.name];
-                        ok = c.type === 'variable_equals' ? actual === expected : c.type === 'variable_not_equals' ? actual !== expected : actual.includes(expected);
-                    }
-                    if (!await run(ok ? action.then : action.else)) return false;
-                    break;
+    // Flatten only branches already chosen; unvisited checks remain declarative.
+    // This keeps the continuation bounded and independent of recursion frames.
+    let pending = [...actions];
+    while (pending.length) {
+        const action = pending.shift();
+        switch (action.type) {
+            case 'noop': break;
+            case 'stop': return;
+            case 'wait': {
+                if (context.checkpoint && pending.length) {
+                    // Message handles and interaction tokens cannot be serialized safely.
+                    if (lastMessage !== null && !context.discardLastMessageOnCheckpoint) throw Error('Checkpoint setelah pesan flow belum didukung.');
+                    const snapshot = { version: 1, remaining: structuredClone(pending), variables: { ...variables } };
+                    if (await context.checkpoint(action.seconds, snapshot)) return { paused: true };
                 }
-                case 'add_role': case 'remove_role': case 'toggle_role': await context.changeRole(action.type, action.roleId); break;
-                case 'select_unique_role': await context.selectUniqueRole(action.roleId, action.roleIds); break;
-                case 'send_message': case 'send_webhook_message': lastMessage = action.templateId ? await context.sendTemplate(action.templateId, action.private, action.channelId) : await context.send(action.type, action.channelId, interpolate(action.message)); break;
-                case 'create_thread': await context.createThread(action.channelId, interpolate(action.name)); break;
-                case 'delete_message': if (!lastMessage) throw new Error('Tidak ada pesan yang dibuat flow ini untuk dihapus.'); await context.deleteMessage(lastMessage); lastMessage = null; break;
-                default: throw fail('Action flow tidak dikenal.');
+                await context.wait(action.seconds); break;
             }
+            case 'schedule_message': await context.scheduleMessage(action.seconds, action.channelId, interpolate(action.message)); break;
+            case 'set_variable': variables[action.name] = interpolate(action.value); break;
+            case 'check': {
+                const c = action.condition;
+                let ok;
+                if (c.type === 'has_role') ok = await context.hasRole(c.roleId);
+                else if (c.type === 'variable_exists') ok = Object.hasOwn(variables, c.name);
+                else if (!Object.hasOwn(variables, c.name)) ok = false;
+                else {
+                    const expected = interpolate(c.value), actual = variables[c.name];
+                    ok = c.type === 'variable_equals' ? actual === expected : c.type === 'variable_not_equals' ? actual !== expected : actual.includes(expected);
+                }
+                pending = [...(ok ? action.then : action.else), ...pending];
+                break;
+            }
+            case 'add_role': case 'remove_role': case 'toggle_role': await context.changeRole(action.type, action.roleId); break;
+            case 'select_unique_role': await context.selectUniqueRole(action.roleId, action.roleIds); break;
+            case 'send_message': case 'send_webhook_message': lastMessage = action.templateId ? await context.sendTemplate(action.templateId, action.private, action.channelId) : await context.send(action.type, action.channelId, interpolate(action.message)); break;
+            case 'create_thread': await context.createThread(action.channelId, interpolate(action.name)); break;
+            case 'delete_message': if (!lastMessage) throw new Error('Tidak ada pesan yang dibuat flow ini untuk dihapus.'); await context.deleteMessage(lastMessage); lastMessage = null; break;
+            default: throw fail('Action flow tidak dikenal.');
         }
-        return true;
     }
-    await run(actions);
 }

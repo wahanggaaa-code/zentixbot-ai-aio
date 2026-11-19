@@ -32,7 +32,7 @@ import {
 } from 'discord.js';
 import { createKV } from './ai/kv.js';
 import { createV2Container, v2Message } from '../utils/componentsV2.js';
-import { normalizeStudioFlow, runStudioFlow } from './messageStudioFlow.js';
+import { normalizeStudioFlow, runStudioFlow, supportsDurableStudioFlow } from './messageStudioFlow.js';
 import { createStudioDurableQueue } from './messageStudioDurableQueue.js';
 import { createStudioDurableWorker } from './messageStudioDurableWorker.js';
 import { checkPanelRole, resolveRole, roleReason } from './selfRoles/manage.js';
@@ -428,7 +428,7 @@ export function createMessageStudio({
     let durableQueue, durableWorker;
     const queue = () => durableQueue ||= createStudioDurableQueue({ kv, guildId: client.homeGuildId, now });
     let lastWorkerWarning = 0;
-    const startDurableWorker = () => { if (!durableWorker) durableWorker = createStudioDurableWorker({ client, queue: queue(), onError: () => { if (Date.now() - lastWorkerWarning >= 60000) { lastWorkerWarning = Date.now(); logger.warn('Message Studio: antrean terjadwal tidak dapat diproses; akan diperiksa lagi.'); } } }); durableWorker.start(); };
+    const startDurableWorker = () => { if (!durableWorker) durableWorker = createStudioDurableWorker({ client, queue: queue(), resumeFlow: resumeDurableFlow, onError: () => { if (Date.now() - lastWorkerWarning >= 60000) { lastWorkerWarning = Date.now(); logger.warn('Message Studio: antrean terjadwal tidak dapat diproses; akan diperiksa lagi.'); } } }); durableWorker.start(); };
     const stopDurableWorker = async () => { if (durableWorker) await durableWorker.stop(); };
     const changing = new Set();
     const flowCooldowns = new Map();
@@ -851,6 +851,40 @@ export function createMessageStudio({
         if (button.flow[0]?.type === 'open_modal') return openStudioModal(interaction, record, button.flow[0]);
         return executeInteractionFlows(interaction, record, [button.flow]);
     }
+    // Resume only the supported, token-free subset after fetching the current
+    // member and rechecking roles and channel permissions. Errors after a claim
+    // are uncertain because Discord writes may already have happened.
+    async function resumeDurableFlow(guild, job) {
+        const { userId, rootId, snapshot } = job.payload;
+        return lock(`flow:${guild.id}:${userId}`, async () => {
+            const state = await readState(guild.id);
+            if (!state.messages.some(item => item.id === rootId && item.sender === 'bot')) throw Error('Pesan asal tidak aktif.');
+            const member = await guild.members.fetch({ user: userId, force: true });
+            if (!member || member.id !== userId) throw Error('Anggota tidak tersedia.');
+            const roleFor = async id => { const { role } = await resolveRole(guild, id); if (!checkPanelRole(guild, role).ok) throw flowError('role'); return role; };
+            const destination = (id, extra = []) => {
+                const channel = guild.channels?.cache?.get(id);
+                if (!channel || ![ChannelType.GuildText, ChannelType.GuildAnnouncement].includes(channel.type) || !channel.permissionsFor?.(guild.members.me)?.has?.([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, ...extra])) throw flowError('channel');
+                return channel;
+            };
+            const result = await runStudioFlow(null, {
+                discardLastMessageOnCheckpoint: true,
+                wait: seconds => new Promise(resolve => setTimeout(resolve, seconds * 1000)),
+                checkpoint: async (seconds, next) => {
+                    if (!seconds) return false;
+                    if (!await queue().suspend(job.id, job.token, now() + seconds * 1000, { userId, rootId, snapshot: next })) throw Error('Checkpoint tidak tersimpan.');
+                    return true;
+                },
+                scheduleMessage: async (seconds, id, message) => { destination(id); await queue().schedule({ id: shortId(), runAt: now() + seconds * 1000, payload: { channelId: id, message } }); },
+                hasRole: async id => { const role = await roleFor(id); return member.roles.cache.has(role.id); },
+                changeRole: async (action, id) => { const role = await roleFor(id), has = member.roles.cache.has(role.id); if (action === 'add_role' && !has || action === 'toggle_role' && !has) await member.roles.add(role); else if (action === 'remove_role' && has || action === 'toggle_role' && has) await member.roles.remove(role); },
+                selectUniqueRole: async (selectedId, ids) => { const roles = []; for (const id of ids) roles.push(await roleFor(id)); for (const role of roles) if (role.id !== selectedId && member.roles.cache.has(role.id)) await member.roles.remove(role); if (!member.roles.cache.has(selectedId)) await member.roles.add(roles.find(role => role.id === selectedId)); },
+                send: async (_type, id, message) => { if (!message.trim() || message.length > 4000) throw Error('Teks flow tidak valid.'); const sent = await destination(id).send({ ...v2Message([new TextDisplayBuilder().setContent(message)]), allowedMentions: { parse: [], repliedUser: false } }); return sent; },
+                createThread: async (id, name) => { if (!name.trim() || name.length > 100) throw Error('Nama thread tidak valid.'); const channel = destination(id, [PermissionFlagsBits.CreatePublicThreads]); if (!channel.threads?.create) throw Error('Channel tidak mendukung thread.'); await channel.threads.create({ name, type: ChannelType.PublicThread }); },
+            }, snapshot);
+            return result?.paused ? 'paused' : 'done';
+        });
+    }
     async function executeInteractionFlows(interaction, record, flows, successContent = 'Flow selesai.') {
         if (!interaction.guild || interaction.guild.id !== client.homeGuildId || !snowflake(interaction.user?.id) || typeof interaction.deferReply !== 'function') return reply(interaction, 'Flow tidak dapat dijalankan tanpa konteks server yang valid.');
         // Bound combined work across all selected options before acknowledging or side effects.
@@ -865,7 +899,8 @@ export function createMessageStudio({
             if (activeFlows >= 10 || flowCooldowns.size >= 1000) return reply(interaction, 'Flow sedang sibuk. Coba lagi sebentar lagi. Tidak ada action yang dijalankan pada percobaan ini.');
             flowCooldowns.set(key, timestamp + 5000);
             activeFlows++;
-            let scheduled = false, initialResponseCompleted = false;
+            let scheduled = false, paused = false, initialResponseCompleted = false;
+            const durable = flows.length === 1 && supportsDurableStudioFlow(flows[0]);
             try { await lock(`flow:${interaction.guildId}:${interaction.user.id}`, async () => {
                 const guild = interaction.guild;
                 const member = await guild.members?.fetch?.(interaction.user.id);
@@ -881,7 +916,13 @@ export function createMessageStudio({
                     if (!channel.permissionsFor?.(guild.members.me)?.has?.([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, ...extra])) throw flowError('channel');
                     return channel;
                 };
-                for (const flow of flows) await runStudioFlow(flow, {
+                for (const flow of flows) {
+                  const result = await runStudioFlow(flow, {
+                    ...(durable ? { discardLastMessageOnCheckpoint: true, checkpoint: async (seconds, snapshot) => {
+                        if (!seconds) return false;
+                        await queue().schedule({ id: shortId(), runAt: now() + seconds * 1000, kind: 'flow', payload: { userId: interaction.user.id, rootId: record.rootId || record.id, snapshot } });
+                        paused = true; return true;
+                    }} : {}),
                     wait: (seconds) => new Promise((resolve) => setTimeout(resolve, seconds * 1000)),
                     scheduleMessage: async (seconds, id, message) => {
                         destination(id); // Validate permissions now; the worker checks them again before delivery.
@@ -938,8 +979,11 @@ export function createMessageStudio({
                     },
                     createThread: async (id, name) => { if (!name.trim() || name.length > 100) throw Error('Nama thread tidak valid.'); const channel = destination(id, [PermissionFlagsBits.CreatePublicThreads]); if (!channel.threads?.create) throw Error('Channel tidak mendukung thread.'); await channel.threads.create({ name, type: ChannelType.PublicThread }); },
                     deleteMessage: async (message) => message.delete(),
-                });
+                  });
+                  if (result?.paused) break;
+                }
             }); } finally { activeFlows--; }
+            if (paused) return reply(interaction, 'Flow dijeda dan disimpan; akan dilanjutkan setelah waktunya, termasuk setelah restart.');
             const scheduledNote = '\nPesan terjadwal disimpan; pengiriman belum terjadi.';
             return reply(interaction, scheduled ? (successContent.length + scheduledNote.length <= 4000 ? successContent : 'Flow selesai.') + scheduledNote : successContent);
         } catch (error) {

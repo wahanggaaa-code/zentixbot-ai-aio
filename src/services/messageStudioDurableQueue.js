@@ -1,8 +1,9 @@
-// Persistent queue for explicitly scheduled text messages, not arbitrary flow continuations.
+// Persistent queue for scheduled text and validated, token-free flow continuations.
 // One atomic KV value per guild ensures claims are exclusive on SQLite and PostgreSQL.
 // A lost lease becomes uncertain, never eligible for automatic retry: Discord side effects
 // may have succeeded even when a worker died before recording success.
 import crypto from 'node:crypto';
+import { normalizeStudioCheckpoint } from './messageStudioFlow.js';
 
 const MAX_JOBS = 100;
 const RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
@@ -24,17 +25,22 @@ export function createStudioDurableQueue({ kv, guildId, now = Date.now, makeToke
         if (!payload || typeof payload !== 'object' || Array.isArray(payload) || Object.keys(payload).some(k => !['channelId', 'message'].includes(k)) || !snowflake(payload.channelId) || typeof payload.message !== 'string' || !payload.message.trim() || payload.message.length > 4000 || payload.message.includes('\0')) throw fail('Isi pekerjaan tidak valid.');
         return { channelId: payload.channelId, message: payload.message };
     };
-    async function schedule({ id, runAt, payload }) {
+    const cleanFlow = payload => {
+        if (!payload || typeof payload !== 'object' || Array.isArray(payload) || Object.keys(payload).some(k => !['userId','rootId','snapshot'].includes(k)) || !snowflake(payload.userId) || !safeId(payload.rootId)) throw fail('Isi kelanjutan flow tidak valid.');
+        return { userId: payload.userId, rootId: payload.rootId, snapshot: normalizeStudioCheckpoint(payload.snapshot) };
+    };
+    async function schedule({ id, runAt, payload, kind = 'message' }) {
         const timestamp = now();
         if (!safeId(id) || !Number.isSafeInteger(timestamp) || !Number.isSafeInteger(runAt) || runAt < timestamp || runAt > timestamp + MAX_DELAY_MS) throw fail('Jadwal tidak valid.');
-        const data = cleanPayload(payload);
+        if (!['message','flow'].includes(kind)) throw fail('Jenis pekerjaan tidak valid.');
+        const data = kind === 'flow' ? cleanFlow(payload) : cleanPayload(payload);
         await kv.update(key, current => {
             const queue = state(current);
             // Never automatically prune pending, running, or uncertain work.
             queue.jobs = queue.jobs.filter(job => !(['done', 'failed'].includes(job.status) && Number.isFinite(job.finishedAt) && job.finishedAt <= timestamp - RETENTION_MS));
             if (queue.jobs.some(job => job.id === id)) throw fail('ID pekerjaan sudah ada.');
             if (queue.jobs.length >= MAX_JOBS) throw fail('Antrean penuh; pekerjaan perlu ditinjau.');
-            queue.jobs.push({ id, runAt, payload: data, status: 'pending', createdAt: timestamp });
+            queue.jobs.push({ id, runAt, payload: data, ...(kind === 'flow' ? {kind} : {}), status: 'pending', createdAt: timestamp });
             return queue;
         });
     }
@@ -50,6 +56,18 @@ export function createStudioDurableQueue({ kv, guildId, now = Date.now, makeToke
             return queue;
         });
         return claimed;
+    }
+    // Persist the next checkpoint on the same claim. An expired/ambiguous claim
+    // is never made pending again, preventing automatic replay of side effects.
+    async function suspend(id, token, runAt, payload) {
+        const timestamp = now(), data = cleanFlow(payload); let updated = false;
+        if (!safeId(id) || !safeId(token) || !Number.isSafeInteger(runAt) || runAt < timestamp || runAt > timestamp + MAX_DELAY_MS) throw fail('Jadwal kelanjutan tidak valid.');
+        await kv.update(key, current => {
+            const queue = state(current), job = queue.jobs.find(j => j.id === id);
+            if (!job || job.kind !== 'flow' || job.status !== 'running' || job.token !== token || job.leaseUntil <= timestamp) return undefined;
+            job.payload = data; job.runAt = runAt; job.status = 'pending'; delete job.token; delete job.leaseUntil; updated = true; return queue;
+        });
+        return updated;
     }
     async function finish(id, token, outcome) {
         if (!safeId(id) || !safeId(token) || !['done', 'failed', 'uncertain'].includes(outcome)) throw fail('Hasil pekerjaan tidak valid.');
@@ -78,5 +96,5 @@ export function createStudioDurableQueue({ kv, guildId, now = Date.now, makeToke
         });
         return removed;
     }
-    return { schedule, claim, finish, list, remove };
+    return { schedule, claim, suspend, finish, list, remove };
 }
