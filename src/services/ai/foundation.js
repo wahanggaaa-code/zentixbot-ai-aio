@@ -72,6 +72,40 @@ async function boundedJSON(response){
  try{while(true){const {done,value}=await reader.read();if(done)break;size+=value.length;if(size>131072)throw error('PROVIDER_RESPONSE','Respons provider terlalu besar.',502);chunks.push(value);}}finally{await reader.cancel().catch(()=>{});}
  try{return JSON.parse(Buffer.concat(chunks.map(x=>Buffer.from(x))).toString('utf8'));}catch{throw error('PROVIDER_RESPONSE','Respons provider tidak valid.',502)}
 }
+// Bounded OpenAI-compatible SSE. Once any text is emitted, a broken stream
+// must never be retried with another provider: it could duplicate the answer.
+async function readStream(response,onDelta,onEmitted) {
+ if(!response.body)throw error('PROVIDER_RESPONSE','Respons provider kosong.',502);
+ const reader=response.body.getReader(), decoder=new TextDecoder();let buffer='',text='',bytes=0,doneMarker=false;
+ try {
+  while(true){
+   const part=await reader.read();if(part.done)break;bytes+=part.value.length;if(bytes>131072)throw error('PROVIDER_RESPONSE','Respons provider terlalu besar.',502);
+   buffer+=decoder.decode(part.value,{stream:true});
+   let split;
+   while((split=buffer.indexOf('\n'))>=0){
+    const line=buffer.slice(0,split).replace(/\r$/,'');buffer=buffer.slice(split+1);if(!line.startsWith('data:'))continue;
+    const data=line.slice(5).trim();if(data==='[DONE]'){doneMarker=true;continue;}if(!data)continue;
+    let value;try{value=JSON.parse(data)}catch{throw error('PROVIDER_RESPONSE','Respons streaming tidak valid.',502)}
+    const choice=value?.choices?.[0];if(choice?.finish_reason==='content_filter'||choice?.delta?.refusal){throw error('FILTERED','Respons diblokir oleh kebijakan provider.',422);}
+    const chunk=choice?.delta?.content;if(chunk!==undefined&&chunk!==null&&typeof chunk!=='string')throw error('PROVIDER_RESPONSE','Respons streaming tidak valid.',502);
+    if(chunk){text+=chunk;if(text.length>32000)throw error('PROVIDER_RESPONSE','Respons provider terlalu besar.',502);onEmitted();await onDelta(text);}
+   }
+  }
+  if(!doneMarker||!text.trim())throw error('PROVIDER_RESPONSE','Respons streaming terputus.',502);
+  return text;
+ } finally {await reader.cancel().catch(()=>{});}
+}
+
+async function streamingNotSupported(response) {
+ try {
+  const data=await boundedJSON(response);
+  const message=String(data?.error?.message ?? '').toLowerCase().slice(0,2000);
+  const code=String(data?.error?.code ?? '').toLowerCase();
+  if (/safety|policy|moderation|content[_ -]?filter/.test(`${code} ${message}`)) return false;
+  return code==='streaming_not_supported' || /(?:stream|streaming)[^.!?]{0,80}(?:not supported|unsupported|not available)/.test(message) || /(?:does not|doesn't|cannot|can't) support[^.!?]{0,40}stream/.test(message);
+ } catch { return false; }
+}
+
 // Known text-only models should not receive image data. Keep this narrow: model
 // catalogues change, and an unknown model must still be allowed to try vision.
 const TEXT_ONLY_IMAGE_MODELS = new Set(['openai/gpt-oss-120b','openai/gpt-oss-20b']);
@@ -96,11 +130,12 @@ export function createAIFoundation({client,store=createAIStore(client),env=proce
   store,
   credentials(){return Object.fromEntries(Object.entries(PROVIDERS).map(([id,p])=>[id,Boolean(env[p.key]?.trim())]));},
   // `kind` only labels the request for the usage report; it does not reach the provider.
-  async generate({guildId,userId,prompt,consent,image=null,kind='other'}){
+  async generate({guildId,userId,prompt,consent,image=null,kind='other',onDelta=null}){
    if(!snowflake.test(guildId||'')||guildId!==client?.homeGuildId||!snowflake.test(userId||''))throw error('FORBIDDEN','Identitas server atau anggota tidak valid.',403);
    if(consent!==true)throw error('CONSENT_REQUIRED','Persetujuan pemrosesan data diperlukan.',403);
    if(typeof prompt!=='string'||!prompt.trim()||prompt.length>MAX_AI_PROMPT_CHARS)throw error('INVALID_INPUT','Input harus 1–4000 karakter.');
    if(image!==null&&(!image||!['image/png','image/jpeg'].includes(image.mime)||typeof image.base64!=='string'||!image.base64.length||image.base64.length>1398104||! /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(image.base64)))throw error('INVALID_INPUT','Gambar tidak valid.');
+   if(onDelta!==null&&typeof onDelta!=='function')throw error('INVALID_INPUT','Callback streaming tidak valid.');
    if(active>=4)throw error('BUSY','Terlalu banyak permintaan AI yang berjalan.',429);
    active++;
    try{
@@ -111,14 +146,24 @@ export function createAIFoundation({client,store=createAIStore(client),env=proce
     for(const [id,model] of chain){const provider=PROVIDERS[id],key=env[provider.key]?.trim();if(!key)continue;attempted++;
      if(image && TEXT_ONLY_IMAGE_MODELS.has(model.toLowerCase()))continue;
      try{
-      const response=await fetchImpl(provider.url,{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${key}`},body:JSON.stringify({model,messages:[{role:'user',content:image?[{type:'text',text:prompt},{type:'image_url',image_url:{url:`data:${image.mime};base64,${image.base64}`}}]:prompt}],max_tokens:cfg.maxOutputTokens,stream:false}),redirect:'error',signal:AbortSignal.timeout(cfg.timeoutSeconds*1000)});
+      let emitted=false;
+      const send=stream=>fetchImpl(provider.url,{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${key}`},body:JSON.stringify({model,messages:[{role:'user',content:image?[{type:'text',text:prompt},{type:'image_url',image_url:{url:`data:${image.mime};base64,${image.base64}`}}]:prompt}],max_tokens:cfg.maxOutputTokens,stream}),redirect:'error',signal:AbortSignal.timeout(cfg.timeoutSeconds*1000)});
+      let response=await send(Boolean(onDelta)), streaming=Boolean(onDelta);
+      if(streaming && [400,415,422].includes(response.status)){if(await streamingNotSupported(response)){response=await send(false);streaming=false;}else throw error('REQUEST_REJECTED','Provider menolak permintaan.',502);}
       if(!response.ok){if([401,403,404,408,429].includes(response.status)||response.status>=500)continue;if(image && [400,422].includes(response.status) && await imageNotSupported(response))continue;throw error('REQUEST_REJECTED','Provider menolak permintaan.',502);}
+      if(streaming && String(response.headers?.get?.('content-type')||'').toLowerCase().includes('application/json')) streaming=false;
+      if(streaming){
+       try { const output=await readStream(response,onDelta,()=>{emitted=true});
+        try{Promise.resolve(client?.aiUsage?.record?.({guildId,userId,kind,tokens:0})).catch(()=>{})}catch{}
+        return {text:output,provider:id,model,usedFallback:id!==cfg.primary,usage};
+       } catch(e) { if(emitted)throw error(e.code==='FILTERED'?'STREAM_FILTERED':'STREAM_PARTIAL','Jawaban streaming terputus setelah mulai dikirim.',502);throw e; }
+      }
       const data=await boundedJSON(response);const choice=data?.choices?.[0];
       if(choice?.finish_reason==='content_filter'||choice?.message?.refusal)throw error('FILTERED','Respons diblokir oleh kebijakan provider.',422);
       const output=choice?.message?.content;if(typeof output!=='string'||!output.trim()||output.length>32000)throw error('PROVIDER_RESPONSE','Respons provider tidak valid.',502);
       try{Promise.resolve(client?.aiUsage?.record?.({guildId,userId,kind,tokens:Number(data?.usage?.total_tokens)||0})).catch(()=>{})}catch{}
       return {text:output,provider:id,model,usedFallback:id!==cfg.primary,usage};
-     }catch(e){if(e.code==='FILTERED'||e.code==='REQUEST_REJECTED')throw e; /* no provider body, prompt or secret is logged */}
+     }catch(e){if(e.code==='FILTERED'||e.code==='REQUEST_REJECTED'||e.code==='STREAM_PARTIAL'||e.code==='STREAM_FILTERED')throw e; /* no provider body, prompt or secret is logged */}
     }
     throw error('PROVIDERS_UNAVAILABLE',attempted?'Semua provider gagal atau timeout.':'Tidak ada kredensial provider tersedia.',503);
    }finally{active--}

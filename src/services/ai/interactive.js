@@ -591,8 +591,9 @@ export function createInteractive({
         const guildId = message.guild.id;
         const faq = await helper.faqFor?.(text);
         if (faq) {
-            await deliver(message, cfg, 'reply', faq.answer.slice(0, REPLY_CHARS));
-            helper.usage?.saved?.({ guildId, how: 'faq' });
+            const result = faq.varyWithAI && helper.faqResponse ? await helper.faqResponse(message, faq, true) : {content:faq.answer,usedAI:false};
+            await deliver(message, cfg, 'reply', result.content.slice(0, REPLY_CHARS));
+            if (!result.usedAI) helper.usage?.saved?.({ guildId, how: 'faq' });
             return true;
         }
         if (cacheable(message, text)) {

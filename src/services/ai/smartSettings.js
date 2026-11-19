@@ -16,7 +16,7 @@ export const ZONES = Object.freeze({ WIB: 'Asia/Jakarta', WITA: 'Asia/Makassar',
 
 export const DEFAULT_SMART = Object.freeze({
     // Answers kept by the owner. A match is answered by the bot itself, without an AI request.
-    faq: Object.freeze({ enabled: false, autoAnswer: false, channelIds: Object.freeze([]), entries: Object.freeze([]) }),
+    faq: Object.freeze({ enabled: false, autoAnswer: false, varyWithAI: false, channelIds: Object.freeze([]), entries: Object.freeze([]) }),
     // The same question asked again within `minutes` gets the earlier answer, without an AI request.
     cache: Object.freeze({ enabled: false, minutes: 15 }),
     // Counts AI requests per day, per kind and per member for the report.
@@ -87,7 +87,7 @@ function checkReverse(value, guild) {
 }
 const VALIDATORS = {
     faq(v, guild) {
-        booleans(v, ['enabled', 'autoAnswer']);
+        booleans(v, ['enabled', 'autoAnswer', 'varyWithAI']);
         const channelIds = channelList(v.channelIds, guild, 'Channel FAQ');
         if (!Array.isArray(v.entries) || v.entries.length > MAX_FAQ_ENTRIES) throw err(`FAQ: paling banyak ${MAX_FAQ_ENTRIES} entri.`);
         const entries = v.entries.map((entry) => {
@@ -99,7 +99,7 @@ const VALIDATORS = {
         });
         if (new Set(entries.map((e) => e.id)).size !== entries.length) throw err('Entri FAQ ganda.');
         if (v.autoAnswer && channelIds.length === 0) throw err('Jawab otomatis memerlukan minimal satu channel.');
-        return { enabled: v.enabled, autoAnswer: v.autoAnswer, channelIds, entries };
+        return { enabled: v.enabled, autoAnswer: v.autoAnswer, varyWithAI: v.varyWithAI, channelIds, entries };
     },
     cache(v) {
         booleans(v, ['enabled']);
@@ -149,6 +149,7 @@ const VALIDATORS = {
 /** Checks one complete section; `guild` (optional) also checks that the channels exist. */
 export function validateSmartSection(section, value, guild) {
     if (!Object.hasOwn(VALIDATORS, section)) throw err('Bagian pengaturan tidak dikenal.', 404);
+    if (section === 'faq' && plain(value) && !Object.hasOwn(value,'varyWithAI')) value = { ...value, varyWithAI: false };
     exact(value, section);
     return VALIDATORS[section](value, guild);
 }
