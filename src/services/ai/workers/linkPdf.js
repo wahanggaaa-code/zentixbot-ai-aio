@@ -1,4 +1,8 @@
 // Isolated, bounded PDF text extraction. No URLs or user-provided filenames.
+// Keep library diagnostics out of stdout: the parent expects one JSON value.
+console.log = console.warn = console.error = (...args) => {
+ try { process.stderr.write(args.map(String).join(' ') + '\n'); } catch { /* diagnostics must not break parsing */ }
+};
 try {
  let input = '';
  for await (const chunk of process.stdin) {
