@@ -47,13 +47,17 @@ export function createSearchService({client,foundation=client.aiFoundation,env=p
    const settings=await store.read(guildId);const chain=[settings.primary,settings.backup,settings.backup2].filter(id=>id!=='none'&&env[SEARCH_PROVIDERS[id].key]?.trim());
    if(!chain.length)throw error('Kunci provider pencarian belum dikonfigurasi.',503);
    const cfg=await foundation.store.read(guildId);if(!cfg.enabled||!cfg.providerDataConsent)throw error('Fondasi AI belum aktif atau disetujui.',403);await foundation.store.reserve(guildId,userId,cfg);
+   let lastEmpty=null;
    for(const id of chain){
     try{
      const items=await callers[id]({key:env[SEARCH_PROVIDERS[id].key].trim(),query:query.trim(),fetchImpl});
      const results=[];for(const item of items){if(results.length>=5)break;try{const u=new URL(item.url);if(!['http:','https:'].includes(u.protocol)||u.username||u.password)continue;if(typeof item.title!=='string'||typeof item.description!=='string'||!item.title.trim()||!item.description.trim())continue;results.push({title:item.title.slice(0,200),url:u.href,description:item.description.slice(0,500)})}catch{}}
-     return {results,provider:SEARCH_PROVIDERS[id].label,usedFallback:id!==settings.primary};
+     const response={results,provider:SEARCH_PROVIDERS[id].label,usedFallback:id!==settings.primary};
+     if(results.length)return response;
+     lastEmpty=response; // A valid but empty response may be improved by a backup.
     }catch{/* Never include provider responses, keys or queries in errors. Try next provider. */}
    }
+   if(lastEmpty)return lastEmpty;
    throw error('Semua provider pencarian gagal atau timeout. Periksa kunci dan kuota masing-masing provider.',503);
   }finally{active--}
  }};
