@@ -1,6 +1,8 @@
 import { pgConfig } from '../../config/database/postgres.js';
 import { sqliteBackend } from '../storage/sqlite.js';
 
+export const MAX_AI_PROMPT_CHARS = 4000;
+
 // Endpoints are fixed deliberately: arbitrary provider URLs would allow SSRF and secret exfiltration.
 export const PROVIDERS = Object.freeze({
   groq: { url:'https://api.groq.com/openai/v1/chat/completions', key:'AI_GROQ_API_KEY' },
@@ -97,7 +99,7 @@ export function createAIFoundation({client,store=createAIStore(client),env=proce
   async generate({guildId,userId,prompt,consent,image=null,kind='other'}){
    if(!snowflake.test(guildId||'')||guildId!==client?.homeGuildId||!snowflake.test(userId||''))throw error('FORBIDDEN','Identitas server atau anggota tidak valid.',403);
    if(consent!==true)throw error('CONSENT_REQUIRED','Persetujuan pemrosesan data diperlukan.',403);
-   if(typeof prompt!=='string'||!prompt.trim()||prompt.length>4000)throw error('INVALID_INPUT','Input harus 1–4000 karakter.');
+   if(typeof prompt!=='string'||!prompt.trim()||prompt.length>MAX_AI_PROMPT_CHARS)throw error('INVALID_INPUT','Input harus 1–4000 karakter.');
    if(image!==null&&(!image||!['image/png','image/jpeg'].includes(image.mime)||typeof image.base64!=='string'||!image.base64.length||image.base64.length>1398104||! /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(image.base64)))throw error('INVALID_INPUT','Gambar tidak valid.');
    if(active>=4)throw error('BUSY','Terlalu banyak permintaan AI yang berjalan.',429);
    active++;
