@@ -1,4 +1,4 @@
-// Media is untrusted: Discord CDN only, no shell and no network protocols for FFmpeg.
+// Media is untrusted: Discord CDN or restricted Tenor sources, no shell and no network protocols for FFmpeg.
 // APNG uses a private temporary file and permits file access because its demuxer requires seek.
 // Inputs/outputs are bounded, with one decoder at a time and a hard timeout.
 import {spawn} from 'node:child_process';
@@ -6,6 +6,7 @@ import {mkdtemp,writeFile,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {readDiscordAttachment} from './attachments.js';
+import {findTenorLink,downloadTenorGif} from './tenorGif.js';
 const MAX_VIDEO=10*1024*1024, MAX_IMAGE=1024*1024, TIMEOUT=15000;
 let active=false;
 const bad=message=>Object.assign(new Error(message),{code:'VIDEO_UNAVAILABLE'});
@@ -13,6 +14,7 @@ const bad=message=>Object.assign(new Error(message),{code:'VIDEO_UNAVAILABLE'});
 export function findGalleryAnimation(message){
  for(const a of message.attachments?.values?.()??[]){const type=String(a.contentType||'').toLowerCase();if(['video/mp4','video/webm','image/gif'].includes(type))return {kind:type==='image/gif'?'gif':'video',attachment:a};}
  for(const sticker of message.stickers?.values?.()??[]){if(/^\d{17,20}$/.test(sticker.id||'')&&(sticker.format===2||sticker.format===4))return {kind:'sticker',sticker};}
+ const tenor=findTenorLink(message);if(tenor)return {kind:'gif',tenor};
  return null;
 }
 async function readSticker(sticker,fetchImpl){
@@ -21,11 +23,11 @@ async function readSticker(sticker,fetchImpl){
  if(Number(response.headers.get('content-length'))>MAX_VIDEO){await response.body.cancel().catch(()=>{});throw bad('Stiker terlalu besar.')}
  const reader=response.body.getReader(),chunks=[];let size=0;try{while(true){const {done,value}=await reader.read();if(done)break;size+=value.length;if(size>MAX_VIDEO)throw bad('Stiker terlalu besar.');chunks.push(Buffer.from(value));}}finally{await reader.cancel().catch(()=>{})}return Buffer.concat(chunks);
 }
-export async function readGalleryVideo(message,fetchImpl=globalThis.fetch,{binary='ffmpeg',spawnImpl=spawn}={}){
+export async function readGalleryVideo(message,fetchImpl=globalThis.fetch,{binary='ffmpeg',spawnImpl=spawn,downloadTenor=downloadTenorGif}={}){
  const selection=findGalleryAnimation(message);if(!selection)return null;if(active)throw bad('Pemrosesan animasi sedang sibuk.');active=true;
  let temp=null;
  try{
-  const input=selection.attachment?await readDiscordAttachment(selection.attachment,MAX_VIDEO,fetchImpl):await readSticker(selection.sticker,fetchImpl);
+  const input=selection.attachment?await readDiscordAttachment(selection.attachment,MAX_VIDEO,fetchImpl):selection.tenor?await downloadTenor(selection.tenor):await readSticker(selection.sticker,fetchImpl);
   const mp4=selection.kind==='video'&&input.length>=12&&input.subarray(4,8).toString()==='ftyp';
   const webm=selection.kind==='video'&&input.length>=4&&input.subarray(0,4).equals(Buffer.from([0x1a,0x45,0xdf,0xa3]));
   const gif=selection.kind!=='video'&&['GIF87a','GIF89a'].includes(input.subarray(0,6).toString());
