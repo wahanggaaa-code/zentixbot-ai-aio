@@ -2,6 +2,7 @@ import { SlashCommandBuilder, PermissionsBitField, ChannelType } from 'discord.j
 
 import { logModerationAction } from '../../utils/moderation.js';
 import { logger } from '../../utils/logger.js';
+import { escalateManualWarning } from '../../services/moderation/automod.js';
 import { WarningService } from '../../services/moderation/warningService.js';
 import { ModerationService } from '../../services/moderation/moderationService.js';
 import { ZentixBotError, ErrorTypes } from '../../utils/errorHandler.js';
@@ -71,7 +72,7 @@ export default {
 
         ModerationService.assertModerationHierarchy(interaction.member, member, 'warn');
 
-        const { id, totalCount } = await WarningService.addWarning({
+        const warning = await WarningService.addWarning({
             guildId,
             userId: target.id,
             moderatorId: moderator.id,
@@ -79,6 +80,7 @@ export default {
             timestamp: Date.now()
         });
 
+        const { id, totalCount } = warning;
         await logModerationAction({
             client,
             guild: interaction.guild,
@@ -97,8 +99,9 @@ export default {
             }
         });
 
+        const escalation = await escalateManualWarning(client, interaction.guild, target.id, warning);
         await InteractionHelper.safeEditReply(interaction, {
-            ...v2Message([createV2Container({ title: `⚠️ **Warned** ${target.tag}`, description: `**Reason:** ${reason}\n**Total Warns:** ${totalCount}`, color: 'success' })]),
+            ...v2Message([createV2Container({ title: `⚠️ **Warned** ${target.tag}`, description: `**Reason:** ${reason}\n**Total Warns:** ${totalCount}${escalation?`\n**AutoMod:** ${escalation}`:''}`, color: 'success' })]),
         });
     }
 };

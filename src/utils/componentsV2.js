@@ -86,7 +86,8 @@ export function createV2Container({
   image = null,
   raw = false, // keep Extended_Pictographic (Fun/announcement visuals); texts still cap at 4000/256
 } = {}) {
-  const container = new ContainerBuilder().setAccentColor(resolveAccentColor(color));
+  const container = new ContainerBuilder();
+  if (color !== null) container.setAccentColor(resolveAccentColor(color));
   const text = raw ? v2TextRaw : v2Text;
 
   const top = [];

@@ -6,6 +6,7 @@ import { readSQLiteBotValue } from '../services/storage/sqliteBotDatabase.js';
 import {mutateLevelInTransaction} from '../services/leveling/sqliteLevels.js';
 import { getGuildMusicData } from '../services/music/playerStore.js';
 import {getPlayer,applyPause,applyResume,destroyPlayerSession,playQuery} from '../services/music/musicActions.js';
+import {createAutomodStore,validateAutomod,invalidateAutomod,escalateManualWarning} from '../services/moderation/automod.js';
 import {ModerationService} from '../services/moderation/moderationService.js';
 import {WarningService} from '../services/moderation/warningService.js';
 import {logModerationAction} from '../utils/moderation.js';
@@ -61,10 +62,24 @@ function sqliteLeaderboard(sqlite,guildId){return sqlite.botLevels(guildId).map(
 const track=t=>t?{title:String(t.info?.title||'Unknown').slice(0,300),author:String(t.info?.author||'Unknown').slice(0,200),uri:t.info?.uri||null,length:t.info?.length||null}:null;
 export function createOperationsApi(client,{auth,csrf}) {
  const router=express.Router();router.use(express.json({limit:'16kb'}));
+ router.get('/automod',auth,async(req,res)=>{try{
+  const saved=await createAutomodStore(client).read(req.guild.id);const channels=[...req.guild.channels.cache.values()].filter(c=>c.type===ChannelType.GuildText).map(({id,name})=>({id,name}));const roles=[...req.guild.roles.cache.values()].filter(r=>r.id!==req.guild.id).map(({id,name})=>({id,name}));res.json({...saved,channels,roles});
+ }catch(e){fail(res,e)}});
+ router.patch('/automod',auth,csrf,async(req,res)=>{try{
+  const body=req.body;if(!body||Object.keys(body).some(k=>!['confirmBan','confirmAi','confirmLock','revision','settings'].includes(k))||typeof body.revision!=='string')throw bad('Pengaturan AutoMod tidak valid.');const settings=validateAutomod(body.settings,req.guild);if(typeof body.confirmBan!=='boolean')throw bad('Konfirmasi ban tidak valid.');if(settings.enabled&&((settings.spamEnabled&&settings.spamAction==='ban')||(settings.mentionsEnabled&&settings.mentionsAction==='ban')||(settings.wordsEnabled&&settings.wordsAction==='ban')||(settings.linksEnabled&&settings.linksAction==='ban')||(settings.repeatEnabled&&settings.repeatAction==='ban')||(settings.capsEnabled&&settings.capsAction==='ban'))&&!body.confirmBan)throw bad('Konfirmasi ban otomatis diperlukan.');if(settings.enabled&&settings.aiReviewEnabled&&body.confirmAi!==true)throw bad('Konfirmasi pengiriman pesan ke penyedia AI diperlukan.');if(settings.enabled&&settings.raidEnabled&&settings.raidLockEnabled&&body.confirmLock!==true)throw bad('Konfirmasi lockdown otomatis diperlukan.');const saved=await createAutomodStore(client).save(req.guild.id,body.revision,settings);invalidateAutomod(client,req.guild.id);res.json({ok:true,...saved});
+ }catch(e){fail(res,e)}});
  router.get('/cases',auth,async(req,res)=>{try{const sqlite=sqliteBackend(client);let cases;if(sqlite)cases=sqlite.botGet(`moderation_cases_list_${req.guild.id}`)||[];else{const row=await pool(client).query(`SELECT value FROM ${tables.temp_data} WHERE key=$1 AND (expires_at IS NULL OR expires_at>NOW())`,[`moderation_cases_list_${req.guild.id}`]);cases=row.rows[0]?.value||[]}res.json({cases:Array.isArray(cases)?cases.slice(-100).reverse():[]});}catch(e){fail(res,e)}});
+ router.get('/moderation/members',auth,async(req,res)=>{try{
+  const query=req.query.q;
+  if(typeof query!=='string'||query.trim().length<2||query.trim().length>80||/[\u0000-\u001f]/.test(query))throw bad('Masukkan nama anggota 2–80 karakter.');
+  if(typeof req.guild.members.search!=='function')throw bad('Pencarian anggota tidak tersedia. Gunakan ID Discord.',503);
+  const found=await req.guild.members.search({query:query.trim(),limit:10});
+  res.json({members:[...found.values()].filter(member=>idRe.test(member.id||'')).slice(0,10).map(member=>({id:member.id,name:String(member.displayName||member.user?.username||'Anggota').slice(0,100),username:String(member.user?.username||'').slice(0,100)}))});
+ }catch(e){fail(res,e)}});
  router.post('/moderation',auth,csrf,async(req,res)=>{try{
-  const b=req.body;if(!b||Object.keys(b).some(k=>!['action','userId','reason','minutes','confirmed'].includes(k))||b.confirmed!==true||!['warn','timeout','kick','ban'].includes(b.action)||!idRe.test(b.userId||'')||typeof b.reason!=='string'||!b.reason.trim()||b.reason.length>400)throw bad('Tindakan, anggota, alasan, atau konfirmasi tidak valid.');
+  const b=req.body;if(!b||Object.keys(b).some(k=>!['action','userId','reason','minutes','banMinutes','confirmed'].includes(k))||b.confirmed!==true||!['warn','timeout','kick','ban'].includes(b.action)||!idRe.test(b.userId||'')||typeof b.reason!=='string'||!b.reason.trim()||b.reason.length>400)throw bad('Tindakan, anggota, alasan, atau konfirmasi tidak valid.');
   if(b.userId===req.member.id || b.userId===client.user.id || b.userId===req.guild.ownerId)throw bad('Tidak dapat menindak diri sendiri, bot, atau owner server.');
+  if(b.action==='ban'&&b.banMinutes!==undefined&&(!Number.isInteger(b.banMinutes)||b.banMinutes<0||b.banMinutes>40320))throw bad('Ban sementara harus 0–40320 menit.');
   if(b.action==='timeout' && (!Number.isInteger(b.minutes)||b.minutes<1||b.minutes>40320))throw bad('Timeout harus 1–40320 menit.');
   requireStorage(client);const target=await req.guild.members.fetch({user:b.userId,force:true}).catch(()=>null);if(!target)throw bad('Anggota tidak ditemukan di server.');
   const required={warn:PermissionFlagsBits.ModerateMembers,timeout:PermissionFlagsBits.ModerateMembers,kick:PermissionFlagsBits.KickMembers,ban:PermissionFlagsBits.BanMembers};
@@ -73,11 +88,12 @@ export function createOperationsApi(client,{auth,csrf}) {
   let result;
   if(b.action==='warn'){
    result=await WarningService.addWarning({guildId:req.guild.id,userId:target.id,moderatorId:req.member.id,reason:b.reason});
-   await logModerationAction({client,guild:req.guild,event:{action:'User Warned',target:`${target.user.tag} (${target.id})`,executor:`${req.member.user.tag} (${req.member.id})`,reason:b.reason,metadata:{userId:target.id,moderatorId:req.member.id,warningId:result.id}}});
+   const caseId=await logModerationAction({client,guild:req.guild,event:{action:'User Warned',target:`${target.user.tag} (${target.id})`,executor:`${req.member.user.tag} (${req.member.id})`,reason:b.reason,metadata:{userId:target.id,moderatorId:req.member.id,warningId:result.id}}});
+   const escalation=await escalateManualWarning(client,req.guild,target.id,result);result={...result,caseId,escalation};
   }else if(b.action==='timeout')result=await ModerationService.timeoutUser({guild:req.guild,member:target,moderator:req.member,reason:b.reason,durationMs:b.minutes*60000});
   else if(b.action==='kick')result=await ModerationService.kickUser({guild:req.guild,member:target,moderator:req.member,reason:b.reason});
-  else result=await ModerationService.banUser({guild:req.guild,user:target.user,moderator:req.member,reason:b.reason});
-  res.json({ok:true,caseId:result?.caseId||null});
+  else result=await ModerationService.banUser({guild:req.guild,user:target.user,moderator:req.member,reason:b.reason,temporaryMinutes:b.banMinutes||0});
+  res.json({ok:true,caseId:result?.caseId||null,...(result?.escalation?{escalation:result.escalation}:{})});
  }catch(e){fail(res,e)}});
  router.get('/tickets',auth,async(req,res)=>{try{const sqlite=sqliteBackend(client);let rows;if(sqlite){const prefix=`guild:${req.guild.id}:ticket:`;rows=sqlite.botTickets(req.guild.id,100).map(x=>({channel_id:x.key.slice(prefix.length),data:x.value}));}else rows=(await pool(client).query(`SELECT channel_id,data FROM ${tables.tickets} WHERE guild_id=$1 ORDER BY updated_at DESC LIMIT 100`,[req.guild.id])).rows;res.json({tickets:rows.map(x=>({channelId:x.channel_id,userId:x.data?.userId,status:x.data?.status,createdAt:x.data?.createdAt,claimedBy:x.data?.claimedBy}))});}catch(e){fail(res,e)}});
  async function ticket(client,guild,id){if(!idRe.test(id))throw bad('ID tiket tidak valid.');const sqlite=sqliteBackend(client);if(sqlite){const data=sqlite.botGet(`guild:${guild.id}:ticket:${id}`);if(data===null)throw bad('Tiket tidak ditemukan.',404);return data;}const r=await pool(client).query(`SELECT data FROM ${tables.tickets} WHERE guild_id=$1 AND channel_id=$2`,[guild.id,id]);if(!r.rows[0])throw bad('Tiket tidak ditemukan.',404);return r.rows[0].data;}

@@ -1,6 +1,19 @@
 /* Asynchronous dashboard confirmations; no action is taken on cancel or dismissal. */
 (() => {
  let active = false;
+ // A backdrop click is retargeted to the dialog itself. Check both ends of the
+ // gesture so dragging from inside to outside never dismisses accidentally.
+ function dismissOnBackdrop(dialog, dismiss) {
+  let startedOutside = false;
+  const outside = event => {
+   const rect=dialog.getBoundingClientRect();
+   return event.target===dialog && (event.clientX<rect.left || event.clientX>rect.right || event.clientY<rect.top || event.clientY>rect.bottom);
+  };
+  dialog.addEventListener('pointerdown',event=>{startedOutside=outside(event)});
+  dialog.addEventListener('pointercancel',()=>{startedOutside=false});
+  dialog.addEventListener('click',event=>{const shouldDismiss=startedOutside && outside(event);startedOutside=false;if(shouldDismiss)dismiss()});
+ }
+ window.ZentixDismissOnBackdrop=dismissOnBackdrop;
  async function confirmAction(message, notice = false) {
   if (active) return false;
   const dialog = document.createElement('dialog');
@@ -19,6 +32,7 @@
    return await new Promise(resolve => {
     let finished = false;
     const finish = result => { if (finished) return; finished = true; if (dialog.open) dialog.close(); resolve(result); };
+    dismissOnBackdrop(dialog,()=>finish(false));
     cancel.addEventListener('click',()=>finish(false)); accept.addEventListener('click',()=>finish(location.href === originalUrl && (!wasInMain || previous.isConnected)));
     dialog.addEventListener('cancel',event=>{event.preventDefault();finish(false)});
     dialog.addEventListener('close',()=>finish(false));

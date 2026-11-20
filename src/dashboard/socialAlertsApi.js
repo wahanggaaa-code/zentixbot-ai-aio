@@ -95,9 +95,9 @@ function listRoles(guild) {
 const NOTIFY_TYPES = [...YOUTUBE_NOTIFY_TYPES];
 
 function asAccentColor(value) {
-    if (value === undefined) return undefined;
+    if (value === undefined || value === null) return value;
     if (typeof value === 'string' && HEX_COLOR.test(value.trim())) return value.trim().toUpperCase();
-    return null;
+    return false;
 }
 
 function asNotifyTypes(value, platform) {
@@ -205,7 +205,7 @@ export function createSocialAlertsApi(client, { auth, csrf }) {
             if (!notifyTypes) throw bad(400, platform === 'twitch' ? 'Twitch hanya mendukung tipe Live.' : 'Tipe konten tidak valid.');
             if (typeof customMessage !== 'string' || customMessage.length > MAX_CUSTOM_MESSAGE) throw bad(400, 'Pesan kustom terlalu panjang.');
             const accentColor = asAccentColor(req.body.accentColor);
-            if (accentColor === null) throw bad(400, 'Warna tidak valid.');
+            if (accentColor === false) throw bad(400, 'Warna tidak valid.');
             if (!mentionable(req.guild, mentionRoleId)) throw bad(400, 'Role mention tidak valid atau tidak ada di server ini.');
             if (typeof aiSummaryEnabled !== 'boolean') throw bad(400, 'Permintaan tidak valid.');
             if (label !== undefined && (typeof label !== 'string' || label.trim().length > MAX_LABEL)) throw bad(400, 'Label terlalu panjang.');
@@ -221,14 +221,14 @@ export function createSocialAlertsApi(client, { auth, csrf }) {
                 draft = {
                     platform, channelId: resolved.channelId, uploadsPlaylistId: resolved.uploadsPlaylistId,
                     label: label?.trim() || resolved.label, targetChannelId, notifyTypes, customMessage,
-                    accentColor: accentColor ?? undefined, mentionRoleId, aiSummaryEnabled,
+                    accentColor, mentionRoleId, aiSummaryEnabled,
                 };
             } else {
                 const login = parseTwitchInput(input);
                 draft = {
                     platform, login,
                     label: label?.trim() || login, targetChannelId, notifyTypes, customMessage,
-                    accentColor: accentColor ?? undefined, mentionRoleId, aiSummaryEnabled,
+                    accentColor, mentionRoleId, aiSummaryEnabled,
                 };
             }
             const alert = await createAlert(client, req.guild.id, draft);
@@ -267,7 +267,7 @@ export function createSocialAlertsApi(client, { auth, csrf }) {
             }
             if ('accentColor' in req.body) {
                 const accentColor = asAccentColor(req.body.accentColor);
-                if (accentColor == null) throw bad(400, 'Warna tidak valid.');
+                if (accentColor === false) throw bad(400, 'Warna tidak valid.');
                 patch.accentColor = accentColor;
             }
             if ('aiSummaryEnabled' in req.body) {

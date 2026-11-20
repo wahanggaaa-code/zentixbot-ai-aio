@@ -29,6 +29,7 @@
   dialog.append(title,search,list,cancel);document.body.append(dialog);active=dialog;
   let finished=false;const observer=new MutationObserver(()=>{if(!select.isConnected)finish()});
   function finish(){if(finished)return;finished=true;observer.disconnect();if(dialog.open)dialog.close();dialog.remove();active=null;if(select.isConnected&&!select.disabled)select.focus();}
+  window.ZentixDismissOnBackdrop?.(dialog,finish);
   cancel.addEventListener('click',finish);dialog.addEventListener('cancel',e=>{e.preventDefault();finish()});dialog.addEventListener('close',finish);
   observer.observe(document.getElementById('main'),{childList:true,subtree:true});
   try{dialog.showModal();(search.hidden?list.querySelector('button:not(:disabled)'):search)?.focus();}catch{finish()}

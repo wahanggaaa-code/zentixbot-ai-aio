@@ -40,6 +40,7 @@
     "parse5": "^7.3.0",
     "pdfjs-dist": "^4.10.38",
     "pg": "^8.11.3",
+    "re2-wasm": "^1.0.2",
     "riffy": "1.0.12",
     "winston": "^3.19.0",
     "winston-daily-rotate-file": "^5.0.0",

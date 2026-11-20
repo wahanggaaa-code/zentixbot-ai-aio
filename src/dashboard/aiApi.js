@@ -66,6 +66,10 @@ export function createAIApi(client,{auth,csrf,env=process.env,foundation=client.
  };
  router.get('/activities',auth,owner,async(req,res)=>{try{const settings=await activityStore.read(req.guild.id);const channels=[...req.guild.channels.cache.values()].filter(c=>c.type===ChannelType.GuildText).map(({id,name})=>({id,name}));res.json({settings,channels,...await activityOutlook(req.guild.id,settings)})}catch(e){fail(res,e)}});
  router.patch('/activities',auth,owner,csrf,async(req,res)=>{try{const settings=validateActivity(req.body,req.guild);await saveActivitySettings({store:activityStore,guildId:req.guild.id,settings});res.json({ok:true,settings,...await activityOutlook(req.guild.id,settings)})}catch(e){fail(res,e)}});
+ router.get('/activities/points',auth,owner,async(req,res)=>{try{
+  const points=await activityStore.listPoints(req.guild.id);
+  res.json({points:points.map(entry=>{const member=req.guild.members?.cache?.get(entry.userId);return {...entry,name:member?.displayName||member?.user?.username||null}})});
+ }catch(e){fail(res,e)}});
  router.get('/activities/status',auth,owner,async(req,res)=>{try{res.json({round:await activityStore.status(req.guild.id)})}catch(e){fail(res,e)}});
  router.post('/activities/start',auth,owner,csrf,async(req,res)=>{
   // `kind` is optional: without it the round is the game chosen in the settings.

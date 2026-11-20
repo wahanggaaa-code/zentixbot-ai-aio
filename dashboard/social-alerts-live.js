@@ -55,7 +55,7 @@
             <label id="saNtShortsLabel"><input type="checkbox" name="notifyTypes" value="shorts"> Shorts</label>
           </div></fieldset>
         <label class="f-field"><span><b>Mention</b><small>Butuh izin bot untuk mention role; @everyone butuh izin khusus server.</small></span><select name="mentionRoleId" id="saMention"></select></label>
-        <div class="f-field"><span><b>Warna container</b><small>Pilih warna, masukkan kode Hex atau RGB, atau gunakan preset.</small></span>${window.ZentixGreetingColor?.render('#5865f2','#5865f2',{name:'accentColor'}) || '<input name="accentColor" id="saColor" type="color" value="#5865F2">'}</div>
+        <div class="f-field"><span><b>Warna container</b><small>Pilih warna, masukkan kode Hex atau RGB, atau gunakan preset.</small></span>${window.ZentixGreetingColor?.render('#5865f2','#5865f2',{name:'accentColor',optional:true}) || '<input name="accentColor" id="saColor" type="color" value="#5865F2">'}</div>
         <div class="f-field" style="grid-template-columns:1fr"><span><b>Pesan kustom</b><small>Baris di atas kartu. Kosong = "📢 <i>{creator}</i> mengunggah …". Klik variabel untuk menyisipkan.</small></span><textarea name="customMessage" id="saCustom" rows="3" maxlength="500" spellcheck="false" placeholder="{role} {creator} baru: {title} {url}"></textarea></div>
         <div class="sa-vars" id="saVars">${VARIABLES.map((v) => `<button type="button" class="f-outline" data-var="${v}">${v}</button>`).join('')}</div>
         <fieldset class="f-field"><span><b>Ringkasan AI</b><small>Ringkasan opsional 1–2 kalimat untuk video dan Shorts baru, menggunakan AI bot.</small></span>
@@ -108,7 +108,7 @@
     function paintPreview() {
       const checkedKinds = [...form.querySelectorAll('input[name=notifyTypes]:checked')].map((box) => box.value);
       const kind = checkedKinds[0] || (platform() === 'twitch' ? 'live' : 'video');
-      const accent = /^#[0-9a-f]{6}$/i.test(form.elements.accentColor.value || '') ? form.elements.accentColor.value.toUpperCase() : '#5865F2';
+      const accent = /^#[0-9a-f]{6}$/i.test(form.elements.accentColor.value || '') ? form.elements.accentColor.value.toUpperCase() : 'transparent';
       $('#saPreviewCard').style.borderLeftColor = accent;
       const creator = PLACEHOLDER.creator;
       const custom = form.elements.customMessage.value.trim();
@@ -216,7 +216,7 @@
       $('#saLabelRow').hidden = true;
       $('#saCancelEdit').hidden = false;
       $('#saSave').textContent = 'SIMPAN PERUBAHAN ↗';
-      const color = /^#[0-9a-f]{6}$/i.test(alert.accentColor || '') ? alert.accentColor : '#5865F2';
+      const color = /^#[0-9a-f]{6}$/i.test(alert.accentColor || '') ? alert.accentColor : '';
       if (window.ZentixGreetingColor) window.ZentixGreetingColor.set(form,color); else form.elements.accentColor.value=color;
       form.elements.customMessage.value = alert.customMessage || '';
       form.elements.aiSummaryEnabled.checked = alert.aiSummaryEnabled;
@@ -313,7 +313,7 @@
             mentionRoleId: x.mentionRoleId.value || null,
             notifyTypes,
             customMessage: x.customMessage.value,
-            accentColor: x.accentColor.value,
+            accentColor: x.accentColor.value || null,
             aiSummaryEnabled: x.aiSummaryEnabled.checked,
           });
           notify('Perubahan tersimpan.');
@@ -327,7 +327,7 @@
             targetChannelId: x.targetChannelId.value,
             notifyTypes,
             customMessage: x.customMessage.value,
-            accentColor: x.accentColor.value,
+            accentColor: x.accentColor.value || null,
             mentionRoleId: x.mentionRoleId.value || null,
             aiSummaryEnabled: x.aiSummaryEnabled.checked,
           });

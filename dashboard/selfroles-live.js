@@ -55,7 +55,7 @@
     const maxSelect = Math.max(1, Math.min(25, Number(settings.elements.maxSelect?.value) || 1));
     const placeholder = settings.elements.dropdownPlaceholder?.value.trim() || 'Select your roles';
     const accentRaw = (settings.elements.accentColor.value || '').trim();
-    const accent = /^#?[0-9a-fA-F]{6}$/.test(accentRaw) ? '#' + accentRaw.replace(/^#/, '') : PREVIEW_ACCENT;
+    const accent = /^#?[0-9a-fA-F]{6}$/.test(accentRaw) ? '#' + accentRaw.replace(/^#/, '') : 'transparent';
 
     // Banner: the file input wins (it is what the save sends), then a typed URL, then a stored upload.
     let bannerHtml = '';
@@ -211,7 +211,7 @@
       + `<label class="f-field"><span><b>Banner URL</b><small>${String(panel.bannerUrl || '').startsWith('attachment://') ? 'Banner unggahan tersimpan — isi untuk menggantinya dengan link, kosongkan untuk mempertahankannya' : '(opsional, harus https://)'}</small></span><input name="bannerUrl" type="url" maxlength="2048" value="${esc(panel.bannerUrl && !String(panel.bannerUrl).startsWith('attachment://') ? panel.bannerUrl : '')}" placeholder="https://…"></label>`
       + `<label class="f-field"><span><b>Unggah banner</b><small>PNG, JPEG, WebP atau GIF, paling banyak 5 MB. Menggantikan banner yang ada.</small></span><input name="bannerFile" type="file" accept="${BANNER_TYPES.join(',')}"></label>`
       + `<label class="f-field"><span><b>Hapus banner</b><small>Hapus banner tanpa menggantinya.</small></span><span class="f-check"><input type="checkbox" name="bannerClear"><span class="fake-switch" aria-hidden="true"></span></span></label>`
-      + `<div class="f-field"><span><b>Warna container</b><small>Pilih warna atau tekan Reset untuk warna bawaan.</small></span>${window.ZentixGreetingColor?.render(panel.accentColor ? '#' + panel.accentColor : '', PREVIEW_ACCENT, {name:'accentColor',optional:true}) || `<input name="accentColor" maxlength="7" value="${esc(panel.accentColor ? '#' + panel.accentColor : '')}" placeholder="#99aab5">`}</div>`
+      + `<div class="f-field"><span><b>Warna container</b><small>Pilih warna atau tekan Tanpa warna.</small></span>${window.ZentixGreetingColor?.render(panel.accentColor ? '#' + panel.accentColor : '', PREVIEW_ACCENT, {name:'accentColor',optional:true}) || `<input name="accentColor" maxlength="7" value="${esc(panel.accentColor ? '#' + panel.accentColor : '')}" placeholder="#99aab5">`}</div>`
       + `<label class="f-field"><span><b>Tipe interaksi</b></span><select name="interactionType">${typeOptions}</select></label>`
       + `<label class="f-field"><span><b>Mode perilaku</b></span><select name="behaviorMode">${modeOptions}</select></label>`
       + `<label class="f-field data-dropdown-only"><span><b>Maks pilihan</b><small>Dropdown saja: 1–25.</small></span><input name="maxSelect" type="number" min="1" max="25" value="${esc(panel.maxSelect ?? 1)}"></label>`
@@ -245,7 +245,7 @@
       + `<label class="f-field"><span><b>Deskripsi</b><small>Paling banyak ${esc(data.limits.description)} karakter.</small></span><textarea name="description" maxlength="${esc(data.limits.description)}"></textarea></label>`
       + `<label class="f-field"><span><b>Banner URL</b><small>(opsional, harus https://)</small></span><input name="bannerUrl" type="url" maxlength="2048" placeholder="https://…"></label>`
       + `<label class="f-field"><span><b>Unggah banner</b><small>PNG, JPEG, WebP atau GIF, paling banyak 5 MB. Dipilih lebih diutamakan daripada URL.</small></span><input name="bannerFile" type="file" accept="${BANNER_TYPES.join(',')}"></label>`
-      + `<div class="f-field"><span><b>Warna container</b><small>Pilih warna atau tekan Reset untuk warna bawaan.</small></span>${window.ZentixGreetingColor?.render('', PREVIEW_ACCENT, {name:'accentColor',optional:true}) || `<input name="accentColor" maxlength="7" placeholder="#99aab5">`}</div>`
+      + `<div class="f-field"><span><b>Warna container</b><small>Pilih warna atau tekan Tanpa warna.</small></span>${window.ZentixGreetingColor?.render('', PREVIEW_ACCENT, {name:'accentColor',optional:true}) || `<input name="accentColor" maxlength="7" placeholder="#99aab5">`}</div>`
       + `<label class="f-field"><span><b>Tipe interaksi</b></span><select name="interactionType"><option value="buttons">Tombol Grid</option><option value="section_buttons">Section List</option><option value="dropdown">Dropdown</option><option value="reaction">Reaction (Klasik)</option></select></label>`
       + `<label class="f-field"><span><b>Mode perilaku</b></span><select name="behaviorMode"><option value="toggle">Toggle (klik/pilih lagi untuk lepas)</option><option value="unique">Unique (hanya 1 role)</option><option value="verify">Verify (hanya tambah)</option></select></label>`
       + `<label class="f-field data-dropdown-only"><span><b>Maks pilihan</b><small>Dropdown saja: 1–25.</small></span><input name="maxSelect" type="number" min="1" max="25" value="1"></label>`

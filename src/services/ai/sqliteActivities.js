@@ -1,6 +1,6 @@
 // Only selected when the explicitly supplied experimental SQLite adapter is available.
 // Round state and separate activity points commit in the same SQLite transaction.
-export function createSqliteActivityStore(sqlite,{defaults,validateActivity,validateQuiz,error,scheduleValue,roundActive}){
+export function createSqliteActivityStore(sqlite,{defaults,validateActivity,validateQuiz,error,scheduleValue,roundActive,normalizeActivityPoints}){
  const key=id=>`ai:activity:settings:${id}`,roundKey=id=>`ai:activity:round:${id}`,pointsKey=(id,userId)=>`ai:activity:points:${id}:${userId}`;
  const locked=(id,fn)=>sqlite.transaction(tx=>{const result=fn(tx.get(roundKey(id))??{},tx);if(result.write)tx.set(roundKey(id),result.write);return result.result});
  // One row for everything the schedules remember; see createActivityStore.
@@ -14,6 +14,7 @@ export function createSqliteActivityStore(sqlite,{defaults,validateActivity,vali
   updateSchedule,
   async readSchedule(id){return scheduleValue(sqlite.get(scheduleKey(id)))},
   async status(id,now=Date.now()){const v=sqlite.get(roundKey(id));if(!v||!['pending','open','expired','solved','closed'].includes(v.state))return {state:'none'};const state=v.state==='open'&&v.expiresAt<=now?'expired':v.state,quiz=validateQuiz(v.question);return {state,expiresAt:Number.isFinite(v.expiresAt)?v.expiresAt:null,...(quiz?{question:quiz.question,options:quiz.options,...(state!=='open'&&state!=='pending'?{answer:quiz.answer}:{})}:{})}},
+  async listPoints(id){if(!/^\d{17,20}$/.test(id||''))throw error('Server tidak valid.');const prefix=`ai:activity:points:${id}:`;return normalizeActivityPoints(sqlite.aiRows(prefix),prefix)},
   async points(id,userId){if(!/^\d{17,20}$/.test(userId||''))throw error('Anggota tidak valid.');const n=sqlite.get(pointsKey(id,userId))?.points??0;if(!Number.isSafeInteger(n)||n<0)throw error('Saldo poin tidak valid.',503);return n},
   async reserve(id,roundId,now){return locked(id,v=>{if(['pending','open'].includes(v.state)&&v.expiresAt>now)throw roundActive();return {write:{state:'pending',id:roundId,expiresAt:now+150000},result:true}})},
   async open(id,roundId,question,duration,now,rewardPoints=0,kind='trivia'){return locked(id,v=>{if(v.state!=='pending'||v.id!==roundId||v.expiresAt<=now)throw error('Reservasi ronde kedaluwarsa.',409);return {write:{state:'open',id:roundId,expiresAt:now+duration*1000,question,answered:[],winners:[],messageId:null,rewardPoints,kind:kind==='emoji'?'emoji':'trivia'},result:true}})},

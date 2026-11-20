@@ -96,7 +96,7 @@ export function normalizeAlert(input) {
         mentionRoleId,
         notifyTypes,
         customMessage: asText(input.customMessage, MAX_CUSTOM_MESSAGE) ?? '',
-        accentColor: asColor(input.accentColor) ?? DEFAULT_ACCENT_COLOR,
+        accentColor: input.accentColor === null ? null : asColor(input.accentColor) ?? DEFAULT_ACCENT_COLOR,
         aiSummaryEnabled: asBool(input.aiSummaryEnabled, false),
         enabled: asBool(input.enabled, true),
         lastPostId: asText(input.lastPostId, MAX_TEXT),
@@ -299,7 +299,7 @@ const nowIso = () => new Date().toISOString();
 
 /** Create an alert. Throws SOCIALALERTS_LIMIT / SOCIALALERTS_DUPLICATE / SOCIALALERTS_INVALID. */
 export async function createAlert(client, guildId, input) {
-    if (input?.accentColor !== undefined && !asColor(input.accentColor)) throw fail('Data alert tidak valid.', 'SOCIALALERTS_INVALID');
+    if (input?.accentColor !== undefined && input.accentColor !== null && !asColor(input.accentColor)) throw fail('Data alert tidak valid.', 'SOCIALALERTS_INVALID');
     const base = normalizeAlert(input);
     if (!base) throw fail('Data alert tidak valid.', 'SOCIALALERTS_INVALID');
     return mutateAlerts(client, guildId, (alerts) => {
@@ -317,7 +317,7 @@ export async function createAlert(client, guildId, input) {
 /** Patch the user-facing fields of an alert. Throws SOCIALALERTS_NOT_FOUND / SOCIALALERTS_INVALID. */
 export async function updateAlert(client, guildId, alertId, patch) {
     if (!patch || typeof patch !== 'object' || Array.isArray(patch)) throw fail('Data ubah tidak valid.', 'SOCIALALERTS_INVALID');
-    if (patch.accentColor !== undefined && !asColor(patch.accentColor)) throw fail('Data ubah tidak valid.', 'SOCIALALERTS_INVALID');
+    if (patch.accentColor !== undefined && patch.accentColor !== null && !asColor(patch.accentColor)) throw fail('Data ubah tidak valid.', 'SOCIALALERTS_INVALID');
     return mutateAlerts(client, guildId, (alerts) => {
         const index = alerts.findIndex((alert) => alert.id === alertId);
         if (index === -1) throw fail('Alert tidak ditemukan.', 'SOCIALALERTS_NOT_FOUND');
@@ -328,7 +328,7 @@ export async function updateAlert(client, guildId, alertId, patch) {
             mentionRoleId: patch.mentionRoleId === undefined ? current.mentionRoleId : patch.mentionRoleId,
             notifyTypes: patch.notifyTypes ?? current.notifyTypes,
             customMessage: patch.customMessage ?? current.customMessage,
-            accentColor: patch.accentColor ?? current.accentColor,
+            accentColor: patch.accentColor === undefined ? current.accentColor : patch.accentColor,
             aiSummaryEnabled: patch.aiSummaryEnabled ?? current.aiSummaryEnabled,
             enabled: patch.enabled ?? current.enabled,
             updatedAt: nowIso(),

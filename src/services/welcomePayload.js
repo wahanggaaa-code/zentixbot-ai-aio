@@ -34,7 +34,7 @@ export function buildWelcomePayload({member, config, canEmbed = true, test = fal
   const container = createV2Container({
     title: formatWelcomeMessage(embedCfg.title || '🎉 Welcome!', data),
     description: pingPrefix + message,
-    color: embedCfg.color ?? getColor('success'),
+    color: embedCfg.color === undefined ? getColor('success') : embedCfg.color,
     thumbnail: user.displayAvatarURL(),
     fields: [
       ...(embedCfg.showUser !== false ? [{name: 'User', value: `${user.tag} (${user.id})`}] : []),
@@ -61,7 +61,7 @@ export function buildGoodbyePayload({member, config, test = false}) {
   const container = createV2Container({
     title: formatWelcomeMessage(embedCfg.title || '👋 Goodbye', data),
     description: pingPrefix + message,
-    color: embedCfg.color || getColor('error'),
+    color: embedCfg.color === undefined ? getColor('error') : embedCfg.color,
     thumbnail: user.displayAvatarURL(),
     fields: [
       ...(embedCfg.showUser !== false ? [{name: 'User', value: `${user.tag} (${user.id})`}] : []),

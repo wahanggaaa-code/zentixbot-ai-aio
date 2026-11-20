@@ -26,8 +26,14 @@ export function validateActivity(v,guild){
  return {...v};
 }
 function dbPool(client){const db=client.db;if(!db||db.getStatus?.().isDegraded||!db.isAvailable?.()||!db.db?.isAvailable?.()||!db.db.pool)throw error('Database persisten tidak tersedia.',503);return db.db.pool;}
+export function normalizeActivityPoints(rows,prefix){
+ if(rows.length>10000)throw error('Terlalu banyak data poin untuk ditampilkan.',503);
+ const points=[];for(const row of rows){const userId=row.key.slice(prefix.length);if(!row.key.startsWith(prefix)||!/^\d{17,20}$/.test(userId))continue;const n=row.value?.points;
+  if(!Number.isSafeInteger(n)||n<0)throw error('Saldo poin tidak valid.',503);points.push({userId,points:n});}
+ return points.sort((a,b)=>b.points-a.points||a.userId.localeCompare(b.userId));
+}
 export function createActivityStore(client){
- const sqlite=sqliteBackend(client);if(sqlite)return createSqliteActivityStore(sqlite,{defaults:DEFAULT_ACTIVITY,validateActivity,validateQuiz,error,scheduleValue,roundActive});
+ const sqlite=sqliteBackend(client);if(sqlite)return createSqliteActivityStore(sqlite,{defaults:DEFAULT_ACTIVITY,validateActivity,validateQuiz,error,scheduleValue,roundActive,normalizeActivityPoints});
  const table=pgConfig.tables.cache_data,key=id=>`ai:activity:settings:${id}`,roundKey=id=>`ai:activity:round:${id}`;
  async function locked(guildId,fn){const conn=await dbPool(client).connect();try{await conn.query('BEGIN');await conn.query(`INSERT INTO ${table} (key,value) VALUES ($1,'{}'::jsonb) ON CONFLICT (key) DO NOTHING`,[roundKey(guildId)]);const r=await conn.query(`SELECT value FROM ${table} WHERE key=$1 FOR UPDATE`,[roundKey(guildId)]);const value=r.rows[0].value;const result=await fn(value,conn);if(result.write)await conn.query(`UPDATE ${table} SET value=$2::jsonb WHERE key=$1`,[roundKey(guildId),JSON.stringify(result.write)]);await conn.query('COMMIT');return result.result;}catch(e){await conn.query('ROLLBACK').catch(()=>{});throw e}finally{conn.release();}}
  // Everything the schedules remember is one row: {day, slots, last, recent}. `fn` gets it under a row lock and
@@ -43,6 +49,7 @@ export function createActivityStore(client){
   updateSchedule,
   async readSchedule(id){const r=await dbPool(client).query(`SELECT value FROM ${table} WHERE key=$1`,[scheduleKey(id)]);return scheduleValue(r.rows[0]?.value);},
   async status(id,now=Date.now()){const r=await dbPool(client).query(`SELECT value FROM ${table} WHERE key=$1`,[roundKey(id)]);const v=r.rows[0]?.value;if(!v||!['pending','open','expired','solved','closed'].includes(v.state))return {state:'none'};const state=v.state==='open'&&v.expiresAt<=now?'expired':v.state;const quiz=validateQuiz(v.question);return {state,expiresAt:Number.isFinite(v.expiresAt)?v.expiresAt:null,...(quiz?{question:v.kind==='emoji'?formatEmojiQuestion(quiz.question):quiz.question,options:quiz.options,...(state!=='open'&&state!=='pending'?{answer:quiz.answer}:{})}:{})};},
+  async listPoints(id){if(!/^\d{17,20}$/.test(id||''))throw error('Server tidak valid.');const prefix=`ai:activity:points:${id}:`;const r=await dbPool(client).query(`SELECT key,value FROM ${table} WHERE key >= $1 AND key < $2 AND (expires_at IS NULL OR expires_at > NOW()) ORDER BY key LIMIT 10001`,[prefix,prefix+'\uffff']);return normalizeActivityPoints(r.rows,prefix)},
   async points(id,userId){if(!/^\d{17,20}$/.test(userId||''))throw error('Anggota tidak valid.');const r=await dbPool(client).query(`SELECT value FROM ${table} WHERE key=$1`,[`ai:activity:points:${id}:${userId}`]);const n=r.rows[0]?.value?.points??0;if(!Number.isSafeInteger(n)||n<0)throw error('Saldo poin tidak valid.',503);return n;},
   reserve(id,roundId,now){return locked(id,v=>{if(['pending','open'].includes(v.state)&&v.expiresAt>now)throw roundActive();return {write:{state:'pending',id:roundId,expiresAt:now+150000},result:true};});},
   open(id,roundId,question,duration,now,rewardPoints=0,kind='trivia'){return locked(id,v=>{if(v.state!=='pending'||v.id!==roundId||v.expiresAt<=now)throw error('Reservasi ronde kedaluwarsa.',409);return {write:{state:'open',id:roundId,expiresAt:now+duration*1000,question,answered:[],winners:[],messageId:null,rewardPoints,kind:kind==='emoji'?'emoji':'trivia'},result:true}});},

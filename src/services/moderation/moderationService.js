@@ -4,6 +4,8 @@ import { PermissionFlagsBits } from 'discord.js';
 import { logger } from '../../utils/logger.js';
 import { ZentixBotError, ErrorTypes } from '../../utils/errorHandler.js';
 import { logModerationAction } from '../../utils/moderation.js';
+import { scheduleTemporaryBan } from './temporaryBans.js';
+import { isHomeGuild } from '../../utils/singleGuild.js';
 
 function getTargetLabel(target) {
   return target.user?.tag ?? target.displayName ?? 'this user';
@@ -137,7 +139,8 @@ export class ModerationService {
     user,
     moderator,
     reason = 'No reason provided',
-    deleteDays = 0
+    deleteDays = 0,
+    temporaryMinutes = 0
   }) {
     try {
       if (!guild || !user || !moderator) {
@@ -174,7 +177,10 @@ export class ModerationService {
         }
       }
 
-      await guild.members.ban(user.id, { reason });
+      if (!Number.isInteger(temporaryMinutes) || temporaryMinutes < 0 || temporaryMinutes > 40320) throw new ZentixBotError('Invalid ban duration', ErrorTypes.VALIDATION, 'Ban duration must be between 0 and 40320 minutes.');
+      if (temporaryMinutes && !isHomeGuild(guild.client,guild.id)) throw new ZentixBotError('Invalid guild', ErrorTypes.PERMISSION, 'Temporary bans are only available in the configured server.');
+      const banReason=temporaryMinutes?(await scheduleTemporaryBan(guild.client,guild,user.id,temporaryMinutes)).reason:reason;
+      await guild.members.ban(user.id, { reason:banReason });
 
       const caseId = await logModerationAction({
         client: guild.client,
@@ -187,7 +193,8 @@ export class ModerationService {
           metadata: {
             userId: user.id,
             moderatorId: moderator.id,
-            permanent: true,
+            permanent: temporaryMinutes===0,
+            durationMinutes: temporaryMinutes,
             deleteDays
           }
         }

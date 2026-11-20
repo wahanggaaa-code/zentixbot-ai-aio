@@ -1,4 +1,5 @@
 import { Events } from 'discord.js';
+import {handleRaidJoin} from '../services/moderation/raidAlert.js';
 import { getGuildConfig } from '../services/config/guildConfig.js';
 import { getWelcomeConfig } from '../utils/database.js';
 import { deliverJoinWelcome } from '../services/ai/welcome.js';
@@ -14,6 +15,8 @@ export default {
   once: false,
   
   async execute(member) {
+    // Raid alert is isolated from welcome and onboarding; failure must not block either.
+    handleRaidJoin(member,member.client).catch(error=>logger.warn(`Anti-raid gagal: ${error?.message||error}`));
     try {
         const { guild, user } = member;
         

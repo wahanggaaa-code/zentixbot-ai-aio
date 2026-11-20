@@ -15,6 +15,7 @@
   const save=document.createElement('button');save.type='button';save.className='f-primary';save.textContent='PILIH';actions.append(cancel,save);dialog.append(title,label,error,actions);document.body.append(dialog);active=dialog;
   let finished=false;const observer=new MutationObserver(()=>{if(!input.isConnected)finish()});
   function finish(){if(finished)return;finished=true;observer.disconnect();if(dialog.open)dialog.close();dialog.remove();active=null;if(input.isConnected&&!input.matches(':disabled'))input.focus();}
+  window.ZentixDismissOnBackdrop?.(dialog,finish);
   cancel.addEventListener('click',finish);dialog.addEventListener('cancel',event=>{event.preventDefault();finish()});dialog.addEventListener('close',finish);
   function apply(){
    if(!eligible(input)){finish();return;}const next=value.value.trim();

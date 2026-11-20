@@ -18,12 +18,14 @@ export default {
         )
         .addStringOption((option) =>
             option.setName("reason").setDescription("Reason for the ban"),
-        ),
+        )
+        .addIntegerOption((option) => option.setName("duration_minutes").setDescription("Temporary ban duration in minutes; omit for permanent").setMinValue(1).setMaxValue(40320)),
     category: "moderation",
 
     async execute(interaction, config, client) {
         const user = interaction.options.getUser("target");
         const reason = interaction.options.getString("reason") || "No reason provided";
+        const temporaryMinutes = interaction.options.getInteger?.("duration_minutes") || 0;
 
         if (!user) {
             throw new ZentixBotError(
@@ -54,10 +56,11 @@ export default {
             user,
             moderator: interaction.member,
             reason,
+            temporaryMinutes,
         });
 
         await InteractionHelper.universalReply(interaction, {
-            ...v2Message([createV2Container({ title: `🚫 **Banned** ${user.tag}`, description: `**Reason:** ${reason}\n**Case ID:** #${result.caseId}`, color: 'success' })]),
+            ...v2Message([createV2Container({ title: `🚫 **Banned** ${user.tag}`, description: `**Reason:** ${reason}\n**Case ID:** #${result.caseId}${temporaryMinutes?`\n**Duration:** ${temporaryMinutes} minutes`:''}`, color: 'success' })]),
         });
     },
 };

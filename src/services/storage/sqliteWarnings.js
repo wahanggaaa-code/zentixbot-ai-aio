@@ -31,7 +31,7 @@ function sequence(tx,guild,user,warnings){
 export function readSQLiteWarnings(wrapper,guild,user){const sqlite=store(wrapper,guild,user);return sqlite.transaction(tx=>load(tx,guild,user).warnings)}
 export function addSQLiteWarning(wrapper,{guildId,userId,moderatorId,reason,timestamp}){
  const sqlite=store(wrapper,guildId,userId);if(!id(moderatorId)||typeof reason!=='string'||!reason.trim()||reason.length>4000||!Number.isSafeInteger(timestamp)||timestamp<0)throw fail('Invalid warning');
- return sqlite.transaction(tx=>{const current=load(tx,guildId,userId);if(current.warnings.length>=10000)throw fail('Warning limit reached');const warning={id:sequence(tx,guildId,userId,current.warnings),guildId,userId,moderatorId,reason,timestamp,status:'active'};current.warnings.push(warning);write(tx,current);return {id:warning.id,totalCount:current.warnings.length}});
+ return sqlite.transaction(tx=>{const current=load(tx,guildId,userId);if(current.warnings.length>=10000)throw fail('Warning limit reached');const warning={id:sequence(tx,guildId,userId,current.warnings),guildId,userId,moderatorId,reason,timestamp,status:'active'};current.warnings.push(warning);write(tx,current);return {id:warning.id,totalCount:current.warnings.length,activeCount:current.warnings.filter(w=>w.status!=='deleted').length}});
 }
 export function removeSQLiteWarning(wrapper,guild,user,warningId){
  const sqlite=store(wrapper,guild,user);if(!validWarningId(warningId))throw fail('Invalid warning ID');

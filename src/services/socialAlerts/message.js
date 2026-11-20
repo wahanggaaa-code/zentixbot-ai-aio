@@ -83,10 +83,9 @@ export function buildSocialAlertMessage({ alert, event, aiSummary = null } = {})
     components.push(text(topbar));
 
     // --- the container ---
-    const accent = String(alert.accentColor ?? DEFAULT_ACCENT_COLOR);
-    const container = new ContainerBuilder().setAccentColor(
-        /^#[0-9a-f]{6}$/i.test(accent) ? Number.parseInt(accent.slice(1), 16) : 0x5865F2,
-    );
+    const accent = String(alert.accentColor === undefined ? DEFAULT_ACCENT_COLOR : alert.accentColor);
+    const container = new ContainerBuilder();
+    if (alert.accentColor !== null) container.setAccentColor(/^#[0-9a-f]{6}$/i.test(accent) ? Number.parseInt(accent.slice(1), 16) : 0x5865F2);
 
     const meta = [platform, creator];
     if (kind === 'live') {

@@ -38,7 +38,7 @@ function checked(raw){
   if(embed.title!==undefined&&(typeof embed.title!=='string'||!embed.title.trim()||embed.title.length>256))throw error(409,'Judul goodbye tersimpan perlu diperiksa.');
   if(embed.footer!==undefined&&(typeof embed.footer!=='string'||embed.footer.length>1024))throw error(409,'Footer goodbye tersimpan perlu diperiksa.');
   for(const key of ['showUser','showMemberCount']) if(embed[key]!==undefined&&typeof embed[key]!=='boolean')throw error(409,'Pengaturan tampilan goodbye perlu diperiksa.');
-  if(embed.color!==undefined&&storedColor(embed.color)===null)throw error(409,'Warna goodbye tersimpan perlu diperiksa.');
+  if(embed.color!==undefined&&embed.color!==null&&storedColor(embed.color)===null)throw error(409,'Warna goodbye tersimpan perlu diperiksa.');
   if(embed.image!==undefined&&embed.image!==null&&typeof embed.image!=='string'&&(!record(embed.image)||typeof embed.image.url!=='string'))throw error(409,'Gambar goodbye tersimpan perlu diperiksa.');
  }
  return raw;
@@ -55,7 +55,7 @@ function validate(body,guild){
  if(typeof body.revision!=='string'||!(/^(missing|[a-f0-9]{64})$/.test(body.revision)))throw error(400,'Versi pengaturan tidak valid.');
  if(typeof body.enabled!=='boolean'||typeof body.ping!=='boolean')throw error(400,'Status dan ping harus boolean.');
  if(typeof body.message!=='string'||!body.message.trim()||body.message.length>1500)throw error(400,'Pesan harus berisi 1–1500 karakter.');
- if(typeof body.title!=='string'||!body.title.trim()||body.title.length>256||typeof body.footer!=='string'||body.footer.length>1024||!Number.isInteger(body.color)||body.color<0||body.color>0xffffff)throw error(400,'Judul, footer atau warna tidak valid.');
+ if(typeof body.title!=='string'||!body.title.trim()||body.title.length>256||typeof body.footer!=='string'||body.footer.length>1024||(body.color!==null&&(!Number.isInteger(body.color)||body.color<0||body.color>0xffffff)))throw error(400,'Judul, footer atau warna tidak valid.');
  if(body.channelId!==null&&(typeof body.channelId!=='string'||guild.channels.cache.get(body.channelId)?.type!==ChannelType.GuildText))throw error(400,'Pilih channel teks dari server ini.');
  if(body.enabled){
   const channel=guild.channels.cache.get(body.channelId),me=guild.members.me;

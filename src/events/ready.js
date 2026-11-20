@@ -1,4 +1,5 @@
 import { Events } from "discord.js";
+import {startTemporaryBanWorker} from '../services/moderation/temporaryBans.js';
 import { logger, startupLog } from "../utils/logger.js";
 import { describeCheck, describeServer } from "../utils/startupReport.js";
 import config from "../config/application.js";
@@ -30,6 +31,9 @@ export default {
       if (client.config?.features?.music) {
         initRiffyAfterReady(client);
       }
+
+      // Persistent automatic unbans resume after restart, independently of other services.
+      try { client.temporaryBanWorker=startTemporaryBanWorker(client); } catch { logger.warn('Ban sementara: worker tidak dapat dimulai.'); }
 
       // A failed queue must not prevent other startup work.
       try { client.messageStudio?.startDurableWorker(); }

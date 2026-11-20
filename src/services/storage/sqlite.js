@@ -53,6 +53,7 @@ export async function openSQLiteStore({path=':memory:',busyTimeout=1000}={}){
    INSERT INTO zentix_storage_meta (key,value) VALUES ('schema_version','4') ON CONFLICT(key) DO UPDATE SET value=excluded.value; COMMIT;`);
  }catch(e){try{database.exec('ROLLBACK')}catch{}database.close();throw e;}
  const getKV=database.prepare('SELECT value,expires_at FROM zentix_kv WHERE key=?');
+ const listAI=database.prepare('SELECT key,value FROM zentix_kv WHERE key>=? AND key<? AND substr(key,1,length(?))=? AND (expires_at IS NULL OR expires_at>?) ORDER BY key LIMIT 10001');
  const putKV=database.prepare('INSERT INTO zentix_kv(key,value,expires_at) VALUES(?,?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value,expires_at=excluded.expires_at');
  const delKV=database.prepare('DELETE FROM zentix_kv WHERE key=?');
  const anyGiveawayAI=database.prepare("SELECT 1 AS found FROM zentix_kv WHERE key GLOB 'guild:*:giveaways' OR key GLOB 'giveaway:*' LIMIT 1");
@@ -109,6 +110,7 @@ export async function openSQLiteStore({path=':memory:',busyTimeout=1000}={}){
   hasAnyLevelData(){open();return Boolean(anyLevelAI.get()||anyLevelBot.get())},
   hasAnyGiveawayData(){open();return Boolean(anyGiveawayAI.get()||anyGiveawayBot.get())},
   hasAnyTicketData(){open();return Boolean(anyTicketAI.get()||anyTicketBot.get())},
+  aiRows(prefix){open();checkKey(prefix);const rows=listAI.all(prefix,`${prefix}\u{10ffff}`,prefix,prefix,Date.now());if(rows.length>10000)throw error('Terlalu banyak data poin untuk ditampilkan.','SQLITE_LIST_LIMIT');return rows.map(row=>({key:row.key,value:decode(row.value)}))},
   get(key){open();checkKey(key);const row=getKV.get(key);return !row||(row.expires_at!==null&&row.expires_at<=Date.now())?null:decode(row.value)},
   set(key,value,expiresAt=null){open();checkKey(key);if(expiresAt!==null&&(!Number.isSafeInteger(expiresAt)||expiresAt<0))throw error('Kedaluwarsa tidak valid.');putKV.run(key,encode(value),expiresAt)},
   delete(key){open();checkKey(key);return Number(delKV.run(key).changes)>0},
@@ -138,6 +140,7 @@ export async function openSQLiteStore({path=':memory:',busyTimeout=1000}={}){
   dialect:'sqlite',file,
   isOpen(){return !closed},
   get(key){return ops.get(key)},
+  aiRows(prefix){return ops.aiRows(prefix)},
   getAccount(g,u){return ops.getAccount(g,u)},
   botGet(key){return ops.botGet(key)},
   verificationAudit(guild,limit=100){return ops.verificationAudit(guild,limit)},

@@ -12,6 +12,8 @@ import { getCommandPrefix, getBotMessage, isBotOwner, isCommandCategoryEnabled, 
 import { enforceAbuseProtection, formatCooldownDuration } from '../utils/abuseProtection.js';
 import { createV2Container, v2Message } from '../utils/componentsV2.js';
 import { isCommandEnabled } from '../services/commandAccessService.js';
+import { handleAutomod } from '../services/moderation/automod.js';
+import { handleAIReview } from '../services/moderation/aiReview.js';
 import { handleDMChatMessage } from '../services/ai/dmChat.js';
 
 const MESSAGE_XP_RATE_LIMIT_ATTEMPTS = 12;
@@ -35,6 +37,11 @@ export default {
       }
 
       logger.debug(`Message received from ${message.author.tag}: ${message.content}`);
+
+      // Reporting is independent from commands and leveling; errors never block either.
+      handleAutomod(message,client).catch(error=>logger.warn(`AutoMod tidak tersedia: ${error?.message||error}`));
+      // Do not log provider errors here: they may contain request content.
+      handleAIReview(message,client).catch(()=>logger.warn('Tinjauan AI tidak tersedia; pesan dilewati.'));
 
       // Interactive AI (mention, reply, joining in, image comments). Not awaited: writing an answer takes
       // seconds and must not hold up commands or XP. It never throws.

@@ -340,7 +340,8 @@ export async function existingRoles(guild, panel) {
 }
 
 export function buildPanelMessage(panel, rolesWithItems) {
-    const container = new ContainerBuilder().setAccentColor(parseAccentColor(panel.accentColor));
+    const container = new ContainerBuilder();
+    if (panel.accentColor != null) container.setAccentColor(parseAccentColor(panel.accentColor));
     
     // Banner
     if (panel.bannerUrl) {
