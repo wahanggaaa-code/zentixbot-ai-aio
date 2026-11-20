@@ -28,3 +28,13 @@
 @media(max-width:800px){.quick-list{grid-template-columns:1fr;border-left:0}.quick-list .module-row{border-right:0;padding:15px 0}}
 @media(max-width:650px){.usage-card{min-height:112px;padding:12px}.usage-foot{font-size:8px}}
 @media(prefers-reduced-motion:reduce){.progress i{transition:none}}
+/* Account access remains available in the dock after removing the page header. */
+.dock-account{min-height:38px;border:1px solid #ffffff66;border-radius:8px;background:transparent;color:#f1f2ea;padding:8px 11px;font:700 10px var(--mono);cursor:pointer}
+.dock-account:hover{background:#ffffff17;color:#fff}
+@media(max-width:650px){.dock-account{padding:8px;font-size:9px}}
+
+/* Navigation arrows react subtly to touch and keyboard focus. */
+.mobile-menu button b{display:inline-block;transition:transform 160ms ease}
+.mobile-menu button:active b,.mobile-menu button:focus-visible b,.mobile-menu button.is-navigating b{transform:translate(3px,-3px)}
+@media(hover:hover){.mobile-menu button:hover b{transform:translate(3px,-3px)}}
+@media(prefers-reduced-motion:reduce){.mobile-menu button b{transition:none}.mobile-menu button:active b,.mobile-menu button:focus-visible b,.mobile-menu button:hover b,.mobile-menu button.is-navigating b{transform:none}}

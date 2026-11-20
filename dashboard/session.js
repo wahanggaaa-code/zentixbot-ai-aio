@@ -3,7 +3,6 @@ if (location.pathname.startsWith('/dashboard/')) {
     if (!response.ok) throw new Error('Sesi tidak lagi memiliki akses.');
     const data = await response.json();
     const button = document.getElementById('profileButton');
-    button.textContent = data.user.username.slice(0, 1).toUpperCase();
     button.title = `${data.user.username} · ${data.guild.name} — klik untuk keluar`;
     button.addEventListener('click', async () => {
       if (!(await (window.ZentixDialog ? window.ZentixDialog.confirm(`Keluar dari akun ${data.user.username}?`) : Promise.resolve(window.confirm(`Keluar dari akun ${data.user.username}?`))))) return;

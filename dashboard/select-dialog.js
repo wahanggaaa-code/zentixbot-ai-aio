@@ -34,7 +34,8 @@
   try{dialog.showModal();(search.hidden?list.querySelector('button:not(:disabled)'):search)?.focus();}catch{finish()}
  }
  function supported(){return typeof HTMLDialogElement!=='undefined' && typeof HTMLDialogElement.prototype.showModal==='function';}
- document.addEventListener('pointerdown',event=>{const select=event.target.closest?.('select');if(!supported()||!enabled(select))return;event.preventDefault();open(select);},true);
+ // Block the native picker on press; wait for click so the release cannot hit the new dialog.
+ document.addEventListener('pointerdown',event=>{const select=event.target.closest?.('select');if(!supported()||!enabled(select))return;event.preventDefault();},true);
  document.addEventListener('click',event=>{const select=event.target.closest?.('select');if(!supported()||!enabled(select))return;event.preventDefault();open(select);},true);
  document.addEventListener('keydown',event=>{const select=event.target.closest?.('select');if(!supported()||!enabled(select)||!['Enter',' ','ArrowDown','ArrowUp'].includes(event.key))return;event.preventDefault();open(select);},true);
 })();

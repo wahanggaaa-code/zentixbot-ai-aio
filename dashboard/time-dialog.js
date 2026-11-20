@@ -27,6 +27,8 @@
   observer.observe(document.getElementById('main'),{childList:true,subtree:true});try{dialog.showModal();value.focus();}catch{finish()}
  }
  const supported=()=>typeof HTMLDialogElement!=='undefined'&&typeof HTMLDialogElement.prototype.showModal==='function';
- for(const type of ['pointerdown','click'])document.addEventListener(type,event=>{const input=event.target.closest?.('input[type=time]');if(!supported()||!eligible(input))return;event.preventDefault();open(input)},true);
+ // Open only after the click, not on press, so touch release cannot dismiss the dialog.
+ document.addEventListener('pointerdown',event=>{const input=event.target.closest?.('input[type=time]');if(!supported()||!eligible(input))return;event.preventDefault()},true);
+ document.addEventListener('click',event=>{const input=event.target.closest?.('input[type=time]');if(!supported()||!eligible(input))return;event.preventDefault();open(input)},true);
  document.addEventListener('keydown',event=>{const input=event.target.closest?.('input[type=time]');if(!supported()||!eligible(input)||!['Enter',' ','ArrowDown'].includes(event.key))return;event.preventDefault();open(input)},true);
 })();
