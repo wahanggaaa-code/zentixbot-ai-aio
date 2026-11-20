@@ -1,5 +1,5 @@
 import express from 'express';
-import { createMessageStudio } from '../services/messageStudio.js';
+import { createMessageStudio, normalizeMessageDocument } from '../services/messageStudio.js';
 import { importDiscordMessage } from '../services/messageStudioImport.js';
 
 const isObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -15,6 +15,11 @@ const validId = (value) => typeof value === 'string' && /^[A-Za-z0-9_-]{1,48}$/.
 export function createMessageStudioApi(client, { auth, csrf, env = process.env, studio = client.messageStudio || createMessageStudio({ client }) } = {}) {
     const router = express.Router();
     router.use(express.json({ limit: '8mb' }));
+    router.use((error, req, res, next) => {
+        if (error.type === 'entity.too.large') return res.status(413).json({ error: 'Permintaan terlalu besar (maksimal 8 MB termasuk data JSON). Kurangi jumlah atau ukuran lampiran.', code: 'MESSAGE_STUDIO_BODY_TOO_LARGE' });
+        if (error.type === 'entity.parse.failed') return res.status(400).json({ error: 'JSON permintaan tidak valid.', code: 'MESSAGE_STUDIO_INVALID' });
+        next(error);
+    });
     router.use((req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
     const owner = (req, res, next) => {
         const ids = String(env.OWNER_IDS || '').split(',').map((id) => id.trim()).filter((id) => /^\d{17,20}$/.test(id));
@@ -59,6 +64,10 @@ export function createMessageStudioApi(client, { auth, csrf, env = process.env, 
     });
     router.post('/import-discord', auth, owner, csrf, (req, res) => {
         try { noQuery(req); own(req.body, ['message']); res.json({ ok: true, ...importDiscordMessage(req.body.message) }); }
+        catch (error) { fail(res, error); }
+    });
+    router.post('/validate-import', auth, owner, csrf, (req, res) => {
+        try { noQuery(req); own(req.body, ['document']); res.json({ ok: true, document: normalizeMessageDocument(req.body.document) }); }
         catch (error) { fail(res, error); }
     });
     router.post('/templates', auth, owner, csrf, async (req, res) => {
