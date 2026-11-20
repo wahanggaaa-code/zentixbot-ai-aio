@@ -42,3 +42,6 @@
 /* The usage report replaces quick links at the bottom of the overview. */
 .usage-report-section{padding:40px 0 0;border-top:1px solid var(--ink)}
 @media(max-width:650px){.usage-report-section{padding-top:24px}}
+
+/* Logo dock tetap proporsional pada navigasi desktop dan mobile. */
+.dock-brand img{display:block;width:30px;height:33px;object-fit:contain;margin:auto}
