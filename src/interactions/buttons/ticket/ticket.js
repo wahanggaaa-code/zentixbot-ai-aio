@@ -1,4 +1,6 @@
 import createTicketHandler, {
+  createTicketTypeHandler,
+  transferTicketHandler,
   closeTicketHandler,
   claimTicketHandler,
   priorityTicketHandler,
@@ -6,10 +8,13 @@ import createTicketHandler, {
   unclaimTicketHandler,
   reopenTicketHandler,
   deleteTicketHandler,
+  deleteWithoutTranscriptHandler,
 } from '../../../handlers/ticketButtons.js';
 
 export default [
   createTicketHandler,
+  createTicketTypeHandler,
+  transferTicketHandler,
   closeTicketHandler,
   claimTicketHandler,
   priorityTicketHandler,
@@ -17,4 +22,5 @@ export default [
   unclaimTicketHandler,
   reopenTicketHandler,
   deleteTicketHandler,
+  deleteWithoutTranscriptHandler,
 ];

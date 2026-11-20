@@ -90,6 +90,7 @@ function getLogChannelForEventType(config, eventType) {
     case 'delete':
     case 'claim':
     case 'unclaim':
+    case 'transfer':
     case 'priority':
     case 'pin':
     case 'unpin':
@@ -107,6 +108,7 @@ const TICKET_EVENT_STYLES = {
   delete: { color: 0x8b0000, title: 'Ticket Deleted' },
   claim: { color: 0x5865F2, title: 'Ticket Claimed' },
   unclaim: { color: 0xFAA61A, title: 'Ticket Unclaimed' },
+  transfer: { color: 0x5865F2, title: 'Ticket Transferred' },
   priority: { color: 0x9b59b6, title: 'Priority Updated' },
   transcript: { color: 0x57F287, title: 'Transcript Generated' },
   feedback: { color: 0x57F287, title: 'Feedback Received' },
@@ -173,6 +175,16 @@ async function createTicketLogContainer(guild, event) {
           inline: true,
         },
       ];
+      break;
+
+    case 'transfer':
+      inlineFields = [
+        {name:'Ticket',value:ticketRef,inline:true},
+        {name:'Transferred by',value:executorMention || 'Unknown',inline:true},
+        {name:'Previous staff',value:`<@${event.metadata.previousClaimer}>`,inline:true},
+        {name:'New staff',value:`<@${event.metadata.newClaimer}>`,inline:true},
+      ];
+      if (channelMention) inlineFields.push({name:'Channel',value:channelMention,inline:true});
       break;
 
     case 'priority': {

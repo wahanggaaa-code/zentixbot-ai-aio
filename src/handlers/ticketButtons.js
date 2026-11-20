@@ -1,4 +1,5 @@
-import { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, AttachmentBuilder, MessageFlags } from 'discord.js';
+import {randomUUID} from 'node:crypto';
+import { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, ButtonBuilder, ButtonStyle, AttachmentBuilder, MessageFlags } from 'discord.js';
 import { createV2Container, v2Message } from '../utils/componentsV2.js';
 import { createTicket, closeTicket, claimTicket, updateTicketPriority, getTicketLimit, countOpenTickets } from '../services/ticket.js';
 import { getGuildConfig } from '../services/config/guildConfig.js';
@@ -8,6 +9,7 @@ import { InteractionHelper } from '../utils/interactionHelper.js';
 import { checkRateLimit } from '../utils/rateLimiter.js';
 import { replyUserError, ErrorTypes, handleInteractionError, createError } from '../utils/errorHandler.js';
 import { getTicketPermissionContext } from '../utils/ticket/ticketPermissions.js';
+import {ticketTypesFromConfig, ticketTypesRevision} from '../utils/ticket/ticketTypes.js';
 
 function escapeHtml(text) {
   if (!text) return '';
@@ -123,6 +125,14 @@ const createTicketHandler = {
         return await replyUserError(interaction, { type: ErrorTypes.UNKNOWN, message: `You have reached the maximum number of open tickets (${maxTicketsPerUser}).\n\nPlease close your existing tickets before creating a new one.\n\n**Current Tickets:** ${currentTicketCount}/${maxTicketsPerUser}` });
       }
       
+      const types = ticketTypesFromConfig(config);
+      if (types.length) {
+        const revision=ticketTypesRevision(types);
+        const buttons=new ActionRowBuilder().addComponents(types.map(type=>new ButtonBuilder().setCustomId(`create_ticket_type:${type.id}:${revision}`).setLabel(type.name).setStyle(ButtonStyle.Secondary)));
+        await interaction.reply({...v2Message([createV2Container({title:'Pilih jenis tiket',description:'Pilih jenis yang sesuai untuk membuka formulir.',color:'primary'}),buttons],{ephemeral:true})});
+        return;
+      }
+
       const modal = new ModalBuilder()
         .setCustomId('create_ticket_modal')
         .setTitle('Create a Ticket');
@@ -148,24 +158,51 @@ const createTicketHandler = {
   }
 };
 
+const createTicketTypeHandler = {
+  name:'create_ticket_type',
+  async execute(interaction,client,args=[]) {
+    try {
+      if (!(await ensureGuildContext(interaction))) return;
+      const types=ticketTypesFromConfig(await getGuildConfig(client,interaction.guildId));
+      const type=types.find(x=>x.id===args[0]);
+      if (!type || args[1]!==ticketTypesRevision(types)) {
+        await replyUserError(interaction,{type:ErrorTypes.VALIDATION,message:'Jenis tiket telah berubah. Tekan tombol buat tiket lagi.'});return;
+      }
+      const modal=new ModalBuilder().setCustomId(`create_ticket_modal:${type.id}:${args[1]}`).setTitle(`Tiket: ${type.name}`.slice(0,45));
+      type.questions.forEach((question,i)=>modal.addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId(`answer_${i}`).setLabel(question).setStyle(TextInputStyle.Paragraph).setMaxLength(500).setRequired(true))));
+      await interaction.showModal(modal);
+    } catch(error) {await handleInteractionError(interaction,error,{type:'button',handler:'ticket',customId:interaction.customId});}
+  }
+};
+
 const createTicketModalHandler = {
   name: 'create_ticket_modal',
-  async execute(interaction, client) {
+  async execute(interaction, client, args = []) {
     try {
       if (!(await ensureGuildContext(interaction))) return;
 
       const deferSuccess = await InteractionHelper.safeDefer(interaction, { flags: MessageFlags.Ephemeral });
       if (!deferSuccess) return;
       
-      const reason = interaction.fields.getTextInputValue('reason');
       const config = await getGuildConfig(client, interaction.guildId);
-      const categoryId = config.ticketCategoryId || null;
+      let reason, ticketType = null;
+      if(args.length){
+        const types=ticketTypesFromConfig(config), type=types.find(x=>x.id===args[0]);
+        if(!type || args[1]!==ticketTypesRevision(types)){await replyUserError(interaction,{type:ErrorTypes.VALIDATION,message:'Formulir berubah. Tekan tombol buat tiket lagi.'});return;}
+        const answers=type.questions.map((question,i)=>({question,answer:interaction.fields.getTextInputValue(`answer_${i}`).trim()}));
+        if(answers.some(x=>!x.answer||x.answer.length>500)){await replyUserError(interaction,{type:ErrorTypes.VALIDATION,message:'Semua jawaban wajib diisi (maksimal 500 karakter).'});return;}
+        ticketType={id:type.id,name:type.name,answers,...(type.categoryId?{categoryId:type.categoryId}:{})};
+        reason=answers.map(x=>`${x.question}: ${x.answer}`).join('\n\n');
+      }else reason=interaction.fields.getTextInputValue('reason');
+      const categoryId = ticketType?.categoryId || config.ticketCategoryId || null;
       
       const { channel } = await createTicket(
         interaction.guild,
         interaction.member,
         categoryId,
-        reason
+        reason,
+        'none',
+        ticketType ? {ticketType} : {}
       );
       await interaction.editReply({
         ...v2Message([createV2Container({ title: 'Ticket Created', description: `Your ticket has been created in ${channel}!`, color: 'success' })])
@@ -250,6 +287,42 @@ const claimTicketHandler = {
       // Shows the reason given by the ticket service (already closed, already claimed, missing permission).
       await handleInteractionError(interaction, error, { type: 'button', handler: 'ticket', customId: interaction.customId });
     }
+  }
+};
+
+// Shared by the card button and /transfer-ticket for tickets claimed before this update.
+export async function showTicketTransferModal(interaction, client) {
+  if (!(await ensureGuildContext(interaction))) return;
+  const context=await assertTicketPermission(interaction,client,'transfer tickets',{},2000);
+  const ticket=context.ticketData;
+  if(ticket.status!=='open'||!/^\d{17,20}$/.test(ticket.claimedBy||'')) {
+    await replyUserError(interaction,{type:ErrorTypes.VALIDATION,message:'Tiket harus terbuka dan sudah diklaim untuk ditransfer.'});return;
+  }
+  if(ticket.claimedBy!==interaction.user.id&&!context.hasManageChannels){
+    await replyUserError(interaction,{type:ErrorTypes.PERMISSION,message:'Hanya penanggung jawab saat ini atau anggota dengan Manage Channels yang dapat mentransfer tiket ini.'});return;
+  }
+  const input=new TextInputBuilder().setCustomId('staff_id').setLabel('ID Discord staff tujuan').setPlaceholder('Contoh: 123456789012345678').setStyle(TextInputStyle.Short).setMinLength(17).setMaxLength(20).setRequired(true);
+  const modal=new ModalBuilder().setCustomId(`ticket_transfer_modal:${ticket.claimedBy}`).setTitle('Transfer penanggung jawab').addComponents(new ActionRowBuilder().addComponents(input));
+  await interaction.showModal(modal);
+}
+const transferTicketHandler={
+  name:'ticket_transfer',
+  async execute(interaction,client){try{await showTicketTransferModal(interaction,client)}catch(error){await handleInteractionError(interaction,error,{type:'button',handler:'ticket',customId:interaction.customId})}}
+};
+const transferTicketModalHandler={
+  name:'ticket_transfer_modal',
+  async execute(interaction,client,args=[]){
+    try{
+      if(!(await ensureGuildContext(interaction)))return;
+      const deferred=await InteractionHelper.safeDefer(interaction,{flags:MessageFlags.Ephemeral});if(!deferred)return;
+      const context=await assertTicketPermission(interaction,client,'transfer tickets',{},2000),expected=args[0];
+      if(!/^\d{17,20}$/.test(expected||'')||context.ticketData.status!=='open'||context.ticketData.claimedBy!==expected){await replyUserError(interaction,{type:ErrorTypes.VALIDATION,message:'Tiket atau penanggung jawab berubah. Buka formulir transfer lagi.'});return;}
+      if(expected!==interaction.user.id&&!context.hasManageChannels){await replyUserError(interaction,{type:ErrorTypes.PERMISSION,message:'Hanya penanggung jawab saat ini atau anggota dengan Manage Channels yang dapat mentransfer tiket ini.'});return;}
+      const targetId=interaction.fields.getTextInputValue('staff_id').trim();
+      if(!/^\d{17,20}$/.test(targetId)){await replyUserError(interaction,{type:ErrorTypes.VALIDATION,message:'ID staff harus berupa ID Discord 17–20 digit.'});return;}
+      const {transferTicket}=await import('../services/ticket.js');const result=await transferTicket(interaction.channel,interaction.user,targetId,expected);
+      await interaction.editReply({...v2Message([createV2Container({title:'Transfer tersimpan',description:result.displayUpdated?`Tiket ditransfer ke <@${targetId}>.`:`Tiket ditransfer ke <@${targetId}>, tetapi tampilan Discord gagal diperbarui. Periksa tiket sebelum mencoba lagi.`,color:result.displayUpdated?'success':'warning'})]),allowedMentions:{parse:[]}});
+    }catch(error){await handleInteractionError(interaction,error,{type:'modal',handler:'ticket',customId:interaction.customId})}
   }
 };
 
@@ -415,30 +488,55 @@ const reopenTicketHandler = {
   }
 };
 
+// Short-lived, user-bound confirmation. A fabricated or stale component cannot authorize deletion.
+const deletionConfirmations=new Map();
 const deleteTicketHandler = {
   name: 'ticket_delete',
   async execute(interaction, client) {
     try {
       if (!(await ensureGuildContext(interaction))) return;
-
       await assertTicketPermission(interaction, client, 'delete tickets', {}, 2000);
-
+      const config=await getGuildConfig(client,interaction.guildId);
+      if(!config.ticketTranscriptChannelId){
+        const now=Date.now();for(const [key,entry] of deletionConfirmations)if(entry.expires<=now)deletionConfirmations.delete(key);
+        if(deletionConfirmations.size>=500)deletionConfirmations.delete(deletionConfirmations.keys().next().value);
+        const nonce=randomUUID();deletionConfirmations.set(nonce,{userId:interaction.user.id,guildId:interaction.guildId,channelId:interaction.channel.id,expires:now+120000});
+        const warning=createV2Container({title:'Hapus tanpa transcript?',description:'Channel transcript belum diatur. Menghapus tiket akan menghilangkan percakapan tanpa arsip. Atur channel transcript, atau konfirmasi jika yakin.',color:'warning'});
+        const row=new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`ticket_delete_no_transcript:${nonce}`).setLabel('Hapus tanpa transcript').setStyle(ButtonStyle.Danger));
+        await interaction.reply({...v2Message([warning,row],{ephemeral:true})});return;
+      }
       const deferSuccess = await InteractionHelper.safeDefer(interaction, { flags: MessageFlags.Ephemeral });
       if (!deferSuccess) return;
-      
       const { deleteTicket } = await import('../services/ticket.js');
       await deleteTicket(interaction.channel, interaction.member);
       await interaction.editReply({ ...v2Message([createV2Container({ title: 'Ticket Deleted', description: 'This ticket will be deleted shortly.', color: 'success' })]) });
     } catch (error) {
-      // Shows the reason given by the ticket service (already closed, already claimed, missing permission).
       await handleInteractionError(interaction, error, { type: 'button', handler: 'ticket', customId: interaction.customId });
     }
   }
+};
+const deleteWithoutTranscriptHandler={
+ name:'ticket_delete_no_transcript',
+ async execute(interaction,client,args=[]){
+  try{
+   if(!(await ensureGuildContext(interaction)))return;
+   const nonce=args[0],entry=deletionConfirmations.get(nonce);
+   if(!entry||entry.expires<=Date.now()||entry.userId!==interaction.user.id||entry.guildId!==interaction.guildId||entry.channelId!==interaction.channel.id){await replyUserError(interaction,{type:ErrorTypes.VALIDATION,message:'Konfirmasi tidak valid atau kedaluwarsa. Tekan Delete Ticket lagi.'});return}
+   await assertTicketPermission(interaction,client,'delete tickets',{},2000);
+   deletionConfirmations.delete(nonce);
+   const deferSuccess=await InteractionHelper.safeDefer(interaction,{flags:MessageFlags.Ephemeral});if(!deferSuccess)return;
+   const {deleteTicket}=await import('../services/ticket.js');await deleteTicket(interaction.channel,interaction.member,{allowNoTranscript:true});
+   await interaction.editReply({...v2Message([createV2Container({title:'Penghapusan dijadwalkan',description:'Tiket akan dihapus. Tanpa channel transcript, percakapan tidak diarsipkan.',color:'warning'})])});
+  }catch(error){await handleInteractionError(interaction,error,{type:'button',handler:'ticket',customId:interaction.customId})}
+ }
 };
 
 export default createTicketHandler;
 export { 
   createTicketModalHandler, 
+  createTicketTypeHandler,
+  transferTicketHandler,
+  transferTicketModalHandler,
   closeTicketModalHandler,
   closeTicketHandler, 
   claimTicketHandler, 
@@ -446,5 +544,6 @@ export {
   pinTicketHandler,
   unclaimTicketHandler,
   reopenTicketHandler,
-  deleteTicketHandler 
+  deleteTicketHandler,
+  deleteWithoutTranscriptHandler
 };

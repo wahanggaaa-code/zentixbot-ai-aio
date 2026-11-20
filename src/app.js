@@ -319,6 +319,8 @@ class ZentixBot extends Client {
     const stopped = [];
 
     try {
+      this.ticketReminderWorker?.stop();
+      this.ticketAutoCloseWorker?.stop();
       cron.getTasks().forEach(task => task.stop());
       stopped.push('scheduled jobs');
 

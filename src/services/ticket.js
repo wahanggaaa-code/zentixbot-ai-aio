@@ -17,6 +17,9 @@ import { logTicketEvent } from '../utils/ticket/ticketLogging.js';
 import { createError, ErrorTypes } from '../utils/errorHandler.js';
 import { ensureTypedServiceError, wrapServiceBoundary } from '../utils/serviceErrorBoundary.js';
 import { PRIORITY_MAP } from '../utils/helpers.js';
+import {createTicketTranscript} from './tickets/transcript.js';
+import {appendTicketActivity} from './tickets/activity.js';
+import {readAutoCloseConfig} from './tickets/autoCloseConfig.js';
 const TICKET_DELETE_DELAY_MS = 3000;
 const TICKET_DELETE_DELAY_SECONDS = Math.floor(TICKET_DELETE_DELAY_MS / 1000);
 const TICKET_SERVICE = 'ticketService';
@@ -147,7 +150,7 @@ function buildTicketCard(ticketData, titleHint = null) {
   const ticketNumber = ticketData?.ticketNumber ?? titleHint ?? ticketData?.id;
   return createV2Container({
     title: `Ticket #${ticketNumber}`,
-    description: `<@${ticketData?.userId}>, thanks for creating a ticket!\n\n**Reason:** ${ticketData?.reason || 'No reason provided'}\n**Priority:** ${priorityInfo.emoji} ${priorityInfo.label}`,
+    description: `<@${ticketData?.userId}>, thanks for creating a ticket!${ticketData?.ticketType?.name ? `\n**Type:** ${ticketData.ticketType.name}` : ''}\n\n**Reason:** ${ticketData?.reason || 'No reason provided'}\n**Priority:** ${priorityInfo.emoji} ${priorityInfo.label}`,
     color: priorityInfo.color || 'primary',
     fields: [
       { name: 'Status', value: statusLabel },
@@ -211,7 +214,7 @@ export async function countOpenTickets(guild, userId, limit) {
 }
 
 function buildTicketControlRow({ claimedBy = null } = {}) {
-  return new ActionRowBuilder().addComponents(
+  const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId('ticket_claim')
       .setLabel(claimedBy ? 'Claimed' : 'Claim')
@@ -229,6 +232,8 @@ function buildTicketControlRow({ claimedBy = null } = {}) {
       .setStyle(ButtonStyle.Danger)
       .setEmoji('🔒'),
   );
+  if (claimedBy) row.addComponents(new ButtonBuilder().setCustomId('ticket_transfer').setLabel('Transfer').setStyle(ButtonStyle.Secondary));
+  return row;
 }
 
 export const getUserTicketCount = wrapServiceBoundary(async function getUserTicketCount(guildId, userId) {
@@ -240,16 +245,16 @@ export const getUserTicketCount = wrapServiceBoundary(async function getUserTick
   context: {},
 });
 
-export async function createTicket(guild, member, categoryId, reason = 'No reason provided', priority = 'none') {
+export async function createTicket(guild, member, categoryId, reason = 'No reason provided', priority = 'none', {ticketType = null} = {}) {
   try {
     // One creation at a time per user: the limit check and the new record must not interleave.
-    return await runInTurn(`${guild.id}:${member.id}`, () => createTicketInTurn(guild, member, categoryId, reason, priority));
+    return await runInTurn(`${guild.id}:${member.id}`, () => createTicketInTurn(guild, member, categoryId, reason, priority, ticketType));
   } catch (error) {
     rethrowTicketError(error, 'createTicket', 'Failed to create ticket. Please try again in a moment.', { guildId: guild?.id, userId: member?.id });
   }
 }
 
-async function createTicketInTurn(guild, member, categoryId, reason, priority) {
+async function createTicketInTurn(guild, member, categoryId, reason, priority, ticketType) {
     const config = await getGuildConfig(guild.client, guild.id);
     const ticketConfig = config.tickets || {};
     
@@ -265,15 +270,24 @@ async function createTicketInTurn(guild, member, categoryId, reason, priority) {
       );
     }
     
+    // A type-specific destination must still exist: never silently create an
+    // unparented channel when a configured category was removed.
+    let typedCategory = null;
+    if (ticketType?.categoryId) {
+      if (categoryId !== ticketType.categoryId) ticketUserError('Invalid ticket category', 'Kategori jenis tiket tidak valid.', ErrorTypes.VALIDATION, {ticketCode:'TICKET_CATEGORY_INVALID'});
+      typedCategory = await guild.channels.fetch(categoryId, {force:true}).catch(() => null);
+      if (!typedCategory || typedCategory.type !== ChannelType.GuildCategory)
+        ticketUserError('Ticket category missing', 'Kategori jenis tiket tidak tersedia. Minta staff memperbaiki pengaturan.', ErrorTypes.VALIDATION, {ticketCode:'TICKET_CATEGORY_INVALID'});
+    }
     // Allocate before any Discord mutation: a database failure must not create a category.
     const ticketNumber = await getNextTicketNumber(guild.id);
 
-    let category = categoryId ? 
+    let category = typedCategory || (categoryId ?
       guild.channels.cache.get(categoryId) :
       guild.channels.cache.find(c => 
         c.type === ChannelType.GuildCategory && 
         c.name.toLowerCase().includes('tickets')
-      );
+      ));
     
     if (!category && !categoryId) {
       category = await guild.channels.create({
@@ -336,6 +350,7 @@ async function createTicketInTurn(guild, member, categoryId, reason, priority) {
       claimedBy: null,
       priority: priority || 'none',
       reason,
+      ...(ticketType ? {ticketType} : {}),
     };
 
     // From here on a channel exists. If the ticket cannot be completed, the
@@ -347,7 +362,7 @@ async function createTicketInTurn(guild, member, categoryId, reason, priority) {
       const staffMention = config.ticketStaffRoleId ? ` <@&${config.ticketStaffRoleId}>` : '';
       const container = createV2Container({
         title: `Ticket #${ticketNumber}`,
-        description: `${member.toString()}${staffMention}, thanks for creating a ticket!\n\n**Reason:** ${reason}\n**Priority:** ${priorityInfo.emoji} ${priorityInfo.label}`,
+        description: `${member.toString()}${staffMention}, thanks for creating a ticket!${ticketType?.name ? `\n**Type:** ${ticketType.name}` : ''}\n\n**Reason:** ${reason}\n**Priority:** ${priorityInfo.emoji} ${priorityInfo.label}`,
         color: priorityInfo.color,
         fields: [
           { name: 'Status', value: 'Open' },
@@ -375,11 +390,12 @@ async function createTicketInTurn(guild, member, categoryId, reason, priority) {
 
       ticketMessage = await channel.send({
         ...v2Message([container, row]),
-        allowedMentions: { parse: ['users', 'roles'] },
+        allowedMentions: { parse: [], users: [member.id], roles: config.ticketStaffRoleId ? [config.ticketStaffRoleId] : [] },
       });
       ticketData.messageId = ticketMessage.id;
       ticketData.ticketNumber = ticketNumber;
 
+      appendTicketActivity(ticketData,{type:'created',actorId:member.id,at:ticketData.createdAt});
       await saveTicketData(guild.id, channel.id, ticketData);
     } catch (error) {
       let removed = false;
@@ -412,7 +428,8 @@ async function createTicketInTurn(guild, member, categoryId, reason, priority) {
         ticketNumber: ticketNumber,
         userId: member.id,
         executorId: member.id,
-        reason: reason,
+        // Custom form answers stay in the private ticket and transcript, not the general event log.
+        reason: ticketType ? `Ticket type: ${ticketType.name}` : reason,
         priority: priority || 'none',
         metadata: {
           channelId: channel.id,
@@ -424,10 +441,11 @@ async function createTicketInTurn(guild, member, categoryId, reason, priority) {
     return { channel, ticketData };
 }
 
-export async function closeTicket(channel, closer, reason = 'No reason provided') {
+export async function closeTicket(channel, closer, reason = 'No reason provided', {autoCloseGuard = null} = {}) {
   try {
     const ticketData = requireTicket(await getTicketData(channel.guild.id, channel.id), channel);
     
+    if (autoCloseGuard && ticketData.status !== 'open') ticketUserError('Auto-close state changed','Auto-close cancelled because the ticket changed.',ErrorTypes.VALIDATION,{ticketCode:'TICKET_AUTOCLOSE_CANCELLED'});
     if (ticketData.status === 'closed') {
       // An earlier close may have stopped after saving, before the Reopen and
       // Delete buttons were posted. Closing again restores them and does nothing else.
@@ -461,6 +479,11 @@ export async function closeTicket(channel, closer, reason = 'No reason provided'
     }
 
     const config = await getGuildConfig(channel.client, channel.guild.id);
+    if (autoCloseGuard) {
+      const settings=readAutoCloseConfig(config),pending=ticketData.autoClose;
+      if (!settings.enabled || settings.epoch!==autoCloseGuard.epoch || pending?.phase!=='warned' || pending.token!==autoCloseGuard.token || pending.epoch!==settings.epoch || pending.warnedAt!==autoCloseGuard.warnedAt || Date.parse(pending.warnedAt)+settings.warningMinutes*60000>autoCloseGuard.now || !(await autoCloseGuard.check()))
+        ticketUserError('Auto-close conditions changed','Auto-close cancelled because the ticket changed.',ErrorTypes.VALIDATION,{ticketCode:'TICKET_AUTOCLOSE_CANCELLED'});
+    }
     const dmOnClose = config.dmOnClose !== false;
     let dmSent = false;
     const closedCategoryId = config.ticketClosedCategoryId || null;
@@ -470,6 +493,8 @@ export async function closeTicket(channel, closer, reason = 'No reason provided'
     ticketData.closedBy = closer.id;
     ticketData.closedAt = new Date().toISOString();
     ticketData.closeReason = reason;
+    ticketData.autoClose = null;
+    appendTicketActivity(ticketData,{type:'closed',actorId:closer.id,at:ticketData.closedAt});
     
     await saveTicketData(channel.guild.id, channel.id, ticketData);
 
@@ -638,6 +663,7 @@ export async function claimTicket(channel, claimer) {
     
     ticketData.claimedBy = claimer.id;
     ticketData.claimedAt = new Date().toISOString();
+    appendTicketActivity(ticketData,{type:'claimed',actorId:claimer.id,at:ticketData.claimedAt});
     
     await saveTicketData(channel.guild.id, channel.id, ticketData);
     
@@ -700,6 +726,41 @@ export async function claimTicket(channel, claimer) {
   }
 }
 
+// Transfer is one guarded state change, never an unclaim followed by a claim.
+export async function transferTicket(channel, actor, targetId, expectedClaimer) {
+  try {
+    if (!/^\d{17,20}$/.test(targetId || '') || !/^\d{17,20}$/.test(expectedClaimer || ''))
+      ticketUserError('Invalid transfer', 'Invalid staff or current assignee.', ErrorTypes.VALIDATION, {ticketCode:'TICKET_TRANSFER_INVALID'});
+    const ticketData = requireTicket(await getTicketData(channel.guild.id, channel.id), channel);
+    if (ticketData.status !== 'open') ticketUserError('Ticket not open', 'Reopen this ticket before transferring.', ErrorTypes.VALIDATION, {ticketCode:'TICKET_NOT_OPEN'});
+    if (ticketData.claimedBy !== expectedClaimer) ticketUserError('Claim changed', 'The assignee changed. Refresh and try again.', ErrorTypes.VALIDATION, {ticketCode:'TICKET_STALE'});
+    if (targetId === expectedClaimer) ticketUserError('Already assigned', 'This staff member already handles the ticket.', ErrorTypes.VALIDATION, {ticketCode:'TICKET_TRANSFER_INVALID'});
+    const config = await getGuildConfig(channel.client, channel.guild.id);
+    const target = await channel.guild.members.fetch({user:targetId,force:true}).catch(() => null);
+    if (!target || target.user?.bot || !(target.permissions?.has(PermissionFlagsBits.ManageChannels) || (config.ticketStaffRoleId && target.roles?.cache?.has(config.ticketStaffRoleId))))
+      ticketUserError('Invalid staff', 'Target must be a current ticket staff member or have Manage Channels.', ErrorTypes.VALIDATION, {ticketCode:'TICKET_TRANSFER_TARGET'});
+    if (!channel.permissionsFor(target)?.has([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages]))
+      ticketUserError('Staff cannot access ticket', 'Target staff must be able to view and send messages in this ticket.', ErrorTypes.VALIDATION, {ticketCode:'TICKET_TRANSFER_TARGET'});
+    ticketData.claimedBy = targetId;
+    ticketData.claimedAt = new Date().toISOString();
+    appendTicketActivity(ticketData,{type:'transferred',actorId:actor.id,from:expectedClaimer,to:targetId,at:ticketData.claimedAt});
+    await saveTicketData(channel.guild.id, channel.id, ticketData);
+    let displayUpdated = true;
+    try {
+      const messages = await channel.messages.fetch();
+      const card = await findTicketMessage(channel, ticketData, messages);
+      if (card) await card.edit({content:null,...v2Message([buildTicketCard(ticketData, existingTicketCardTitle(card)),buildTicketControlRow({claimedBy:targetId})]),allowedMentions:{parse:[]}});
+      const status = messages.find(m => messageMatchesTitle(m,'Ticket Claimed') || messageMatchesTitle(m,'Ticket Unclaimed'));
+      const container = createV2Container({title:'Ticket Claimed',description:`Transferred from <@${expectedClaimer}> to <@${targetId}> by <@${actor.id}>.`,color:'#2ecc71'});
+      const row = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('ticket_unclaim').setLabel('Unclaim').setStyle(ButtonStyle.Secondary).setEmoji('🔓'));
+      if (status) await status.edit({content:null,...v2Message([container,row]),allowedMentions:{parse:[]}});
+      else await channel.send({...v2Message([container,row]),allowedMentions:{parse:[]}});
+    } catch (error) { displayUpdated=false; logger.warn(`Ticket transfer saved but display update failed: ${error.message}`); }
+    await logTicketEvent({client:channel.client,guildId:channel.guild.id,event:{type:'transfer',ticketId:channel.id,ticketNumber:ticketData.ticketNumber || ticketData.id,userId:ticketData.userId,executorId:actor.id,metadata:{previousClaimer:expectedClaimer,newClaimer:targetId}}});
+    return {ticketData,displayUpdated};
+  } catch (error) { rethrowTicketError(error,'transferTicket','Failed to transfer ticket.',{guildId:channel?.guild?.id,channelId:channel?.id}); }
+}
+
 export async function reopenTicket(channel, reopener) {
   try {
     const ticketData = requireTicket(await getTicketData(channel.guild.id, channel.id), channel);
@@ -714,14 +775,18 @@ export async function reopenTicket(channel, reopener) {
     }
 
     const config = await getGuildConfig(channel.client, channel.guild.id);
-    const openCategoryId = config.ticketCategoryId || null;
+    const openCategoryId = ticketData.ticketType?.categoryId || config.ticketCategoryId || null;
     let movedToOpenCategory = false;
     let openCategoryMoveFailed = false;
     
     ticketData.status = 'open';
+    ticketData.reopenedAt = new Date().toISOString();
+    ticketData.autoClose = null;
+    if (!ticketData.claimedBy) { ticketData.unclaimedAt = new Date().toISOString(); ticketData.reminderAttemptedAt = null; }
     ticketData.closedBy = null;
     ticketData.closedAt = null;
     ticketData.closeReason = null;
+    appendTicketActivity(ticketData,{type:'reopened',actorId:reopener.id});
     
     await saveTicketData(channel.guild.id, channel.id, ticketData);
 
@@ -810,68 +875,15 @@ async function generateTranscript(channel) {
       channelName: channel.name
     });
 
-    const messages = [];
-    let before = undefined;
-    let batch;
-    do {
-      batch = await channel.messages.fetch({ limit: 100, ...(before ? { before } : {}) });
-      if (batch.size === 0) break;
-      messages.push(...batch.values());
-      before = batch.last()?.id;
-    } while (batch.size === 100);
-
-    messages.sort((a, b) => a.createdTimestamp - b.createdTimestamp);
-
-    const escape = (str) =>
-      String(str ?? '')
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
-
-    const rows = messages.map((msg) => {
-      const ts = new Date(msg.createdTimestamp).toISOString().replace('T', ' ').slice(0, 19);
-      const author = escape(msg.author?.tag ?? msg.author?.username ?? 'Unknown');
-      const content = escape(msg.content || (msg.embeds.length ? '[embed]' : '[attachment]'));
-      return `<tr><td class="ts">${ts}</td><td class="author">${author}</td><td class="msg">${content}</td></tr>`;
-    }).join('\n');
-
-    const html = `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Transcript – #${escape(channel.name)}</title>
-<style>
-body{font-family:sans-serif;background:#36393f;color:#dcddde;margin:0;padding:16px}
-h1{color:#fff;font-size:1.2rem;margin-bottom:8px}
-table{width:100%;border-collapse:collapse;font-size:0.85rem}
-th{background:#2f3136;color:#8e9297;padding:6px 8px;text-align:left;border-bottom:2px solid #202225}
-td{padding:4px 8px;border-bottom:1px solid #40444b;vertical-align:top}
-.ts{color:#72767d;white-space:nowrap;width:160px}
-.author{color:#7289da;white-space:nowrap;width:160px}
-.msg{word-break:break-word}
-</style>
-</head>
-<body>
-<h1>📜 Transcript – #${escape(channel.name)}</h1>
-<p style="color:#72767d">${messages.length} message(s) exported on ${new Date().toUTCString()}</p>
-<table>
-<thead><tr><th>Timestamp (UTC)</th><th>Author</th><th>Message</th></tr></thead>
-<tbody>
-${rows}
-</tbody>
-</table>
-</body>
-</html>`;
-
-    const buffer = Buffer.from(html, 'utf8');
+    const botMember = channel.guild.members.me;
+    if (!botMember || !channel.permissionsFor?.(botMember)?.has([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ReadMessageHistory])) throw new Error('Bot cannot read ticket message history');
+    const {buffer,messageCount} = await createTicketTranscript(channel);
     const attachment = new AttachmentBuilder(buffer, { name: `ticket-${channel.id}.html` });
 
     logger.info('✅ Successfully generated transcript', {
       channelId: channel.id,
       channelName: channel.name,
-      messageCount: messages.length,
+      messageCount,
       size: buffer.length
     });
 
@@ -891,10 +903,12 @@ ${rows}
 /** Channels with a deletion already scheduled in this bot process. */
 const pendingDeletions = new Set();
 
-export async function deleteTicket(channel, deleter, { delayMs = TICKET_DELETE_DELAY_MS } = {}) {
+export async function deleteTicket(channel, deleter, { delayMs = TICKET_DELETE_DELAY_MS, allowNoTranscript = false } = {}) {
   try {
     const ticketData = requireTicket(await getTicketData(channel.guild.id, channel.id), channel);
 
+    const deletionSettings=await getGuildConfig(channel.client,channel.guild.id);
+    if(!deletionSettings.ticketTranscriptChannelId&&!allowNoTranscript)ticketUserError('Transcript channel not configured','Tidak ada channel transcript. Konfirmasi penghapusan tanpa arsip atau atur channel transcript.',ErrorTypes.VALIDATION,{channelId:channel.id,ticketCode:'TICKET_TRANSCRIPT_CONFIRM_REQUIRED'});
     if (pendingDeletions.has(channel.id)) {
       ticketUserError(
         'Ticket deletion already scheduled',
@@ -920,7 +934,7 @@ export async function deleteTicket(channel, deleter, { delayMs = TICKET_DELETE_D
     }
 
     setTimeout(() => {
-      performTicketDeletion(channel, ticketData, deleter)
+      performTicketDeletion(channel, ticketData, deleter, {allowNoTranscript})
         .catch((error) => {
           logger.error('❌ Unexpected error during ticket deletion:', {
             channelId: channel.id,
@@ -951,6 +965,10 @@ async function deliverTranscript(channel, ticketData, deleter, transcriptChannel
 
     if (!transcriptChannel) {
       logger.error('Could not fetch transcript channel', { channelId: channel.id, transcriptChannelId });
+      return false;
+    }
+    if (transcriptChannel.guildId !== channel.guild.id || transcriptChannel.id === channel.id) {
+      logger.error('Transcript destination is outside the server or is the ticket itself', {channelId:channel.id,transcriptChannelId});
       return false;
     }
     if (!transcriptChannel.isSendable()) {
@@ -1014,7 +1032,7 @@ async function announceDeletionCancelled(channel, text) {
  * Returns { deleted, transcript } with transcript one of
  * 'sent', 'not_configured', 'failed'.
  */
-export async function performTicketDeletion(channel, ticketData, deleter) {
+export async function performTicketDeletion(channel, ticketData, deleter, {allowNoTranscript = false} = {}) {
   let transcriptChannelId;
   try {
     const guildConfig = await getGuildConfig(channel.client, channel.guild.id);
@@ -1026,11 +1044,15 @@ export async function performTicketDeletion(channel, ticketData, deleter) {
   }
 
   let transcript = 'not_configured';
+  if (!transcriptChannelId && !allowNoTranscript) {
+    await announceDeletionCancelled(channel, '⚠️ Channel transcript belum diatur. Tiket **tidak** dihapus. Atur channel transcript atau konfirmasi hapus tanpa arsip.');
+    return {deleted:false,transcript:'not_configured'};
+  }
   if (transcriptChannelId) {
     if (!await deliverTranscript(channel, ticketData, deleter, transcriptChannelId)) {
       await announceDeletionCancelled(
         channel,
-        `⚠️ The transcript could not be saved to <#${transcriptChannelId}>, so this ticket was **not** deleted.\n\nCheck the transcript channel in the ticket settings and the bot's permissions there, then press **Delete Ticket** again.`
+        `⚠️ The transcript could not be saved to <#${transcriptChannelId}>, so this ticket was **not** deleted.\n\nCheck the transcript channel, permissions, and archive size (maximum 10,000 messages / 8 MiB), then press **Delete Ticket** again.`
       );
       return { deleted: false, transcript: 'failed' };
     }
@@ -1053,6 +1075,18 @@ export async function performTicketDeletion(channel, ticketData, deleter) {
       return { deleted: false, transcript };
     }
   }
+
+  // Discord deletion and the database are not atomic. Record this separately,
+  // retrying a concurrent ticket update; failure cannot undo the deletion.
+  try {
+    for (let attempt=0;attempt<3;attempt++) {
+      const latest=await getTicketData(channel.guild.id,channel.id);
+      if(!latest)break;
+      appendTicketActivity(latest,{type:'deleted',actorId:deleter.id});
+      try { await saveTicketData(channel.guild.id,channel.id,latest);break; }
+      catch(error){if(error?.code!=='TICKET_STALE'||attempt===2)throw error;}
+    }
+  } catch(error) {logger.warn(`Ticket ${channel.id} was deleted but activity could not be saved: ${error.message}`);}
 
   logger.info('✅ Channel deleted', {
     channelId: channel.id,
@@ -1104,6 +1138,9 @@ export async function unclaimTicket(channel, unclaimer) {
     const previousClaimer = ticketData.claimedBy;
     ticketData.claimedBy = null;
     ticketData.claimedAt = null;
+    ticketData.unclaimedAt = new Date().toISOString();
+    ticketData.reminderAttemptedAt = null;
+    appendTicketActivity(ticketData,{type:'unclaimed',actorId:unclaimer.id,from:previousClaimer,at:ticketData.unclaimedAt});
     
     await saveTicketData(channel.guild.id, channel.id, ticketData);
     
@@ -1180,6 +1217,7 @@ export async function updateTicketPriority(channel, priority, updater) {
     ticketData.priority = priority;
     ticketData.priorityUpdatedBy = updater.id;
     ticketData.priorityUpdatedAt = new Date().toISOString();
+    appendTicketActivity(ticketData,{type:'priority',actorId:updater.id,from:previousPriority,to:priority,at:ticketData.priorityUpdatedAt});
     
     await saveTicketData(channel.guild.id, channel.id, ticketData);
 
