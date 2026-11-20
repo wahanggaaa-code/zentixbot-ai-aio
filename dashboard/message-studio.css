@@ -32,3 +32,10 @@
 .ms-danger-button{border-color:#793b33!important;color:#702b23!important}
 .ms-danger-button:hover{background:#702b23!important;color:#fff!important}
 @media(max-width:720px){.ms-action-section{padding:13px}.ms-template-actions{display:flex;flex-direction:column;align-items:stretch}.ms-template-field{flex:auto}.ms-send-actions{display:grid;grid-template-columns:1fr;gap:8px}.ms-actions button{width:100%}}
+
+/* Preview list text is one flex item, including inline Markdown. */
+.ms-md-list-content{flex:1;min-width:0;overflow-wrap:anywhere}
+/* Editor sections retain their backgrounds and headings without outer frames. */
+.ms-tree,.ms-inspector,.ms-preview,.ms-container-node,.ms-item-card,.ms-json-panel,.ms-actions{border:0}
+.ms-jobs summary{cursor:pointer;font-weight:700}
+.ms-jobs p{margin:10px 0}

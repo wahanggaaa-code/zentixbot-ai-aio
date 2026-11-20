@@ -107,3 +107,6 @@ fieldset.f-field{border:0;border-bottom:1px solid var(--softline);margin:0;min-w
 main :is(.f-field small,.f-panel-head p,.f-muted,.f-feature-note p,.f-index-card p,.f-toolbar p,.b-build-meta,.s-head small,.s-stats span,.intro-copy,.right-desc,.module-name small,.placeholder-card p,.metric small){color:#000 !important;opacity:1;font-size:12px;line-height:1.55}
 /* Discord previews and the dark overview cards must stay light on dark backgrounds. */
 main :is(.discord-demo,.main-card,.ai-index-intro,.ai-quiz,.music-player) :is(p,small,.f-muted){color:#fff !important;opacity:1}
+
+/* Remove decorative content frames while keeping controls and previews distinct. */
+.f-content .ai-privacy,.f-content .ai-consent,.f-content .ai-tree,.f-content .ai-fallback-chain>div:not(.chain-arrow),.f-content .b-details,.f-content .b-perms,.f-content .s-stats>div{border:0}

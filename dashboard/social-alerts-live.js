@@ -27,19 +27,19 @@
   function render() {
     return `<div id="socialAlertsLive">
   <section class="f-panel"><div class="f-panel-head"><div><h2>Social Alerts</h2>
-    <p>Pengumuman otomatis dari channel YouTube dan live Twitch ke channel Discord pilihanmu. Discord menampilkan preview (link unfurl) dari judul dan thumbnail-nya.</p></div><span>⊚</span></div>
-    <div class="f-field" style="border-bottom:0;padding-bottom:4px"><span><b>Aktifkan Social Alerts</b><small>Saklar utama untuk server ini. Saat mati, poller tidak mengirim apa pun; feed tersimpan dan tidak dihapus.</small></span>
+    <p>Kirim pengumuman YouTube dan live Twitch ke Discord.</p></div><span>⊚</span></div>
+    <div class="f-field" style="border-bottom:0;padding-bottom:4px"><span><b>Aktifkan Social Alerts</b><small>Saat nonaktif, pengumuman berhenti dan feed tetap tersimpan.</small></span>
       <span class="f-check"><input type="checkbox" id="saMasterToggle"><span class="fake-switch"></span></span></div>
     <p class="f-muted" id="saMasterState">Memuat…</p>
   </section>
   <div id="saKeysWarn"></div>
   <section class="f-panel" style="margin-top:18px"><div class="f-panel-head"><div><h2>Feed terhubung</h2>
-    <p>Satu feed per akun per channel. Badge platform, status dan aksi untuk tiap feed.</p></div><span>⊚</span></div>
+    <p>Satu feed per akun dan channel.</p></div><span>⊚</span></div>
     <div id="saList" aria-live="polite">Memuat…</div>
   </section>
   <div class="f-layout">
     <section class="f-panel"><div class="f-panel-head"><div><h2 id="saFormTitle">Tambah feed</h2>
-      <p>YouTube: tempel @handle, URL, atau ID channel. Twitch: login atau URL channel. Akun diverifikasi ke layanan masing-masing saat disimpan.</p></div><span>⊚</span></div>
+      <p>YouTube: @handle, URL, atau ID. Twitch: login atau URL. Akun diverifikasi saat disimpan.</p></div><span>⊚</span></div>
       <form class="f-form" id="saForm">
         <label class="f-field" id="saPlatformRow"><span><b>Platform</b><small>Tidak dapat diubah setelah feed dibuat.</small></span>
           <select name="platform" id="saPlatform"><option value="youtube">YouTube</option><option value="twitch">Twitch</option></select></label>
@@ -58,14 +58,14 @@
         <div class="f-field"><span><b>Warna container</b><small>Pilih warna, masukkan kode Hex atau RGB, atau gunakan preset.</small></span>${window.ZentixGreetingColor?.render('#5865f2','#5865f2',{name:'accentColor'}) || '<input name="accentColor" id="saColor" type="color" value="#5865F2">'}</div>
         <div class="f-field" style="grid-template-columns:1fr"><span><b>Pesan kustom</b><small>Baris di atas kartu. Kosong = "📢 <i>{creator}</i> mengunggah …". Klik variabel untuk menyisipkan.</small></span><textarea name="customMessage" id="saCustom" rows="3" maxlength="500" spellcheck="false" placeholder="{role} {creator} baru: {title} {url}"></textarea></div>
         <div class="sa-vars" id="saVars">${VARIABLES.map((v) => `<button type="button" class="f-outline" data-var="${v}">${v}</button>`).join('')}</div>
-        <fieldset class="f-field"><span><b>Ringkasan AI</b><small>Ringkas 1–2 kalimat untuk video/Shorts baru. Opsional, memakai AI bot; kode tidak pernah mengirim teks petunjuk (prompt injection dipercaya sebagai teks, bukan instruksi).</small></span>
+        <fieldset class="f-field"><span><b>Ringkasan AI</b><small>Ringkasan opsional 1–2 kalimat untuk video dan Shorts baru, menggunakan AI bot.</small></span>
           <span class="f-check"><input type="checkbox" name="aiSummaryEnabled" id="saAi"><span class="fake-switch"></span></span></fieldset>
-        <div class="f-form-actions"><span id="saFormState">✳ PERUBAHAN TERSIMPAN KE BOT</span>
+        <div class="f-form-actions"><span id="saFormState">✳ SIMPAN UNTUK MENERAPKAN</span>
           <div><button type="button" class="f-outline" id="saCancelEdit" hidden>BATAL UBAH</button>
           <button class="f-primary" type="submit" id="saSave">SIMPAN FEED ↗</button></div></div>
       </form>
     </section>
-    <aside><section class="f-panel"><div class="f-panel-head"><div><h2>Live preview</h2><p>Perkiraan pesan seperti yang tampil di Discord. Titip variabel {creator} {title} {url} {platform} {role}.</p></div><span>⊚</span></div>
+    <aside><section class="f-panel"><div class="f-panel-head"><div><h2>Live preview</h2><p>Perkiraan tampilan pesan di Discord.</p></div><span>⊚</span></div>
       <div class="discord-demo"><div class="discord-avatar">⊚</div><div class="discord-copy"><div><strong>ZentixBot</strong> <span class="discord-bot">BOT</span></div>
         <div class="discord-embed" id="saPreviewCard" style="border-left-color:#5865F2">
           <b id="saPreviewTop">📢 <span id="saPreviewCreatorTop">Nama Akun</span> mengunggah video baru</b>

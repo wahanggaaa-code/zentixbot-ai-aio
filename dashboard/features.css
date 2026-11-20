@@ -36,3 +36,23 @@ fieldset.f-field{border:0;margin:0;padding:16px 0;min-width:0}
 .greeting-preview-field{border-top:1px solid #555;margin-top:10px;padding-top:8px;color:#dbdee1;line-height:1.4}
 .greeting-preview-field[hidden]{display:none}
 .f-field .greeting-color .greeting-color-default-note{display:block;margin-top:8px;color:#dbdee1;font-size:12px}
+
+/* Open feature layouts: separate sections with spacing and subtle rules, not frames. */
+.f-content .f-panel{border:0;padding:0;margin-bottom:28px}
+.f-content .f-callout,.f-content .f-table-wrap,.f-content .sa-feed{border:0}
+.f-index-grid{border-left:0;gap:0 20px}
+.f-index-card{border-right:0}
+@media(max-width:650px){.f-content .f-panel{padding:0}}
+
+/* More breathing room and readable controls without adding decorative frames. */
+.f-content .f-panel-head{gap:16px;padding-bottom:14px}
+.f-content .f-panel-head p,.f-content .f-field small,.f-content .f-muted,.f-content .f-callout{font-size:11px;line-height:1.6}
+.f-content .f-field{gap:12px;padding:15px 0}
+.f-content .f-primary,.f-content .f-outline{min-height:44px}
+.f-content .f-primary:disabled,.f-content .f-outline:disabled{opacity:.55;cursor:not-allowed}
+@media(max-width:650px){
+ .f-content .f-panel-head p,.f-content .f-field small,.f-content .f-muted,.f-content .f-callout{font-size:12px}
+ .f-content .f-form-actions{flex-wrap:wrap;gap:10px}
+ .f-content .f-form-actions>div{display:flex;flex-wrap:wrap;gap:8px}
+ .f-content .f-field input:not([type=checkbox]):not([type=radio]),.f-content .f-field select,.f-content .f-field textarea{font-size:16px}
+}
