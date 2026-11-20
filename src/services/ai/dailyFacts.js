@@ -1,5 +1,5 @@
 // Independent daily facts: one saved channel, three validated AI-generated facts, no mentions.
-import { PermissionFlagsBits, ChannelType } from 'discord.js';
+import { PermissionFlagsBits, ChannelType, MessageFlags } from 'discord.js';
 import { digestDue } from './digest.js';
 import { cleanReply } from './interactive.js';
 import { logger as defaultLogger } from '../../utils/logger.js';
@@ -89,7 +89,7 @@ export function createDailyFacts({client,settings,kv,foundation=()=>client.aiFou
    await kv.set(key(guild.id),{at:new Date(now()).toISOString(),mode,state:'checking',source,message:source==='ai'?'Pemeriksaan selesai; menyiapkan pengiriman.':`Fakta cadangan disiapkan; ${fallbackReason}`,...(slot?{slot}:{}),evidence});
    const links=`Sumber: ${evidence.map((item,i)=>`[${i+1}](${item.urls[0]})`).join(' · ')}`;
    const content=`${mode==='test'?'Fakta hari ini — pesan tes':'Fakta hari ini'}\n\n${evidence.map((x,i)=>`${i+1}. ${x.fact}`).join('\n\n')}\n\n${links}`;
-   try { await channel.send({content,allowedMentions:{parse:[]}}); } catch { throw err('Hasil pengiriman fakta tidak pasti; periksa channel sebelum mencoba lagi.',409); }
+   try { await channel.send({content,flags:MessageFlags.SuppressEmbeds,allowedMentions:{parse:[]}}); } catch { throw err('Hasil pengiriman fakta tidak pasti; periksa channel sebelum mencoba lagi.',409); }
    if(source==='ai'){try{await kv.update(`ai:facts:sites:${guild.id}`,old=>{const recent=Array.isArray(old?.recent)?old.recent.filter(x=>typeof x==='string'):[];const latest=evidence.map(item=>item.urls[0]);return {...old,recent:[...recent.filter(url=>!latest.includes(url)),...new Set(latest)].slice(-30)}})}catch{logger.warn('AI facts: riwayat sumber tidak dapat disimpan.')}}
    await status(guild,mode,'sent',source==='ai'?'Tiga fakta dari artikel terkirim; pemeriksaan AI dapat keliru.':`Tiga fakta cadangan umum terkirim; topik khusus tidak diterapkan. Alasan: ${fallbackReason}`,slot,evidence,source);return {sent:1};
   }catch(e){const message=e.status&&e.status<500?e.message:'Gagal memeriksa atau mengirim fakta. Periksa pencarian, provider AI, kuota, sumber dan izin channel.';await status(guild,mode,'failed',message,slot);if(e.status)throw e;throw err(message,503);}

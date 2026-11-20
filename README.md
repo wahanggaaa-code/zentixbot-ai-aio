@@ -18,8 +18,8 @@
 
 | Area | Yang tersedia |
 | --- | --- |
-| **Komunitas** | Welcome/goodbye, self role, Join to Create, ulang tahun, server stats, leveling dan giveaway. |
-| **Ticket & moderasi** | Pengelolaan ticket, claim, transcript, feedback, logging dan perintah moderasi. |
+| **Komunitas** | Welcome/goodbye, self role, Join to Create, ulang tahun, server stats, leveling, poin Activities dan giveaway. |
+| **Ticket & moderasi** | Inbox, formulir, transfer claim, transcript, pengingat respons/SLA terbatas dan auto-close opsional; AutoMod, anti-raid, logging dan perintah moderasi. |
 | **Message Studio** | Buat dan kelola pesan dengan komponen Discord, pratinjau dan penjadwalan. |
 | **AI Studio** | Chat channel dan DM, FAQ, terjemahan, rangkum link, gambar, aktivitas serta fitur komunitas AI yang dapat diatur. |
 | **Musik & utilitas** | Musik melalui Lavalink, pencarian, kamus dan alat bantu server. |

@@ -2,6 +2,7 @@ import { Events } from "discord.js";
 import {startTemporaryBanWorker} from '../services/moderation/temporaryBans.js';
 import {startTicketReminderWorker} from '../services/tickets/reminders.js';
 import {startTicketAutoCloseWorker} from '../services/tickets/autoClose.js';
+import {startResponseSlaWorker} from '../services/tickets/responseSla.js';
 import { logger, startupLog } from "../utils/logger.js";
 import { describeCheck, describeServer } from "../utils/startupReport.js";
 import config from "../config/application.js";
@@ -40,6 +41,8 @@ export default {
       try { client.ticketReminderWorker=startTicketReminderWorker(client); } catch { logger.warn('Pengingat tiket: worker tidak dapat dimulai.'); }
 
       try { client.ticketAutoCloseWorker=startTicketAutoCloseWorker(client); } catch { logger.warn('Auto-close tiket: worker tidak dapat dimulai.'); }
+
+      try { client.ticketResponseSlaWorker=startResponseSlaWorker(client); } catch { logger.warn('SLA tiket: worker tidak dapat dimulai.'); }
 
       // A failed queue must not prevent other startup work.
       try { client.messageStudio?.startDurableWorker(); }

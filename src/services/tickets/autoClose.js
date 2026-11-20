@@ -9,7 +9,7 @@ import {logger} from '../../utils/logger.js';
 import {closeTicket} from '../ticket.js';
 import {readAutoCloseConfig,autoCloseRevision} from './autoCloseConfig.js';
 const id=/^\d{17,20}$/;
-async function openPage(client,guildId,after){
+export async function openTicketPage(client,guildId,after){
  const sqlite=sqliteBackend(client);if(sqlite)return sqlite.ticketOpenPage(guildId,after,50);
  const db=client.db;if(!db||db.getStatus?.().isDegraded||!db.isAvailable?.()||!db.db?.isAvailable?.()||!db.db.pool)throw Error('Database tiket tidak tersedia');
  const rows=await db.db.pool.query(`SELECT channel_id FROM ${pgConfig.tables.tickets} WHERE guild_id=$1 AND channel_id>$2 AND channel_id ~ '^[0-9]{17,20}$' AND (expires_at IS NULL OR expires_at>NOW()) AND data->>'status'='open' ORDER BY channel_id LIMIT 50`,[guildId,after]);return rows.rows.map(r=>r.channel_id);
@@ -31,7 +31,7 @@ async function settingsFor(client,guildId){return readAutoCloseConfig(await getG
 export async function runTicketAutoClosePage(client,{after='',now=Date.now()}={}){
  const guildId=client.homeGuildId,guild=client.guilds.cache.get(guildId);if(!id.test(guildId||'')||!guild||!id.test(client.user?.id||''))return {after:'',warned:0,closed:0};
  const settings=await settingsFor(client,guildId);if(!settings.enabled)return {after:'',warned:0,closed:0};
- const ids=await openPage(client,guildId,after);let warned=0,closed=0;
+ const ids=await openTicketPage(client,guildId,after);let warned=0,closed=0;
  for(const channelId of ids){try{
   const config=await settingsFor(client,guildId);if(autoCloseRevision(config)!==autoCloseRevision(settings))break;
   let ticket=await getTicketData(guildId,channelId);if(!ticket||ticket.status!=='open'||!id.test(ticket.userId||''))continue;

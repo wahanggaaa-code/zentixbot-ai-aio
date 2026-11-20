@@ -15,6 +15,7 @@ import {getGuildConfig} from '../services/config/guildConfig.js';
 import {createV2Container,v2Message} from '../utils/componentsV2.js';
 import {quickRepliesFromConfig,quickRepliesRevision} from '../services/tickets/quickReplies.js';
 import {validateTicketTags,updateTicketTags} from '../services/tickets/tags.js';
+import {inspectTicketResponses,readResponseSlaConfig} from '../services/tickets/responseSla.js';
 import {calculateTotalXp, getLevelingConfig, getLevelLockKey} from '../services/leveling/leveling.js';
 import {syncMemberRewardRoles} from '../services/leveling/rewardRoles.js';
 import { Mutex } from '../utils/mutex.js';
@@ -104,6 +105,9 @@ export function createOperationsApi(client,{auth,csrf}) {
  router.get('/tickets',auth,async(req,res)=>{try{const sqlite=sqliteBackend(client);let rows;if(sqlite){const prefix=`guild:${req.guild.id}:ticket:`;rows=sqlite.botTickets(req.guild.id,100).map(x=>({channel_id:x.key.slice(prefix.length),data:x.value,updated_at:x.updatedAt}));}else rows=(await pool(client).query(`SELECT channel_id,data,updated_at FROM ${tables.tickets} WHERE guild_id=$1 ORDER BY updated_at DESC LIMIT 100`,[req.guild.id])).rows;res.json({tickets:rows.map(x=>({channelId:x.channel_id,userId:x.data?.userId,status:x.data?.status,createdAt:x.data?.createdAt,closedAt:x.data?.closedAt??null,rating:x.data?.feedback?.rating??null,updatedAt:x.updated_at,claimedBy:x.data?.claimedBy,priority:x.data?.priority||'none',ticketNumber:x.data?.ticketNumber??null,ticketType:x.data?.ticketType?.name||null,tags:Array.isArray(x.data?.tags)?x.data.tags:[],reason:x.data?.reason||''})),limit:100});}catch(e){fail(res,e)}});
  async function ticket(client,guild,id){if(!idRe.test(id))throw bad('ID tiket tidak valid.');const sqlite=sqliteBackend(client);if(sqlite){const data=sqlite.botGet(`guild:${guild.id}:ticket:${id}`);if(data===null)throw bad('Tiket tidak ditemukan.',404);return data;}const r=await pool(client).query(`SELECT data FROM ${tables.tickets} WHERE guild_id=$1 AND channel_id=$2`,[guild.id,id]);if(!r.rows[0])throw bad('Tiket tidak ditemukan.',404);return r.rows[0].data;}
  router.get('/tickets/:id',auth,async(req,res)=>{try{const data=await ticket(client,req.guild,req.params.id);res.json({ticket:data});}catch(e){fail(res,e)}});
+ router.get('/tickets/:id/response-sla',auth,async(req,res)=>{try{
+  const data=await ticket(client,req.guild,req.params.id),channel=req.guild.channels.cache.get(req.params.id);if(!channel)throw bad('Channel tiket tidak tersedia.',404);const cfg=await getGuildConfig(client,req.guild.id);const result=await inspectTicketResponses(req.guild,channel,data,cfg);const settings=readResponseSlaConfig(cfg);const pending=result.pending?{at:new Date(result.pending.at).toISOString(),overdue:settings.enabled&&data.status==='open'&&Date.now()-Math.max(result.pending.at,Date.parse(settings.enabledAt))>=settings.minutes*60000}:null;res.json({pending,lastResponse:result.lastResponse,truncated:result.truncated,settings:{enabled:settings.enabled,minutes:settings.minutes}});
+ }catch(e){fail(res,e.status?e:Object.assign(new Error('Respons tidak dapat diperiksa. Pastikan bot dapat membaca riwayat dan status anggota tersedia.'),{status:503}))}});
  router.get('/tickets/:id/transcript',auth,async(req,res)=>{try{
   await ticket(client,req.guild,req.params.id);const c=req.guild.channels.cache.get(req.params.id);if(!c?.messages)throw bad('Channel tiket tidak tersedia; transcript tersimpan tidak tersedia.',404);
   if(!c.permissionsFor(req.guild.members.me)?.has([PermissionFlagsBits.ViewChannel,PermissionFlagsBits.ReadMessageHistory]))throw bad('Bot tidak memiliki izin membaca channel tiket.',403);
@@ -129,6 +133,30 @@ export function createOperationsApi(client,{auth,csrf}) {
   await ticket(client,req.guild,req.params.id);
   const tags=await updateTicketTags(req.guild.id,req.params.id,req.member.id,b.tags,b.expectedTags);res.json({ok:true,tags});
  }catch(e){if(e.code==='TICKET_STALE')return res.status(409).json({error:'Tag atau tiket berubah. Muat ulang dan coba lagi.',code:e.code});if(e.code==='TICKET_TAG_NOT_FOUND')return res.status(404).json({error:'Tiket tidak ditemukan.'});if(e.code==='TICKET_TAG_INVALID_STORED')return res.status(409).json({error:'Tag tersimpan tidak valid; perlu diperiksa.'});fail(res,e)}});
+ // Category changes keep the existing channel overwrites, never inherit the target category.
+ router.get('/tickets/:id/category',auth,async(req,res)=>{try{
+  const data=await ticket(client,req.guild,req.params.id),channel=req.guild.channels.cache.get(req.params.id);
+  if(!channel||channel.type!==ChannelType.GuildText)throw bad('Channel tiket tidak tersedia.',404);
+  if(data.status!=='open')throw bad('Hanya tiket terbuka yang dapat dipindahkan.',409);
+  if(!req.member?.permissions?.has(PermissionFlagsBits.ManageChannels))throw bad('Izin Manage Channels diperlukan.',403);
+  const categories=[...req.guild.channels.cache.values()].filter(c=>c.type===ChannelType.GuildCategory&&idRe.test(c.id||'')&&c.permissionsFor?.(req.member)?.has(PermissionFlagsBits.ViewChannel)&&c.permissionsFor?.(req.guild.members.me)?.has([PermissionFlagsBits.ViewChannel,PermissionFlagsBits.ManageChannels])).map(c=>({id:c.id,name:String(c.name||'Kategori').slice(0,100)})).slice(0,100);
+  res.json({parentId:channel.parentId??null,categories});
+ }catch(e){fail(res,e)}});
+ router.post('/tickets/:id/category',auth,csrf,async(req,res)=>{try{
+  const b=req.body;if(!b||typeof b!=='object'||Array.isArray(b)||Object.keys(b).sort().join(',')!=='categoryId,confirmed,expectedParentId'||b.confirmed!==true||!idRe.test(b.categoryId||'')||!(b.expectedParentId===null||idRe.test(b.expectedParentId||'')))throw bad('Kategori atau konfirmasi tidak valid.');
+  if(!req.member?.permissions?.has(PermissionFlagsBits.ManageChannels))throw bad('Izin Manage Channels diperlukan.',403);
+  await Mutex.runExclusive(`ticket-category:${req.guild.id}:${req.params.id}`,async()=>{
+   const data=await ticket(client,req.guild,req.params.id);if(data.status!=='open')throw bad('Hanya tiket terbuka yang dapat dipindahkan.',409);
+   // Fetch fresh Discord state where possible. Discord offers no atomic compare-and-move.
+   const channel=await req.guild.channels.fetch(req.params.id,{force:true}).catch(()=>null),category=await req.guild.channels.fetch(b.categoryId,{force:true}).catch(()=>null);
+   if(!channel||channel.type!==ChannelType.GuildText||typeof channel.setParent!=='function'||!category||category.type!==ChannelType.GuildCategory)throw bad('Channel atau kategori tidak tersedia.',404);
+   if((channel.parentId??null)!==b.expectedParentId)throw bad('Kategori tiket berubah. Muat ulang.',409);
+   if(channel.parentId===category.id)throw bad('Tiket sudah berada di kategori itu.',409);
+   if(!channel.permissionsFor(req.member)?.has([PermissionFlagsBits.ViewChannel,PermissionFlagsBits.ManageChannels])||!category.permissionsFor(req.member)?.has(PermissionFlagsBits.ViewChannel)||!req.guild.members.me||!channel.permissionsFor(req.guild.members.me)?.has([PermissionFlagsBits.ViewChannel,PermissionFlagsBits.ManageChannels])||!category.permissionsFor(req.guild.members.me)?.has([PermissionFlagsBits.ViewChannel,PermissionFlagsBits.ManageChannels]))throw bad('Akses channel atau kategori tidak mencukupi.',403);
+   if((await ticket(client,req.guild,req.params.id)).status!=='open')throw bad('Tiket berubah. Muat ulang.',409);
+   await channel.setParent(category.id,{lockPermissions:false,reason:`Ticket category moved by ${req.member.id}`});
+  });res.json({ok:true});
+ }catch(e){fail(res,e)}});
  router.post('/tickets/:id/transfer',auth,csrf,async(req,res)=>{try{
   const b=req.body;if(!b||b.confirmed!==true||!idRe.test(b.targetId||'')||!idRe.test(b.expectedClaimer||'')||Object.keys(b).some(k=>!['targetId','expectedClaimer','confirmed'].includes(k)))throw bad('Staff, penanggung jawab, atau konfirmasi tidak valid.');
   await ticket(client,req.guild,req.params.id);const channel=req.guild.channels.cache.get(req.params.id);if(!channel)throw bad('Channel tiket tidak tersedia.',404);

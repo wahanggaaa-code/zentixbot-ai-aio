@@ -6,7 +6,7 @@
     {id:'welcome',n:'01',icon:'♡',title:'Welcome & Goodbye',desc:'Atur sambutan, perpisahan, AI, dan autorole di satu tempat.',tabs:[['welcome','Welcome'],['goodbye','Goodbye']],liveTabs:[['welcome','Welcome'],['goodbye','Goodbye'],['multilingual','Sapaan multibahasa']]},
     {id:'moderation',n:'02',icon:'◇',title:'Moderation',desc:'Tinjau kasus dan tindakan moderator.',tabs:[['cases','Riwayat kasus'],['actions','Tindakan'],['automod','AutoMod']]},
     {id:'ticket',n:'03',icon:'▤',title:'Ticket',desc:'Atur panel dan tangani kebutuhan anggota.',tabs:[['setup','Pengaturan'],['inbox','Kotak masuk'],['transcript','Transcript']],liveTabs:[['setup','Pengaturan'],['inbox','Tiket & transcript']]},
-    {id:'leveling',n:'04',icon:'↗',title:'Leveling',desc:'Kelola progres anggota dan leaderboard.',tabs:[['leveling','Leveling'],['members','Data anggota'],['leaderboard','Leaderboard'],['points','Poin Activities']]},
+    {id:'leveling',n:'04',icon:'↗',title:'Leveling &amp; Points',desc:'Kelola progres anggota, leaderboard, dan poin Activities.',tabs:[['leveling','Leveling'],['members','Data anggota'],['leaderboard','Leaderboard'],['points','Poin Activities']]},
     {id:'music',n:'05',icon:'♫',title:'Music',desc:'Pantau sesi musik dan kelola antrean.',tabs:[['player','Player'],['settings','Pengaturan']],liveTabs:[['player','Player & pengaturan']]},
     {id:'logging',n:'06',icon:'▥',title:'Logging',desc:'Tentukan peristiwa dan tujuan log.',tabs:[['setup','Pengaturan'],['history','Riwayat']]},
     {id:'birthday',n:'07',icon:'✦',title:'Birthday',desc:'Atur channel dan tinjau tanggal ulang tahun.',tabs:[['settings','Pengaturan']]},

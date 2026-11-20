@@ -321,6 +321,7 @@ class ZentixBot extends Client {
     try {
       this.ticketReminderWorker?.stop();
       this.ticketAutoCloseWorker?.stop();
+      this.ticketResponseSlaWorker?.stop();
       cron.getTasks().forEach(task => task.stop());
       stopped.push('scheduled jobs');
 

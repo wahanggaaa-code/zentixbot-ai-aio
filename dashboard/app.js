@@ -4,7 +4,7 @@ const botFeatures = [
   ['01','Welcome & autorole','Sambutan dan autorole anggota baru.','♡'],
   ['02','Moderation','Pusat pengelolaan dan riwayat moderasi.','◇'],
   ['03','Ticket','Panel bantuan dan penanganan tiket.','▤'],
-  ['04','Leveling','Progres anggota, XP, dan leaderboard.','↗'],
+  ['04','Leveling &amp; Points','Progres anggota, XP, leaderboard, dan poin Activities.','↗'],
   ['05','Music','Pemutaran musik dan antrean server.','♫'],
   ['06','Logging','Pengaturan serta riwayat aktivitas server.','▥']
 ];

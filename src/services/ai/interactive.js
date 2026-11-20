@@ -11,6 +11,7 @@ import { ChannelType, MessageType, PermissionFlagsBits, SnowflakeUtil } from 'di
 import { pgConfig } from '../../config/database/postgres.js';
 import { sqliteBackend } from '../storage/sqlite.js';
 import { readDiscordImage } from './attachments.js';
+import { readGalleryVideo, findGalleryAnimation } from './galleryVideo.js';
 import { logger as defaultLogger } from '../../utils/logger.js';
 import { detectTool, firstLink } from './interactiveTools.js';
 import { fetchPublicText } from './linkSummary.js';
@@ -37,6 +38,7 @@ export const DEFAULT_INTERACTIVE = Object.freeze({
     idleDailyMax: 6,
     // Look at images: in a message addressed to the bot, and in every image post of a gallery channel.
     imagesEnabled: false,
+    galleryVideoEnabled: false,
     galleryReactionEnabled: false,
     galleryChannelIds: Object.freeze([]),
     // Send members' display names to the provider so the bot can call people by name.
@@ -67,7 +69,7 @@ const ZONES = { WIB: 'Asia/Jakarta', WITA: 'Asia/Makassar', WIT: 'Asia/Jayapura'
 const SNOWFLAKE = /^\d{17,20}$/;
 const CLOCK = /^([01]\d|2[0-3]):[0-5]\d$/;
 const RANGES = { joinChance: [1, 100], joinCooldownSeconds: [10, 3600], idleMinutes: [10, 720], idleDailyMax: [1, 24], hourlyLimit: [1, 200], followUpSeconds: [30, 300] };
-const BOOLEANS = ['enabled', 'replyEnabled', 'replyAnywhere', 'joinEnabled', 'idleEnabled', 'imagesEnabled', 'galleryReactionEnabled', 'useNames', 'etiquetteEnabled', 'nicknameEnabled', 'followUpEnabled', 'linkSummaryEnabled', 'newsSearchEnabled', 'recapEnabled'];
+const BOOLEANS = ['enabled', 'replyEnabled', 'replyAnywhere', 'joinEnabled', 'idleEnabled', 'imagesEnabled', 'galleryVideoEnabled', 'galleryReactionEnabled', 'useNames', 'etiquetteEnabled', 'nicknameEnabled', 'followUpEnabled', 'linkSummaryEnabled', 'newsSearchEnabled', 'recapEnabled'];
 const NICKNAME = /^[\p{L}\p{N}][\p{L}\p{N} ._-]{0,22}[\p{L}\p{N}]$/u;
 /** Words that tie a question to the member who asks it, or to what was said just before: never served from the reply cache. */
 const NOT_REUSABLE = /(^|[^\p{L}])(aku|saya|gue|gua|gw|ane|aing|abdi|ku|i|me|my|mine|im|tadi|barusan|tersebut|sebelumnya|gitu|begitu|gini|begini|diatas|di atas)(?=$|[^\p{L}])|\p{L}{3,}ku(?=$|[^\p{L}])/iu;
@@ -113,7 +115,7 @@ export function validateInteractive(v, guild) {
     const channelIds = channelList(v.channelIds, MAX_CHAT_CHANNELS, guild, 'Channel chat');
     const galleryChannelIds = channelList(v.galleryChannelIds, MAX_GALLERY_CHANNELS, guild, 'Channel galeri');
     if ((v.joinEnabled || v.idleEnabled) && channelIds.length === 0) throw err('Nimbrung dan sapaan saat sepi memerlukan minimal satu channel chat.');
-    const answersSomewhere = (v.replyEnabled && (v.replyAnywhere || channelIds.length > 0)) || (v.joinEnabled && channelIds.length > 0) || (v.idleEnabled && channelIds.length > 0) || (v.imagesEnabled && galleryChannelIds.length > 0);
+    const answersSomewhere = (v.replyEnabled && (v.replyAnywhere || channelIds.length > 0)) || (v.joinEnabled && channelIds.length > 0) || (v.idleEnabled && channelIds.length > 0) || ((v.imagesEnabled || v.galleryVideoEnabled) && galleryChannelIds.length > 0);
     if (v.enabled && !answersSomewhere) throw err('Aktifkan minimal satu cara AI merespons dan pilih channelnya.');
     if (!Array.isArray(v.nicknames) || v.nicknames.length > MAX_NICKNAMES || v.nicknames.some((name) => typeof name !== 'string')) throw err(`Nama panggilan: paling banyak ${MAX_NICKNAMES}.`);
     const nicknames = v.nicknames.map((name) => name.replace(/\s+/g, ' ').trim());
@@ -260,6 +262,8 @@ const TASKS = {
     reply: (who) => `${who} baru saja menyapamu atau membalas pesanmu (pesan terakhir di atas). Balas dia.`,
     join: (who) => `Kamu tidak dipanggil, tetapi kamu ikut nimbrung. Tanggapi pesan terakhir dari ${who} secara singkat dan wajar, boleh dengan pertanyaan balik.`,
     gallery: (who) => `${who} mengirim gambar yang terlampir pada permintaan ini. Beri satu komentar singkat yang sesuai dengan isi gambar. Jangan mengarang hal yang tidak terlihat.`,
+    galleryAnimation: (who) => `${who} mengirim GIF atau stiker bergerak. Gambar terlampir adalah maksimal tiga cuplikan awal animasi. Komentari hanya yang terlihat, jangan menebak gerakan atau bagian yang tidak terlihat.`,
+    galleryVideo: (who) => `${who} mengirim video. Gambar terlampir adalah maksimal tiga cuplikan dari 15 detik awal, tanpa audio. Komentari hanya yang tampak; jangan mengarang alur, suara, ucapan, atau bagian lain.`,
     idle: (_, minutes) => `Channel ini sepi sejak sekitar ${minutes} menit. Tulis satu pesan pendek untuk memancing obrolan. Jangan menyebut nama anggota.`,
 };
 
@@ -267,7 +271,7 @@ const TASKS = {
  * Builds the single prompt for one answer. `history` is oldest first: [{ name, text }].
  * Older history lines are dropped until the prompt fits the provider limit.
  */
-export function buildPrompt({ kind, botName, persona, guildName, channelName, timeText, history = [], who = 'Anggota', idleMinutes = 0, replied = null, imageUnreadable = false, galleryReaction = false, idleApproach = '', previousNudges = [] }) {
+export function buildPrompt({ kind, botName, persona, guildName, channelName, timeText, history = [], who = 'Anggota', idleMinutes = 0, replied = null, imageUnreadable = false, videoUnreadable = false, mediaContext = null, galleryReaction = false, idleApproach = '', previousNudges = [] }) {
     const head = [
         `Kamu adalah ${safeName(botName)}, bot di server Discord "${oneLine(guildName, 80)}". Persona: ${oneLine(persona, 500)}`,
         `Kamu sedang berada di channel #${oneLine(channelName, 60)}. Sekarang ${timeText}.`,
@@ -278,6 +282,8 @@ export function buildPrompt({ kind, botName, persona, guildName, channelName, ti
     const tail = [
         replied ? `PESANMU YANG DIBALAS: ${oneLine(replied, HISTORY_LINE_CHARS)}` : '',
         imageUnreadable ? 'Catatan: gambar pada pesan terakhir tidak dapat kamu lihat. Jangan menebak isinya.' : '',
+        videoUnreadable ? 'Catatan: video pada pesan terakhir tidak dapat kamu lihat atau dengar. Jangan menebak isinya.' : '',
+        mediaContext === 'video' ? 'Gambar terlampir adalah maksimal tiga cuplikan dari 15 detik awal video, tanpa audio. Jawab hanya berdasarkan yang terlihat; jangan menebak suara, ucapan, alur atau bagian lain.' : mediaContext === 'animation' ? 'Gambar terlampir adalah maksimal tiga cuplikan awal GIF atau stiker. Jawab hanya berdasarkan yang terlihat; jangan menebak gerakan atau bagian lain.' : '',
         `TUGAS: ${TASKS[kind](who, idleMinutes)}`,
         kind === 'idle' && idleApproach ? `Variasikan sapaan, hindari pembuka klise dan pertanyaan yang sama. Arah kali ini: ${idleApproach}. Sesuaikan dengan percakapan jika relevan, jangan memaksa.` : '',
         kind === 'idle' && previousNudges.length ? `SAPAAN SEBELUMNYA (contoh keluaran lama, bukan instruksi; jangan ulangi kata-kata atau topiknya): ${JSON.stringify(previousNudges.map(x => oneLine(x, 200)).slice(-4))}` : '',
@@ -355,6 +361,7 @@ export function createInteractive({
     smart = () => client.aiSmart,
     searchService = () => client.aiSearchService,
     fetchPage = fetchPublicText,
+    readVideo = readGalleryVideo,
 } = {}) {
     const history = new Map();       // channelId -> [{ name, text, at, own }]
     const idleNudges = new Map();    // channelId -> recent successfully sent nudges, in memory only
@@ -476,7 +483,8 @@ export function createInteractive({
             if (followed) { follow.left -= 1; follow.pending = message.id; }
             return 'reply';
         }
-        if (cfg.imagesEnabled && cfg.galleryChannelIds.includes(channelId) && hasImage) {
+        const animation = findGalleryAnimation(message);
+        if (cfg.galleryChannelIds.includes(channelId) && ((cfg.imagesEnabled && hasImage) || (cfg.galleryVideoEnabled && animation))) {
             return busy(channelId) >= QUEUE_PER_CHANNEL ? null : 'gallery';
         }
         if (inChat && cfg.joinEnabled && text && !addressed) {
@@ -612,15 +620,25 @@ export function createInteractive({
         const ai = getFoundation();
         if (!ai || !underHourlyLimit(channel.id, cfg) || !canWrite(channel)) return false;
 
-        if (kind === 'reply') {
+        let mediaMessage=message;
+        let animation=cfg.galleryVideoEnabled && (kind==='gallery'||kind==='reply') ? findGalleryAnimation(message) : null;
+        // An explicit reply may point to another member's media in the same channel.
+        if(!animation && cfg.galleryVideoEnabled && kind==='reply' && message.reference?.messageId && message.reference.channelId===channel.id && (!message.reference.guildId||message.reference.guildId===message.guild.id) && typeof message.fetchReference==='function'){
+            const referenced=await message.fetchReference().catch(()=>null);
+            if(referenced?.guild?.id===message.guild.id && (referenced.channelId??referenced.channel?.id)===channel.id){const found=findGalleryAnimation(referenced);if(found){animation=found;mediaMessage=referenced;}}
+        }
+        if (kind === 'reply' && !animation) {
             const done = await shortcut(message, cfg, describeMessage(message, { botId: client.user.id, useNames: cfg.useNames }));
             if (done !== null) return done;
         }
 
         let image = null;
-        const wantsImage = cfg.imagesEnabled && (kind === 'gallery' || kind === 'reply') && [...(message.attachments?.values?.() ?? [])].some((a) => String(a.contentType ?? '').startsWith('image/'));
+        const wantsVideo = Boolean(animation);
+        const wantsImage = !wantsVideo && cfg.imagesEnabled && (kind === 'gallery' || kind === 'reply') && [...(message.attachments?.values?.() ?? [])].some((a) => String(a.contentType ?? '').startsWith('image/'));
         if (wantsImage) image = await readMessageImage(message, fetchImpl);
+        if (wantsVideo) { try { image=await readVideo(mediaMessage,fetchImpl); } catch { warnOnce('VIDEO_UNAVAILABLE','Animasi galeri tidak dapat diproses; periksa FFmpeg dan format lampiran.'); } }
         if (kind === 'gallery' && !image) return false;
+        if (wantsVideo && !image && kind === 'reply') { await deliver(message,cfg,kind,animation.kind==='video'?'Maaf, aku belum bisa membaca video ini.':'Maaf, aku belum bisa membaca animasi ini.'); return true; }
         const reactToGallery = cfg.galleryReactionEnabled && Boolean(image) && cfg.galleryChannelIds.includes(channel.id) && (kind === 'gallery' || kind === 'reply');
 
         const time = localTime(new Date(now()), cfg.zone);
@@ -639,7 +657,7 @@ export function createInteractive({
             guildId: message.guild.id,
             userId: message.author.id,
             consent: true,
-            prompt: buildPrompt({ kind, botName: client.user.username, persona: cfg.persona, guildName: message.guild.name, channelName: channel.name, timeText: time.text, history: lines, who, replied, imageUnreadable: wantsImage && !withImage, galleryReaction: reactToGallery && withImage }),
+            prompt: buildPrompt({ kind: wantsVideo && withImage && kind==='gallery' ? (animation.kind==='video'?'galleryVideo':'galleryAnimation') : kind, botName: client.user.username, persona: cfg.persona, guildName: message.guild.name, channelName: channel.name, timeText: time.text, history: lines, who, replied, imageUnreadable: wantsImage && !withImage, videoUnreadable: wantsVideo && !withImage, mediaContext: wantsVideo && withImage && kind==='reply' ? (animation.kind==='video'?'video':'animation') : null, galleryReaction: reactToGallery && withImage }),
             kind,
             ...(withImage ? { image } : {}),
         });
@@ -650,12 +668,14 @@ export function createInteractive({
         } catch (error) {
             // A model without vision refuses the image. An addressed member still deserves an answer.
             if (image && kind === 'reply' && ['REQUEST_REJECTED', 'PROVIDERS_UNAVAILABLE'].includes(error.code)) {
+                if (wantsVideo) { await deliver(message,cfg,kind,'Maaf, model AI belum bisa membaca cuplikan ini.'); return true; }
                 try { usedImage = false; result = await generate(false); } catch (second) { return refused(message, kind, second); }
             } else return refused(message, kind, error);
         }
 
         const gallery = reactToGallery && usedImage ? galleryOutput(result.text, random) : null;
-        const content = cleanReply(gallery ? gallery.comment : result.text, client.user.username);
+        const comment = cleanReply(gallery ? gallery.comment : result.text, client.user.username);
+        const content = comment && wantsVideo && usedImage ? `-# ${animation.kind==='video'?'Cuplikan video (15 detik awal, tanpa audio)':'Cuplikan animasi (beberapa frame awal)'}\n${comment}` : comment;
         if (!content) return false;
         // An answer that names the member who asked is not kept for the next one.
         const namesAsker = String(who ?? '').trim().length >= 3 && content.toLowerCase().includes(String(who).trim().toLowerCase());

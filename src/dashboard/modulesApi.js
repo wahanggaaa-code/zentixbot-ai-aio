@@ -12,6 +12,7 @@ import { createV2Container, v2Message } from '../utils/componentsV2.js';
 import { Mutex } from '../utils/mutex.js';
 import {validateQuickReplies,quickRepliesFromConfig,quickRepliesRevision} from '../services/tickets/quickReplies.js';
 import {readAutoCloseConfig,autoCloseRevision,newAutoCloseConfig} from '../services/tickets/autoCloseConfig.js';
+import {readResponseSlaConfig,responseSlaRevision,newResponseSlaConfig} from '../services/tickets/responseSla.js';
 import {validateTicketTypes, ticketTypesFromConfig, ticketTypesRevision} from '../utils/ticket/ticketTypes.js';
 import { assertOnboardingCompatible, assertOnboardingShape } from '../services/config/onboardingConflict.js';
 import { checkRewardRole, listRewardEntries } from '../services/leveling/rewardRoles.js';
@@ -109,6 +110,8 @@ const channelsRoles=guild=>({channels:listChannels(guild),categories:listChannel
 
 export function createModulesApi(client,{auth,csrf}) {
  const router=express.Router();router.use(express.json({limit:'32kb'}));
+ router.get('/ticket-response-sla',auth,async(req,res)=>{try{const settings=readResponseSlaConfig(await read(client,req.guild.id));res.json({settings,revision:responseSlaRevision(settings)})}catch(e){answer(res,e)}});
+ router.patch('/ticket-response-sla',auth,csrf,async(req,res)=>{try{const b=req.body;exact(b,['enabled','minutes','revision','confirmed']);bool(b.enabled);number(b.minutes,10,10080);if(b.confirmed!==true||typeof b.revision!=='string'||!/^[a-f0-9]{16}$/.test(b.revision))throw bad('Konfirmasi atau versi SLA tidak valid.');const settings=await transaction(client,req.guild.id,cfg=>{const current=readResponseSlaConfig(cfg);if(responseSlaRevision(current)!==b.revision)throw bad('Pengaturan SLA berubah. Muat ulang.',409);if(current.enabled===b.enabled&&current.minutes===b.minutes)return current;cfg.ticketResponseSla=newResponseSlaConfig(b.enabled,b.minutes);return cfg.ticketResponseSla});res.json({ok:true,settings,revision:responseSlaRevision(settings)})}catch(e){answer(res,e)}});
  router.get('/ticket-auto-close',auth,async(req,res)=>{try{const settings=readAutoCloseConfig(await read(client,req.guild.id));res.json({settings,revision:autoCloseRevision(settings)})}catch(e){answer(res,e)}});
  router.patch('/ticket-auto-close',auth,csrf,async(req,res)=>{try{
   const b=req.body;exact(b,['enabled','idleMinutes','warningMinutes','revision','confirmed']);bool(b.enabled);number(b.idleMinutes,60,43200);number(b.warningMinutes,60,10080);if(b.confirmed!==true||typeof b.revision!=='string'||!/^[a-f0-9]{16}$/.test(b.revision))throw bad('Konfirmasi atau versi auto-close tidak valid.');
