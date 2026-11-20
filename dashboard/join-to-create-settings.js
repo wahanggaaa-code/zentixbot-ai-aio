@@ -117,7 +117,7 @@
 
       slot.querySelectorAll('form[data-trigger]').forEach((form) => {
         const trigger = data.triggers[Number(form.dataset.trigger)];
-        form.onsubmit = (event) => {
+        form.onsubmit = async (event) => {
           event.preventDefault();
           const { values, error } = readFields(form);
           if (error) { status.textContent = error; return; }
@@ -125,26 +125,26 @@
           const patch = {};
           for (const key of ['nameTemplate', 'userLimit', 'bitrate']) if (values[key] !== trigger[key]) patch[key] = values[key];
           if (!Object.keys(patch).length) { status.textContent = 'Tidak ada perubahan.'; return; }
-          if (!confirm('Simpan pengaturan trigger ini? Berlaku untuk channel sementara berikutnya.')) return;
+          if (!(await (window.ZentixDialog ? window.ZentixDialog.confirm('Simpan pengaturan trigger ini? Berlaku untuk channel sementara berikutnya.') : Promise.resolve(window.confirm('Simpan pengaturan trigger ini? Berlaku untuk channel sementara berikutnya.'))))) return;
           send('PATCH', `/triggers/${trigger.channelId}`, { ...patch, revision: data.configRevision, confirmed: true }, 'Pengaturan disimpan.');
         };
-        form.querySelector('[data-remove]').onclick = () => {
+        form.querySelector('[data-remove]').onclick = async () => {
           const message = 'Lepas trigger ini? Join to Create berhenti membuat channel baru. '
             + 'Channel di Discord tidak dihapus, dan channel sementara yang masih ada tetap dihapus saat kosong.';
-          if (!confirm(message)) return;
+          if (!(await (window.ZentixDialog ? window.ZentixDialog.confirm(message) : Promise.resolve(window.confirm(message))))) return;
           send('DELETE', `/triggers/${trigger.channelId}`, { revision: data.configRevision, confirmed: true }, 'Trigger dilepas. Channel di Discord tidak dihapus.');
         };
       });
 
       const setup = slot.querySelector('form[data-setup]');
       if (setup) {
-        setup.onsubmit = (event) => {
+        setup.onsubmit = async (event) => {
           event.preventDefault();
           const channel = data.voiceChannels[Number(setup.elements.channel.value)];
           if (setup.elements.channel.value === '' || !channel || !channel.usable) { status.textContent = 'Pilih channel suara yang dapat dikelola bot.'; return; }
           const { values, error } = readFields(setup);
           if (error) { status.textContent = error; return; }
-          if (!confirm(`Jadikan "${channel.name}" trigger Join to Create?`)) return;
+          if (!(await (window.ZentixDialog ? window.ZentixDialog.confirm(`Jadikan "${channel.name}" trigger Join to Create?`) : Promise.resolve(window.confirm(`Jadikan "${channel.name}" trigger Join to Create?`))))) return;
           send('POST', '/triggers', { ...values, channelId: channel.id, confirmed: true }, 'Join to Create diaktifkan.');
         };
       }

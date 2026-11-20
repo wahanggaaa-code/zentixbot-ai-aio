@@ -55,7 +55,7 @@
    catch (err) { text.textContent = err.message; button.disabled = false; }
   };
   button.onclick = async () => {
-   if (!confirm('Berikan role hadiah yang belum dimiliki anggota yang sudah mencapai levelnya? Role tidak ada yang dicabut.')) return;
+   if (!(await (window.ZentixDialog ? window.ZentixDialog.confirm('Berikan role hadiah yang belum dimiliki anggota yang sudah mencapai levelnya? Role tidak ada yang dicabut.') : Promise.resolve(window.confirm('Berikan role hadiah yang belum dimiliki anggota yang sudah mencapai levelnya? Role tidak ada yang dicabut.'))))) return;
    button.disabled = true;
    try {
     const result = await req('leveling/reward-sync', { method: 'POST', body: JSON.stringify({ confirmed: true }) });
@@ -84,7 +84,7 @@
      if(kind==='leveling'){const fresh=await req('settings/leveling').catch(()=>null),list=slot.querySelector('#rewardRoleList');if(fresh&&list)list.outerHTML=rewardList(fresh.rewardRoles);if(fresh)revision=fresh.revision;}
     }catch(err){notice(err.message)}finally{button.disabled=false}
    });
-   const panel=root.querySelector('#modulePanel');if(panel){panel.disabled=false;panel.onclick=async()=>{if(!confirm('Kirim atau perbarui panel Discord dari pengaturan tersimpan?'))return;panel.disabled=true;try{await req('panel/'+kind,{method:'POST',body:JSON.stringify({confirmed:true})});notice('Panel Discord berhasil dikirim / diperbarui.')}catch(err){notice(err.message)}finally{panel.disabled=false}};}
+   const panel=root.querySelector('#modulePanel');if(panel){panel.disabled=false;panel.onclick=async()=>{if(!(await (window.ZentixDialog ? window.ZentixDialog.confirm('Kirim atau perbarui panel Discord dari pengaturan tersimpan?') : Promise.resolve(window.confirm('Kirim atau perbarui panel Discord dari pengaturan tersimpan?')))))return;panel.disabled=true;try{await req('panel/'+kind,{method:'POST',body:JSON.stringify({confirmed:true})});notice('Panel Discord berhasil dikirim / diperbarui.')}catch(err){notice(err.message)}finally{panel.disabled=false}};}
   }).catch(e=>{if(slot.isConnected)slot.textContent=e.message});
  }
  window.ZentixModules={render,bind};

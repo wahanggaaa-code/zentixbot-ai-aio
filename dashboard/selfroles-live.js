@@ -370,7 +370,7 @@
             && (requiredRoleId || '') === (panel.requiredRoleId ?? '')
             && !bannerFile && !bannerClear;
           if (unchanged) { status.textContent = 'Tidak ada yang berubah.'; return; }
-          if (!confirm(`Ubah pengaturan panel "${label}"? Pesannya di Discord ikut diubah.`)) return;
+          if (!(await (window.ZentixDialog ? window.ZentixDialog.confirm(`Ubah pengaturan panel "${label}"? Pesannya di Discord ikut diubah.`) : Promise.resolve(window.confirm(`Ubah pengaturan panel "${label}"? Pesannya di Discord ikut diubah.`))))) return;
           change(status, () => request('PATCH', path, {
             confirmed: true, revision: panel.revision, title, description,
             ...(sendingBannerUrl !== undefined ? { bannerUrl: sendingBannerUrl } : {}),
@@ -401,7 +401,7 @@
             if (button.dataset.move === 'down' && row.nextElementSibling) rows.insertBefore(row.nextElementSibling, row);
           };
         });
-        itemsForm.onsubmit = (event) => {
+        itemsForm.onsubmit = async (event) => {
           event.preventDefault();
           const items = [...itemsForm.querySelectorAll('[data-item]')].map((row) => ({
             roleId: row.dataset.item,
@@ -411,28 +411,28 @@
             buttonStyle: row.querySelector('select[name="buttonStyle"]').value,
           }));
           if (!items.length) { status.textContent = 'Panel harus memuat minimal satu role.'; return; }
-          if (!confirm(`Simpan item panel "${label}"? Pesannya di Discord ikut diubah.`)) return;
+          if (!(await (window.ZentixDialog ? window.ZentixDialog.confirm(`Simpan item panel "${label}"? Pesannya di Discord ikut diubah.`) : Promise.resolve(window.confirm(`Simpan item panel "${label}"? Pesannya di Discord ikut diubah.`))))) return;
           change(status, () => request('PUT', path + '/items', { confirmed: true, revision: panel.revision, items }),
             (result) => `Item panel disimpan. ${redrawText(result.message)}`);
         };
 
         const add = block.querySelector('form[data-add]');
         if (add) {
-          add.onsubmit = (event) => {
+          add.onsubmit = async (event) => {
             event.preventDefault();
             const roleId = add.elements.roleId.value;
             if (!roleId) { status.textContent = 'Pilih role terlebih dahulu.'; return; }
             const role = data.roles.find((entry) => entry.id === roleId);
-            if (!confirm(`Tambahkan role "${role?.name ?? roleId}" ke panel "${label}"? Semua anggota yang melihat panel dapat mengambil role itu sendiri.`)) return;
+            if (!(await (window.ZentixDialog ? window.ZentixDialog.confirm(`Tambahkan role "${role?.name ?? roleId}" ke panel "${label}"? Semua anggota yang melihat panel dapat mengambil role itu sendiri.`) : Promise.resolve(window.confirm(`Tambahkan role "${role?.name ?? roleId}" ke panel "${label}"? Semua anggota yang melihat panel dapat mengambil role itu sendiri.`))))) return;
             change(status, () => request('POST', path + '/roles', { confirmed: true, revision: panel.revision, roleId }),
               (result) => `Role ditambahkan. ${redrawText(result.message)}`);
           };
         }
 
         block.querySelectorAll('[data-remove]').forEach((button) => {
-          button.onclick = () => {
+          button.onclick = async () => {
             const role = panel.roles.find((entry) => entry.id === button.dataset.remove);
-            if (!confirm(`Lepas role "${roleName(role)}" dari panel "${label}"? Anggota yang sudah memilikinya tetap memilikinya.`)) return;
+            if (!(await (window.ZentixDialog ? window.ZentixDialog.confirm(`Lepas role "${roleName(role)}" dari panel "${label}"? Anggota yang sudah memilikinya tetap memilikinya.`) : Promise.resolve(window.confirm(`Lepas role "${roleName(role)}" dari panel "${label}"? Anggota yang sudah memilikinya tetap memilikinya.`))))) return;
             change(status, () => request('DELETE', path + '/roles/' + encodeURIComponent(role.id), { confirmed: true, revision: panel.revision }),
               (result) => `Role dilepas dari panel. ${redrawText(result.message)}`);
           };
@@ -440,8 +440,8 @@
 
         const repost = block.querySelector('[data-repost]');
         if (repost) {
-          repost.onclick = () => {
-            if (!confirm(`Pasang ulang panel "${label}"? Pesan baru dikirim ke ${panel.channelName === null ? 'channel panel' : '#' + panel.channelName}.`)) return;
+          repost.onclick = async () => {
+            if (!(await (window.ZentixDialog ? window.ZentixDialog.confirm(`Pasang ulang panel "${label}"? Pesan baru dikirim ke ${panel.channelName === null ? 'channel panel' : '#' + panel.channelName}.`) : Promise.resolve(window.confirm(`Pasang ulang panel "${label}"? Pesan baru dikirim ke ${panel.channelName === null ? 'channel panel' : '#' + panel.channelName}.`))))) return;
             change(status, () => request('POST', path + '/repost', { confirmed: true }),
               (result) => (result.bannerLost
                 ? 'Panel dipasang ulang, tetapi banner unggahan lama hilang. Unggah ulang banner di pengaturan panel.'
@@ -452,16 +452,16 @@
         }
         const refresh = block.querySelector('[data-refresh]');
         if (refresh) {
-          refresh.onclick = () => {
-            if (!confirm(`Gambar ulang pesan panel "${label}" di Discord dari data tersimpan?`)) return;
+          refresh.onclick = async () => {
+            if (!(await (window.ZentixDialog ? window.ZentixDialog.confirm(`Gambar ulang pesan panel "${label}" di Discord dari data tersimpan?`) : Promise.resolve(window.confirm(`Gambar ulang pesan panel "${label}" di Discord dari data tersimpan?`))))) return;
             change(status, () => request('POST', path + '/refresh', { confirmed: true }),
               (result) => (result.message === 'updated' ? 'Pesan panel digambar ulang.' : redrawText(result.message)));
           };
         }
-        block.querySelector('[data-delete]').onclick = () => {
+        block.querySelector('[data-delete]').onclick = async () => {
           const target = panel.status === 'ok' ? 'Pesannya DIHAPUS dari Discord dan tidak dapat dikembalikan.'
             : 'Pesannya tidak ditemukan; hanya catatan panel yang dihapus bila pesan memang sudah tidak ada.';
-          if (!confirm(`Hapus panel "${label}"? ${target} Role yang sudah dimiliki anggota tidak dicabut.`)) return;
+          if (!(await (window.ZentixDialog ? window.ZentixDialog.confirm(`Hapus panel "${label}"? ${target} Role yang sudah dimiliki anggota tidak dicabut.`) : Promise.resolve(window.confirm(`Hapus panel "${label}"? ${target} Role yang sudah dimiliki anggota tidak dicabut.`))))) return;
           change(status, () => request('DELETE', path, { confirmed: true, revision: panel.revision }),
             (result) => (result.messageDeleted ? 'Panel dan pesannya dihapus.' : 'Panel dihapus. Pesannya sudah tidak ada.'));
         };
@@ -519,7 +519,7 @@
           }
           const channel = data.channels.find((entry) => entry.id === body.channelId);
           const namesList = body.roleIds.map((id) => data.roles.find((entry) => entry.id === id)?.name ?? id).join(', ');
-          if (!confirm(`Kirim panel "${body.title}" ke #${channel?.name ?? body.channelId}? Semua anggota yang melihatnya dapat mengambil sendiri role: ${namesList}.`)) return;
+          if (!(await (window.ZentixDialog ? window.ZentixDialog.confirm(`Kirim panel "${body.title}" ke #${channel?.name ?? body.channelId}? Semua anggota yang melihatnya dapat mengambil sendiri role: ${namesList}.`) : Promise.resolve(window.confirm(`Kirim panel "${body.title}" ke #${channel?.name ?? body.channelId}? Semua anggota yang melihatnya dapat mengambil sendiri role: ${namesList}.`))))) return;
           change(createStatus, () => request('POST', '/panels', body),
             (result) => (result.reactionFailures?.length
               ? 'Panel dibuat, tetapi sebagian emoji reaksi gagal ditempel. Tambahkan reaksi secara manual atau buat ulang panel.'

@@ -308,18 +308,18 @@
 
       list.querySelectorAll('form[data-counter]').forEach((form) => {
         const counter = data.counters[Number(form.dataset.counter)];
-        form.onsubmit = (event) => {
+        form.onsubmit = async (event) => {
           event.preventDefault();
           const type = form.elements.type.value;
           if (type === counter.type) { status.textContent = 'Jenis tidak berubah.'; return; }
-          if (!confirm(`Ubah counter ${counter.channelName ?? counter.id} menjadi "${typeName(type)}"? Nama channel di Discord akan ikut berubah.`)) return;
+          if (!(await (window.ZentixDialog ? window.ZentixDialog.confirm(`Ubah counter ${counter.channelName ?? counter.id} menjadi "${typeName(type)}"? Nama channel di Discord akan ikut berubah.`) : Promise.resolve(window.confirm(`Ubah counter ${counter.channelName ?? counter.id} menjadi "${typeName(type)}"? Nama channel di Discord akan ikut berubah.`))))) return;
           change(status, () => request('PATCH', '/counters/' + encodeURIComponent(counter.id), { confirmed: true, revision: data.revision, type }),
             (result) => `Jenis counter diubah. ${refreshText(result.refresh)}`);
         };
-        form.querySelector('[data-delete]').onclick = () => {
+        form.querySelector('[data-delete]').onclick = async () => {
           const target = counter.channelName === null ? 'Channel-nya tidak terlihat oleh bot; hanya catatan counter yang dihapus bila channel memang sudah tidak ada.'
             : `Channel "${counter.channelName}" DIHAPUS dari Discord dan tidak dapat dikembalikan.`;
-          if (!confirm(`Hapus counter ${counter.id}? ${target}`)) return;
+          if (!(await (window.ZentixDialog ? window.ZentixDialog.confirm(`Hapus counter ${counter.id}? ${target}`) : Promise.resolve(window.confirm(`Hapus counter ${counter.id}? ${target}`))))) return;
           change(status, () => request('DELETE', '/counters/' + encodeURIComponent(counter.id), { confirmed: true, revision: data.revision }),
             (result) => (result.channelDeleted ? 'Counter dan channel-nya dihapus.' : result.channelKept
               ? 'Counter dihapus. Channel-nya bukan channel suara atau teks, jadi tidak dihapus.' : 'Counter dihapus. Channel-nya sudah tidak ada.'));
@@ -342,12 +342,12 @@
       const setupStatus = setupBox.querySelector('#serverStatsSetupStatus');
       const setupFormEl = setupBox.querySelector('#serverStatsSetupForm');
       if (setupFormEl) {
-        setupFormEl.onsubmit = (event) => {
+        setupFormEl.onsubmit = async (event) => {
           event.preventDefault();
           const body = { confirmed: true, categoryId: setupFormEl.elements.categoryId.value, channelType: setupFormEl.elements.channelType.value };
           if (!body.categoryId) { setupStatus.textContent = 'Pilih kategori terlebih dahulu.'; return; }
           const category = data.categories.find((entry) => entry.id === body.categoryId);
-          if (!confirm(`Buat bundle counter standar di kategori "${category?.name ?? body.categoryId}"? Jenis yang sudah ada dilewati.`)) return;
+          if (!(await (window.ZentixDialog ? window.ZentixDialog.confirm(`Buat bundle counter standar di kategori "${category?.name ?? body.categoryId}"? Jenis yang sudah ada dilewati.`) : Promise.resolve(window.confirm(`Buat bundle counter standar di kategori "${category?.name ?? body.categoryId}"? Jenis yang sudah ada dilewati.`))))) return;
           change(setupStatus, () => request('POST', '/setup', body),
             (result) => `Setup selesai: ${result.created} dibuat, ${result.skipped} sudah ada, ${result.failed} gagal. Muat ulang untuk hasilnya.`);
         };
@@ -366,7 +366,7 @@
         };
         form.elements.type.addEventListener('change', syncBoundFields);
         syncBoundFields();
-        form.onsubmit = (event) => {
+        form.onsubmit = async (event) => {
           event.preventDefault();
           const body = { confirmed: true, type: form.elements.type.value, channelType: form.elements.channelType.value, categoryId: form.elements.categoryId.value };
           if (!body.categoryId) { createStatus.textContent = 'Pilih kategori terlebih dahulu.'; return; }
@@ -387,7 +387,7 @@
             confirmType = `"${typeName(body.type)}"`;
           }
           const category = data.categories.find((entry) => entry.id === body.categoryId);
-          if (!confirm(`Buat ${KIND_NAMES[body.channelType].toLowerCase()} baru di kategori "${category?.name ?? body.categoryId}" untuk counter ${confirmType}?`)) return;
+          if (!(await (window.ZentixDialog ? window.ZentixDialog.confirm(`Buat ${KIND_NAMES[body.channelType].toLowerCase()} baru di kategori "${category?.name ?? body.categoryId}" untuk counter ${confirmType}?`) : Promise.resolve(window.confirm(`Buat ${KIND_NAMES[body.channelType].toLowerCase()} baru di kategori "${category?.name ?? body.categoryId}" untuk counter ${confirmType}?`))))) return;
           change(createStatus, () => request('POST', '/counters', body),
             (result) => `Counter dibuat: channel "${result.channelName}".${result.count === null ? ' Angkanya ditambahkan setelah daftar anggota terbaca.' : ''}`);
         };
@@ -405,7 +405,7 @@
         };
         gameFormEl.elements.provider.addEventListener('change', syncGame);
         syncGame();
-        gameFormEl.onsubmit = (event) => {
+        gameFormEl.onsubmit = async (event) => {
           event.preventDefault();
           const provider = gameFormEl.elements.provider.value;
           const body = { confirmed: true, type: 'game', provider, label: gameFormEl.elements.label.value.trim(), channelType: gameFormEl.elements.channelType.value, categoryId: gameFormEl.elements.categoryId.value };
@@ -421,7 +421,7 @@
             if (!body.host) { externalStatus.textContent = 'Isi alamat server.'; return; }
           }
           const category = data.categories.find((entry) => entry.id === body.categoryId);
-          if (!confirm(`Buat ${KIND_NAMES[body.channelType].toLowerCase()} untuk counter game "${body.label}" di kategori "${category?.name ?? body.categoryId}"?`)) return;
+          if (!(await (window.ZentixDialog ? window.ZentixDialog.confirm(`Buat ${KIND_NAMES[body.channelType].toLowerCase()} untuk counter game "${body.label}" di kategori "${category?.name ?? body.categoryId}"?`) : Promise.resolve(window.confirm(`Buat ${KIND_NAMES[body.channelType].toLowerCase()} untuk counter game "${body.label}" di kategori "${category?.name ?? body.categoryId}"?`))))) return;
           change(externalStatus, () => request('POST', '/counters', body),
             (result) => `Counter game dibuat: channel "${result.channelName}".${result.count === null ? ' Angkanya menyusul saat sumbernya menjawab.' : ''}`);
         };
@@ -443,7 +443,7 @@
         };
         socialFormEl.elements.platform.addEventListener('change', syncSocial);
         syncSocial();
-        socialFormEl.onsubmit = (event) => {
+        socialFormEl.onsubmit = async (event) => {
           event.preventDefault();
           const platform = socialFormEl.elements.platform.value;
           const body = { confirmed: true, type: 'social', platform, label: socialFormEl.elements.label.value.trim(), channelType: socialFormEl.elements.channelType.value, categoryId: socialFormEl.elements.categoryId.value };
@@ -452,7 +452,7 @@
           body[targetField] = socialFormEl.elements[targetField].value.trim();
           if (!body[targetField]) { externalStatus.textContent = 'Isi target akun terlebih dahulu.'; return; }
           const category = data.categories.find((entry) => entry.id === body.categoryId);
-          if (!confirm(`Buat ${KIND_NAMES[body.channelType].toLowerCase()} untuk counter sosial "${body.label}" di kategori "${category?.name ?? body.categoryId}"?`)) return;
+          if (!(await (window.ZentixDialog ? window.ZentixDialog.confirm(`Buat ${KIND_NAMES[body.channelType].toLowerCase()} untuk counter sosial "${body.label}" di kategori "${category?.name ?? body.categoryId}"?`) : Promise.resolve(window.confirm(`Buat ${KIND_NAMES[body.channelType].toLowerCase()} untuk counter sosial "${body.label}" di kategori "${category?.name ?? body.categoryId}"?`))))) return;
           change(externalStatus, () => request('POST', '/counters', body),
             (result) => `Counter sosial dibuat: channel "${result.channelName}".${result.count === null ? ' Angkanya menyusul saat sumbernya menjawab.' : ''}`);
         };

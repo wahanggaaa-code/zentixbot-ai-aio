@@ -156,9 +156,9 @@
    if (!themeId) { status.textContent = 'Pilih tema lebih dulu.'; return; }
    draft(themeForm.querySelector('button'), 'Menyiapkan tema…', () => req('theme', { themeId }));
   };
-  form.onsubmit = (e) => {
+  form.onsubmit = async (e) => {
    e.preventDefault();
-   if (!confirm('Kirim deskripsi ke provider AI? Ini dapat memakai kuota dan berbiaya. Belum ada perubahan Discord.')) return;
+   if (!(await (window.ZentixDialog ? window.ZentixDialog.confirm('Kirim deskripsi ke provider AI? Ini dapat memakai kuota dan berbiaya. Belum ada perubahan Discord.') : Promise.resolve(window.confirm('Kirim deskripsi ke provider AI? Ini dapat memakai kuota dan berbiaya. Belum ada perubahan Discord.'))))) return;
    draft(form.querySelector('button'), 'Menyusun rancangan dengan AI…', () => req('draft', { description: form.elements.description.value, confirmed: true }));
   };
   save.onclick = async () => {
@@ -178,7 +178,7 @@
    finally { save.disabled = !planId; }
   };
   apply.onclick = async () => {
-   if (!planId || dirty || !confirm('Terapkan rancangan yang ditampilkan ke server Discord? Kategori, channel dan role akan dibuat. Hasilnya tercatat dan dapat dibongkar dari tab Riwayat & bongkar.')) return;
+   if (!planId || dirty || !(await (window.ZentixDialog ? window.ZentixDialog.confirm('Terapkan rancangan yang ditampilkan ke server Discord? Kategori, channel dan role akan dibuat. Hasilnya tercatat dan dapat dibongkar dari tab Riwayat & bongkar.') : Promise.resolve(window.confirm('Terapkan rancangan yang ditampilkan ke server Discord? Kategori, channel dan role akan dibuat. Hasilnya tercatat dan dapat dibongkar dari tab Riwayat & bongkar.'))))) return;
    const id = planId;
    planId = null; apply.disabled = true; save.disabled = true; cancel.disabled = true; out.disabled = true;
    status.textContent = 'Menerapkan… pada rancangan besar ini bisa memakan waktu sekitar satu menit.';
@@ -269,7 +269,7 @@
   apply.onclick = async () => {
    if (!review) return;
    if (input.value.trim() !== review.confirmation) { status.textContent = `Konfirmasi tidak cocok. Ketik persis: ${review.confirmation}`; return; }
-   if (!confirm('Bongkar bangunan terakhir? Channel dihapus beserta pesannya dan role dilepas dari semua anggota. Ini tidak dapat dipulihkan.')) return;
+   if (!(await (window.ZentixDialog ? window.ZentixDialog.confirm('Bongkar bangunan terakhir? Channel dihapus beserta pesannya dan role dilepas dari semua anggota. Ini tidak dapat dipulihkan.') : Promise.resolve(window.confirm('Bongkar bangunan terakhir? Channel dihapus beserta pesannya dan role dilepas dari semua anggota. Ini tidak dapat dipulihkan.'))))) return;
    const current = review;
    review = null; apply.disabled = true; status.textContent = 'Membongkar…';
    try {
@@ -284,7 +284,7 @@
    await load();
   };
   forget.onclick = async () => {
-   if (!latest || !confirm('Lepas bangunan terakhir dari riwayat? Tidak ada yang dihapus di Discord, tetapi bangunan itu tidak bisa lagi dibongkar otomatis.')) return;
+   if (!latest || !(await (window.ZentixDialog ? window.ZentixDialog.confirm('Lepas bangunan terakhir dari riwayat? Tidak ada yang dihapus di Discord, tetapi bangunan itu tidak bisa lagi dibongkar otomatis.') : Promise.resolve(window.confirm('Lepas bangunan terakhir dari riwayat? Tidak ada yang dihapus di Discord, tetapi bangunan itu tidak bisa lagi dibongkar otomatis.'))))) return;
    forget.disabled = true; idle('Belum ada yang ditinjau.');
    try { await req('undo/forget', { buildId: latest.id, confirmed: true }); status.textContent = 'Catatan dilepas. Objeknya tetap ada di Discord.'; }
    catch (err) { status.textContent = err.message; }
@@ -316,7 +316,7 @@
   manualApply.onclick = async () => {
    if (!ticket) return;
    if (confirmInput.value !== (ticket.action === 'delete' ? `HAPUS ${ticket.targetId}` : ticket.targetId)) { manualStatus.textContent = 'Konfirmasi target tidak cocok.'; return; }
-   if (!confirm(ticket.action === 'delete' ? 'Hapus target secara permanen? Pesan atau penetapan role dapat hilang dan tidak dapat dipulihkan.' : 'Jalankan perubahan pada target Discord yang ditinjau?')) return;
+   if (!(await (window.ZentixDialog ? window.ZentixDialog.confirm(ticket.action === 'delete' ? 'Hapus target secara permanen? Pesan atau penetapan role dapat hilang dan tidak dapat dipulihkan.' : 'Jalankan perubahan pada target Discord yang ditinjau?') : Promise.resolve(window.confirm(ticket.action === 'delete' ? 'Hapus target secara permanen? Pesan atau penetapan role dapat hilang dan tidak dapat dipulihkan.' : 'Jalankan perubahan pada target Discord yang ditinjau?'))))) return;
    const current = ticket; ticket = null; manualApply.disabled = true; manualStatus.textContent = 'Menjalankan…';
    try {
     const r = await req('manual/apply', { id: current.id, confirmation: confirmInput.value });
@@ -327,7 +327,7 @@
   undo.onclick = async () => {
    if (!undoTicket) return;
    if (confirmInput.value !== undoTicket.targetId) { manualStatus.textContent = 'Untuk rollback, ketik ID target.'; return; }
-   if (!confirm('Kembalikan nama atau izin role yang terakhir diubah? Perubahan hanya diterapkan jika target belum berubah sejak itu.')) return;
+   if (!(await (window.ZentixDialog ? window.ZentixDialog.confirm('Kembalikan nama atau izin role yang terakhir diubah? Perubahan hanya diterapkan jika target belum berubah sejak itu.') : Promise.resolve(window.confirm('Kembalikan nama atau izin role yang terakhir diubah? Perubahan hanya diterapkan jika target belum berubah sejak itu.'))))) return;
    const u = undoTicket; undoTicket = null; undo.disabled = true; manualStatus.textContent = 'Memproses rollback…';
    try { await req('manual/undo', { id: u.id, confirmation: confirmInput.value }); confirmInput.value = ''; manualStatus.textContent = 'Rollback selesai.'; }
    catch (err) { manualStatus.textContent = err.message + ' Periksa Discord sebelum tindakan lain.'; }

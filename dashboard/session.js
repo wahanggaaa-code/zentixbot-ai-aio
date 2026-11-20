@@ -6,9 +6,9 @@ if (location.pathname.startsWith('/dashboard/')) {
     button.textContent = data.user.username.slice(0, 1).toUpperCase();
     button.title = `${data.user.username} · ${data.guild.name} — klik untuk keluar`;
     button.addEventListener('click', async () => {
-      if (!confirm(`Keluar dari akun ${data.user.username}?`)) return;
+      if (!(await (window.ZentixDialog ? window.ZentixDialog.confirm(`Keluar dari akun ${data.user.username}?`) : Promise.resolve(window.confirm(`Keluar dari akun ${data.user.username}?`))))) return;
       const result = await fetch('/dashboard/api/logout', {method:'POST',headers:{'x-csrf-token':data.csrf}});
-      if (result.ok) location.assign('/dashboard/login'); else alert('Gagal keluar. Coba lagi.');
+      if (result.ok) location.assign('/dashboard/login'); else await (window.ZentixDialog ? window.ZentixDialog.alert('Gagal keluar. Coba lagi.') : Promise.resolve(window.alert('Gagal keluar. Coba lagi.')));
     });
     return data;
   }).catch(error => { location.assign('/dashboard/login'); throw error; });

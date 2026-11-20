@@ -233,7 +233,7 @@
     const findFeed = (id) => (state.data?.alerts || []).find((alert) => alert.id === id);
 
     async function act(path, body, confirmText) {
-      if (confirmText && !window.confirm(confirmText)) return null;
+      if (confirmText && !(await (window.ZentixDialog ? window.ZentixDialog.confirm(confirmText) : Promise.resolve(window.confirm(confirmText))))) return null;
       return request('POST', path, { confirmed: true, ...(body || {}) });
     }
 
@@ -270,7 +270,7 @@
           const answer = await act(`/${encodeURIComponent(alert.id)}/test`, {}, `Kirim pesan TES ke #${alert.channelName ?? alert.targetChannelId}? Pesan sungguhan (tanpa mention) akan tampil di channel itu.`);
           if (answer) notify('Pesan tes terkirim.');
         } else if (action === 'delete') {
-          if (window.confirm(`Hapus feed "${alert.label}"? Feed berhenti mengirim; pesan lama di Discord tidak dihapus.`)) {
+          if ((await (window.ZentixDialog ? window.ZentixDialog.confirm(`Hapus feed "${alert.label}"? Feed berhenti mengirim; pesan lama di Discord tidak dihapus.`) : Promise.resolve(window.confirm(`Hapus feed "${alert.label}"? Feed berhenti mengirim; pesan lama di Discord tidak dihapus.`))))) {
             await request('DELETE', `/${encodeURIComponent(alert.id)}`, { confirmed: true });
             notify('Feed dihapus.');
           }

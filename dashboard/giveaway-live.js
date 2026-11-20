@@ -149,7 +149,7 @@
      const latest=await request('prepare?messageId='+encodeURIComponent(g.messageId));
      const reason=refusal(action,latest);
      if(reason)throw Error(reason);
-     if(!confirm(confirmation(action,latest))){
+     if(!(await (window.ZentixDialog ? window.ZentixDialog.confirm(confirmation(action,latest)) : Promise.resolve(window.confirm(confirmation(action,latest)))))){
       noticeEl.textContent='Dibatalkan.';
       setButtons(false);setNav(false);
       return;
@@ -250,7 +250,7 @@
      status.textContent=`Durasi harus ${spanText(limits.minDurationMs)} sampai ${spanText(limits.maxDurationMs)}.`;return;
     }
     const summary=`“${prize}” di #${channel.name}, ${winnerCount} pemenang, durasi ${amount} ${UNIT_TEXT[unit]}`;
-    if(!confirm(`Buat giveaway ${summary}? Bot akan langsung mengirim pesan publik di channel itu.`))return;
+    if(!(await (window.ZentixDialog ? window.ZentixDialog.confirm(`Buat giveaway ${summary}? Bot akan langsung mengirim pesan publik di channel itu.`) : Promise.resolve(window.confirm(`Buat giveaway ${summary}? Bot akan langsung mengirim pesan publik di channel itu.`)))))return;
     fields.disabled=true;status.textContent='Mengirim pesan dan menyimpan…';
     let created;
     try{created=await request('create','POST',{channelId,prize,winnerCount,duration:`${amount}${unit}`,confirmed:true})}
