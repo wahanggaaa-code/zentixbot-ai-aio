@@ -46,11 +46,29 @@
  }
  /** The plan as a readable list; editing access updates only the unvalidated JSON draft. */
  function drawPlan(box, plan, onAccessEdit, onStructureEdit, existingRoles=[]) {
+  // Renders after each edit. Keep expanded panels and the role review selection stable.
+  const opened = new Set([...box.querySelectorAll('details[data-builder-key][open]')].map(d => d.dataset.builderKey));
+  const selectedReview = box.querySelector('select[aria-label="Tinjau overwrite untuk role"]')?.value;
+  const active = document.activeElement;
+  const activePanel = active?.closest?.('details[data-builder-key]');
+  const activeKey = activePanel?.dataset.builderKey;
+  const activeIndex = activePanel ? [...activePanel.querySelectorAll('input, select, button')].indexOf(active) : -1;
+  const activeIsSummary = active?.tagName === 'SUMMARY' && active?.parentElement === activePanel;
   box.replaceChildren();
+  const expandable = (key, summary, ...children) => {
+   const details = el('details', {className:'b-preview-details', open:opened.has(key)}, summary, ...children);
+   details.dataset.builderKey = key;
+   return details;
+  };
+  const accessBadge = (access, inherited) => {
+   const current = access || inherited;
+   const modes = {'read-only':'BACA SAJA', private:'PRIVAT', 'private-read-only':'PRIVAT · BACA SAJA'};
+   return current ? `${!list(current.roles).length && !list(current.existingRoles).length ? 'PILIH ROLE · ' : ''}${!access && inherited ? 'IKUTI · ' : ''}${modes[current.mode] || 'PERLU DITINJAU'}` : 'DEFAULT SERVER';
+  };
   box.append(el('div', { className: 'b-counts' }, countsText(countsOf(plan)).toUpperCase()));
   function accessEditor(access, categoryIndex, channelIndex) {
    const select = el('select', { 'ariaLabel': channelIndex === null ? 'Izin kategori' : 'Izin channel' });
-   for (const [value, name] of [['', 'Ikuti default'], ['read-only', 'Baca saja'], ['private', 'Privat'], ['private-read-only', 'Privat + baca saja']]) select.append(el('option', {value}, name));
+   for (const [value, name] of [['', channelIndex === null ? 'Ikuti default server' : 'Ikuti kategori'], ['read-only', 'Baca saja'], ['private', 'Privat'], ['private-read-only', 'Privat + baca saja']]) select.append(el('option', {value}, name));
    select.setAttribute('aria-label', channelIndex === null ? 'Izin kategori' : 'Izin channel');
    select.value = access?.mode || '';
    select.onchange = () => onAccessEdit(categoryIndex, channelIndex, 'mode', select.value);
@@ -80,41 +98,60 @@
    }
    return wrapper;
   }
+  const textInput=(value, aria, changed)=>{const input=el('input',{type:'text',value:String(value??'')});input.setAttribute('aria-label',aria);input.onchange=()=>changed(input.value);return input};
+  const button=(name,action,disabled=false,aria='')=>{const b=el('button',{type:'button',disabled},name);if(aria)b.setAttribute('aria-label',aria);b.onclick=action;return b};
+  const field=(title,control)=>el('label',{className:'b-edit-field'},el('span',null,title),control);
   for (const [ci, category] of list(plan?.categories).entries()) {
-   const textInput=(value, aria, changed)=>{const input=el('input',{type:'text',value:String(value??'')});input.setAttribute('aria-label',aria);input.onchange=()=>changed(input.value);return input};
-   const button=(name,action,disabled=false)=>{const b=el('button',{type:'button',disabled},name);b.onclick=action;return b};
-   const rows = list(category?.channels).map((channel, i) => el('li', null,
-    el('span', { className: 'b-tag' }, TYPE_LABELS[channel?.type] || 'CHANNEL'),
-    el('span', { className: 'b-name' }, String(channel?.name ?? '')),
-    channel?.topic ? el('small', null, String(channel.topic)) : null,
-    el('small', null, accessText(channel?.access, category?.access ? 'Mengikuti izin kategori.' : 'Mengikuti izin default server.', existingRoles)),
-    accessEditor(channel?.access, ci, i),
-    el('div',{className:'b-structure'},textInput(channel.name,'Nama channel',v=>onStructureEdit('channel-name',ci,i,v)),
-      (()=>{const select=el('select',{});select.setAttribute('aria-label','Jenis channel');for(const type of ['text','voice','forum','news','stage'])select.append(el('option',{value:type},TYPE_LABELS[type]));select.value=channel.type;select.onchange=()=>onStructureEdit('channel-type',ci,i,select.value);return select})(),
-      textInput(channel.topic||'','Topik channel (opsional)',v=>onStructureEdit('channel-topic',ci,i,v)),
-      button('↑',()=>onStructureEdit('channel-up',ci,i),i===0),button('↓',()=>onStructureEdit('channel-down',ci,i),i===category.channels.length-1),
-      (()=>{const select=el('select',{});select.setAttribute('aria-label','Pindah channel ke kategori');for(const [n,c] of list(plan.categories).entries())select.append(el('option',{value:String(n)},String(c.name)));select.value=String(ci);select.onchange=()=>onStructureEdit('channel-move',ci,i,Number(select.value));return select})(),
-      button('Hapus channel',()=>onStructureEdit('channel-delete',ci,i)))));
-   box.append(el('div', { className: 'b-group' },
-    el('div', { className: 'b-group-name' }, String(category?.name ?? '')),
-    el('p', { className: 'f-muted' }, accessText(category?.access, 'Mengikuti izin default server.', existingRoles)),
-    el('div',{className:'b-structure'},textInput(category.name,'Nama kategori',v=>onStructureEdit('category-name',ci,null,v)),button('↑',()=>onStructureEdit('category-up',ci),ci===0),button('↓',()=>onStructureEdit('category-down',ci),ci===plan.categories.length-1),button('Hapus kategori',()=>onStructureEdit('category-delete',ci))),
-    accessEditor(category?.access, ci, null),
-    rows.length ? el('ul', null, ...rows) : el('p', { className: 'f-muted' }, 'Kategori kosong.'),button('Tambah channel',()=>onStructureEdit('channel-add',ci))));
+   const rows = list(category?.channels).map((channel, i) => {
+    const type = TYPE_LABELS[channel?.type] || 'CHANNEL';
+    const typeSelect=el('select',{});typeSelect.setAttribute('aria-label','Jenis channel');
+    for(const value of ['text','voice','forum','news','stage'])typeSelect.append(el('option',{value},TYPE_LABELS[value]));
+    typeSelect.value=channel.type;typeSelect.onchange=()=>onStructureEdit('channel-type',ci,i,typeSelect.value);
+    const move=el('select',{});move.setAttribute('aria-label','Pindah channel ke kategori');
+    for(const [n,c] of list(plan.categories).entries())move.append(el('option',{value:String(n)},String(c.name)));
+    move.value=String(ci);move.onchange=()=>onStructureEdit('channel-move',ci,i,Number(move.value));
+    const summary=el('summary',{className:'b-channel-summary'},
+     el('span',{className:'b-channel-kind','ariaHidden':'true'},channel?.type==='voice' || channel?.type==='stage'?'♫':'#'),
+     el('span',{className:'b-channel-info'},el('strong',null,String(channel?.name ?? '')),el('small',null,type)),
+     el('span',{className:'b-access-badge'},accessBadge(channel?.access, category?.access)),
+     el('span',{className:'b-chevron','ariaHidden':'true'},'⌄'));
+    const body=el('div',{className:'b-preview-body'},
+     el('p',{className:'b-access-explanation'},(!channel?.access && category?.access ? 'Mengikuti izin kategori. ' : '') + accessText(channel?.access || category?.access, 'Mengikuti izin default server.', existingRoles)),
+     el('div',{className:'b-edit-grid'},
+      field('Nama channel',textInput(channel.name,'Nama channel',v=>onStructureEdit('channel-name',ci,i,v,true))),
+      field('Jenis',typeSelect),
+      field('Topik (opsional)',textInput(channel.topic||'','Topik channel (opsional)',v=>onStructureEdit('channel-topic',ci,i,v,true))),
+      field('Pindah ke kategori',move)),
+     accessEditor(channel?.access,ci,i),
+     el('div',{className:'b-preview-actions'},button('↑',()=>onStructureEdit('channel-up',ci,i),i===0,'Pindahkan channel ke atas'),button('↓',()=>onStructureEdit('channel-down',ci,i),i===category.channels.length-1,'Pindahkan channel ke bawah'),button('Hapus channel',()=>onStructureEdit('channel-delete',ci,i))));
+    return el('li',null,expandable(`channel:${ci}:${i}`,summary,body));
+   });
+   const categorySummary=el('summary',{className:'b-category-edit-summary'},'EDIT KATEGORI & IZIN',el('span',{className:'b-chevron','ariaHidden':'true'},'⌄'));
+   const categoryEdit=expandable(`category:${ci}`,categorySummary,el('div',{className:'b-preview-body'},
+    el('p',{className:'b-access-explanation'},accessText(category?.access,'Mengikuti izin default server.',existingRoles)),
+    field('Nama kategori',textInput(category.name,'Nama kategori',v=>onStructureEdit('category-name',ci,null,v,true))),
+    accessEditor(category?.access,ci,null),
+    el('div',{className:'b-preview-actions'},button('↑',()=>onStructureEdit('category-up',ci),ci===0,'Pindahkan kategori ke atas'),button('↓',()=>onStructureEdit('category-down',ci),ci===plan.categories.length-1,'Pindahkan kategori ke bawah'),button('Hapus kategori',()=>onStructureEdit('category-delete',ci)))));
+   box.append(el('section',{className:'b-preview-category'},
+    el('div',{className:'b-category-heading'},el('div',null,el('span',{className:'b-category-overline'},`KATEGORI ${String(ci+1).padStart(2,'0')}`),el('h3',null,String(category?.name ?? ''))),el('div',{className:'b-category-meta'},el('span',{className:'b-category-count'},`${rows.length} CHANNEL`),el('span',{className:'b-access-badge'},accessBadge(category?.access,null)))),
+    categoryEdit,
+    rows.length ? el('ul',{className:'b-channel-list'},...rows) : el('p',{className:'f-muted'},'Kategori kosong.'),
+    button('+ TAMBAH CHANNEL',()=>onStructureEdit('channel-add',ci),false)));
   }
+  const addCategory=button('+ TAMBAH KATEGORI',()=>onStructureEdit('category-add'));
+  addCategory.className='b-preview-add';box.append(addCategory);
   const roles = list(plan?.roles).map((role, index) => {
    const name = typeof role === 'string' ? role : String(role?.name ?? '');
    const color = typeof role?.color === 'string' && /^#[0-9a-fA-F]{6}$/.test(role.color) ? role.color : null;
-   const swatch = el('span', { className: 'b-swatch' });
-   if (color) swatch.style.background = color;
-   const input=el('input',{type:'text',value:name});input.setAttribute('aria-label','Nama role baru');input.onchange=()=>onStructureEdit('role-name',index,null,input.value);
-   const colorInput=el('input',{type:'text',value:color||'',placeholder:'#RRGGBB (opsional)'});colorInput.setAttribute('aria-label','Warna role');colorInput.onchange=()=>onStructureEdit('role-color',index,null,colorInput.value);
-   const remove=el('button',{type:'button'},'Hapus role');remove.onclick=()=>onStructureEdit('role-delete',index);
-   return el('li', null, swatch, el('span', { className: 'b-name' }, name), el('small', null, color || 'tanpa warna'),el('div',{className:'b-structure'},input,colorInput,remove));
+   const swatch = el('span', { className: 'b-swatch' });if (color) swatch.style.background=color;
+   const summary=el('summary',{className:'b-role-summary'},swatch,el('span',{className:'b-name'},name),el('span',{className:'b-chevron','ariaHidden':'true'},'⌄'));
+   const body=el('div',{className:'b-preview-body'},
+    el('div',{className:'b-edit-grid'},field('Nama role',textInput(name,'Nama role baru',v=>onStructureEdit('role-name',index,null,v,true))),field('Warna (opsional)',textInput(color||'','Warna role',v=>onStructureEdit('role-color',index,null,v,true)))),
+    el('div',{className:'b-preview-actions'},button('Hapus role',()=>onStructureEdit('role-delete',index))));
+   return el('li',null,expandable(`role:${index}`,summary,body));
   });
-  const addCategory=el('button',{type:'button'},'Tambah kategori');addCategory.onclick=()=>onStructureEdit('category-add');box.append(addCategory);
-  const addRole=el('button',{type:'button'},'Tambah role baru');addRole.onclick=()=>onStructureEdit('role-add');
-  box.append(el('div', { className: 'b-group' }, el('div', { className: 'b-group-name' }, 'Role baru · tanpa izin khusus'), el('ul', null, ...roles),addRole));
+  const roleSummary=el('summary',{className:'b-section-summary'},el('span',null,`ROLE BARU · ${roles.length}`),el('span',{className:'b-chevron','ariaHidden':'true'},'⌄'));
+  box.append(expandable('roles',roleSummary,el('div',{className:'b-preview-body'},el('p',{className:'f-muted'},'Role baru tidak memiliki izin server dan tidak otomatis diberikan kepada anggota.'),el('ul',{className:'b-role-list'},...roles),button('+ TAMBAH ROLE BARU',()=>onStructureEdit('role-add')))));
   const roleView=el('select',{});roleView.setAttribute('aria-label','Tinjau overwrite untuk role');
   roleView.append(el('option',{value:'everyone'},'@everyone'));
   for(const r of list(plan.roles)){const name=typeof r==='string'?r:r.name;roleView.append(el('option',{value:'new:'+name},`Role baru: ${name}`))}
@@ -132,8 +169,15 @@
     }
     view.append(el('p',null,`${c.name} / ${channel.name}: ${detail}`));
    }
-  };roleView.onchange=refresh;refresh();
-  box.append(el('div',{className:'b-group'},el('div',{className:'b-group-name'},'Tinjau overwrite per role'),el('p',{className:'f-muted'},'Ini hanya ringkasan overwrite rancangan, bukan izin efektif. Role lain, izin server, pemilik dan Administrator dapat mengubah hasil. Periksa akses di Discord.'),roleView,view));
+  };roleView.onchange=refresh;
+  if (selectedReview && [...roleView.options].some(o=>o.value===selectedReview)) roleView.value=selectedReview;
+  refresh();
+  box.append(expandable('review',el('summary',{className:'b-section-summary'},el('span',null,'TINJAU IZIN PER ROLE'),el('span',{className:'b-chevron','ariaHidden':'true'},'⌄')),el('div',{className:'b-preview-body'},el('p',{className:'f-muted'},'Ini hanya ringkasan overwrite rancangan, bukan izin efektif. Role lain, izin server, pemilik dan Administrator dapat mengubah hasil. Periksa akses di Discord.'),roleView,view)));
+  if (activeKey && (activeIndex >= 0 || activeIsSummary)) {
+   const current=[...box.querySelectorAll('details[data-builder-key]')].find(d=>d.dataset.builderKey===activeKey);
+   const replacement=activeIsSummary ? current?.querySelector(':scope > summary') : current?.querySelectorAll('input, select, button')[activeIndex];
+   if (replacement && (activeIsSummary || current.open)) replacement.focus({preventScroll:true});
+  }
 
  }
  /** Created, removed or kept objects as one list. */
@@ -155,7 +199,7 @@
 </section>
 <section class="f-panel"><div class="f-panel-head"><div><h2>Rancangan untuk ditinjau</h2><p>Belum ada yang dibuat di Discord sampai Anda menekan Terapkan.</p></div><span>◉</span></div>
 <p class="f-callout" id="aiBuilderNote" hidden></p>
-<p class="f-muted">Sunting kategori, channel, role dan izin di bawah. Pilih role baru atau role server yang sudah ada untuk izin channel. Setelah mengubah, tekan VALIDASI RANCANGAN. Role baru harus ditetapkan ke anggota secara manual.</p><div class="b-tree" id="aiBuilderPreview"><p class="f-muted">Belum ada rancangan.</p></div>
+<p class="f-muted">Ketuk channel atau “Edit kategori & izin” untuk menyunting. Pilih role baru atau role server yang sudah ada untuk izin channel. Setelah mengubah, tekan VALIDASI RANCANGAN. Role baru harus ditetapkan ke anggota secara manual.</p><p id="aiBuilderEditState" class="b-edit-state" aria-live="polite" hidden></p><div class="b-tree" id="aiBuilderPreview"><p class="f-muted">Belum ada rancangan.</p></div>
 <details class="b-details"><summary>SUNTING RANCANGAN (JSON) / VALIDASI</summary><p class="f-muted">Ubah nama, tipe, topic atau warna role. Untuk izin tambahkan pada kategori/channel: &quot;access&quot;: {&quot;mode&quot;:&quot;read-only&quot;, &quot;roles&quot;:[&quot;Admin&quot;]}; mode lain: private dan private-read-only. Nama role baru wajib ada dalam rancangan; pilih role yang sudah ada melalui preview. Channel tanpa access mengikuti kategori. Access channel menggantikan access kategori sepenuhnya. Validasi sebelum menerapkan. Objek Discord yang sudah ada tidak diubah.</p><textarea class="b-code" id="aiBuilderPlan" rows="14" maxlength="20000" spellcheck="false" aria-label="JSON rancangan server" disabled></textarea></details><div class="b-actions"><button type="button" class="f-outline" id="aiBuilderSave" disabled>VALIDASI RANCANGAN ↗</button><button type="button" class="f-outline" id="aiBuilderPreflight" disabled>PERIKSA SERVER</button><button type="button" class="f-outline" id="aiBuilderSaveDraft" disabled>SIMPAN DRAFT</button><button type="button" class="f-outline" id="aiBuilderRestoreDraft">MUAT DRAFT</button><button type="button" class="f-outline" id="aiBuilderDeleteDraft">HAPUS DRAFT</button></div><p id="aiBuilderPreflightStatus" class="f-muted" aria-live="polite"></p>
 <div class="b-actions"><button type="button" class="f-primary" id="aiBuilderApply" disabled>TERAPKAN KE SERVER ↗</button><button type="button" class="f-outline" id="aiBuilderCancel" disabled>BATALKAN RANCANGAN</button></div>
 <p id="aiBuilderStatus" aria-live="polite" class="f-muted b-status"></p>
@@ -199,7 +243,8 @@
   const cancel = root.querySelector('#aiBuilderCancel'), preview = root.querySelector('#aiBuilderPreview'), note = root.querySelector('#aiBuilderNote'), result = root.querySelector('#aiBuilderResult');
   let planId = null, revision = 0, dirty = false, jsonDirty = false, busy = false, existingRoles = [];
   const check=root.querySelector('#aiBuilderPreflight'), checkStatus=root.querySelector('#aiBuilderPreflightStatus'), saveDraft=root.querySelector('#aiBuilderSaveDraft'), restore=root.querySelector('#aiBuilderRestoreDraft'), deleteDraft=root.querySelector('#aiBuilderDeleteDraft');
-  const counter=root.querySelector('#aiBuilderCharCount'), description=form.elements.description;
+  const counter=root.querySelector('#aiBuilderCharCount'), description=form.elements.description, editState=root.querySelector('#aiBuilderEditState');
+  const setEditState = (text) => { editState.hidden=!text; editState.textContent=text; };
   const updateCount=()=>{counter.textContent=`${description.value.length} / 1000 karakter`};description.addEventListener('input',updateCount);updateCount();
   read('roles').then(r=>{existingRoles=list(r.roles);if(planId && !jsonDirty){try {drawPlan(preview,JSON.parse(out.value),editAccess,editStructure,existingRoles)}catch{}}}).catch(()=>{existingRoles=[];checkStatus.textContent='Daftar role server tidak dapat dimuat; pilihan role yang sudah ada tidak tersedia.'});
 
@@ -220,27 +265,51 @@
     target.access.roles = target.access.roles.filter(name => name !== value.name);
     if (value.checked) target.access.roles.push(value.name);
    } else return;
-   out.value = JSON.stringify(plan, null, 2); revision++; dirty = true; apply.disabled = true; check.disabled=true; saveDraft.disabled=true; checkStatus.textContent='Validasi sebelum memeriksa server.'; status.textContent = 'Izin berubah. Pilih setidaknya satu role lalu validasi sebelum menerapkan.'; drawPlan(preview, plan, editAccess, editStructure, existingRoles);
+   out.value = JSON.stringify(plan, null, 2); setEditState('PERUBAHAN BELUM DIVALIDASI'); revision++; dirty = true; apply.disabled = true; check.disabled=true; saveDraft.disabled=true; checkStatus.textContent='Validasi sebelum memeriksa server.'; status.textContent = 'Izin berubah. Pilih setidaknya satu role lalu validasi sebelum menerapkan.'; drawPlan(preview, plan, editAccess, editStructure, existingRoles);
   }
-  function editStructure(action, ci, index, value) {
+  // Keep expanded editors attached to the same item when it moves or siblings are removed.
+  function remapDetails(action, ci, index, value, plan) {
+   const shiftCategory = n => {
+    if(action==='category-delete') return n===ci ? null : n>ci ? n-1 : n;
+    if(action==='category-up' && ci>0) return n===ci ? ci-1 : n===ci-1 ? ci : n;
+    if(action==='category-down' && ci<plan.categories.length-1) return n===ci ? ci+1 : n===ci+1 ? ci : n;
+    return n;
+   };
+   for(const details of preview.querySelectorAll('details[data-builder-key]')) {
+    const key=details.dataset.builderKey; let m=key.match(/^category:(\d+)$/);
+    if(m){const next=shiftCategory(Number(m[1]));if(next===null)delete details.dataset.builderKey;else details.dataset.builderKey=`category:${next}`;continue;}
+    m=key.match(/^channel:(\d+):(\d+)$/);
+    if(m){let c=Number(m[1]),i=Number(m[2]);const mapped=shiftCategory(c);if(mapped===null){delete details.dataset.builderKey;continue}
+     if(c===ci && action==='channel-delete'){if(i===index){delete details.dataset.builderKey;continue}if(i>index)i--;}
+     else if(c===ci && action==='channel-up' && index>0){if(i===index)i--;else if(i===index-1)i++;}
+     else if(c===ci && action==='channel-down' && index<plan.categories[ci].channels.length-1){if(i===index)i++;else if(i===index+1)i--;}
+     else if(action==='channel-move' && value!==ci && plan.categories[value] && c===ci){if(i===index){c=value;i=plan.categories[value].channels.length;}else if(i>index)i--;}
+     details.dataset.builderKey=`channel:${c===Number(m[1])?mapped:c}:${i}`;continue;
+    }
+    m=key.match(/^role:(\d+)$/);
+    if(m && action==='role-delete'){let n=Number(m[1]);if(n===ci)delete details.dataset.builderKey;else details.dataset.builderKey=`role:${n>ci?n-1:n}`;}
+   }
+  }
+  function editStructure(action, ci, index, value, deferRender=false) {
    if (!planId || out.disabled || jsonDirty) { status.textContent = 'Validasi perubahan JSON sebelum mengubah preview.'; return; }
    let p; try {p=JSON.parse(out.value)} catch {status.textContent='JSON tidak valid.';return}
    const swap=(arr,a,b)=>{if (b>=0 && b<arr.length) [arr[a],arr[b]]=[arr[b],arr[a]]};
    const c=p.categories[ci];
    if(action==='category-add') p.categories.push({name:'Kategori Baru',channels:[]});
    else if(action==='category-name') c.name=value;
-   else if(action==='category-delete') {if(!window.confirm('Hapus kategori beserta channel-nya dari rancangan? Discord belum berubah.'))return;p.categories.splice(ci,1)}
-   else if(action==='category-up') swap(p.categories,ci,ci-1);
-   else if(action==='category-down') swap(p.categories,ci,ci+1);
+   else if(action==='category-delete') {if(!window.confirm('Hapus kategori beserta channel-nya dari rancangan? Discord belum berubah.'))return;remapDetails(action,ci,index,value,p);p.categories.splice(ci,1)}
+   else if(action==='category-up') {remapDetails(action,ci,index,value,p);swap(p.categories,ci,ci-1)}
+   else if(action==='category-down') {remapDetails(action,ci,index,value,p);swap(p.categories,ci,ci+1)}
    else if(action==='channel-add') c.channels.push({name:'channel-baru',type:'text'});
    else if(action==='channel-name') c.channels[index].name=value;
    else if(action==='channel-type') {c.channels[index].type=value;if(['voice','stage'].includes(value)) delete c.channels[index].topic}
    else if(action==='channel-topic') {if(value.trim()) c.channels[index].topic=value;else delete c.channels[index].topic}
-   else if(action==='channel-delete') c.channels.splice(index,1);
-   else if(action==='channel-up') swap(c.channels,index,index-1);
-   else if(action==='channel-down') swap(c.channels,index,index+1);
+   else if(action==='channel-delete') {remapDetails(action,ci,index,value,p);c.channels.splice(index,1)}
+   else if(action==='channel-up') {remapDetails(action,ci,index,value,p);swap(c.channels,index,index-1)}
+   else if(action==='channel-down') {remapDetails(action,ci,index,value,p);swap(c.channels,index,index+1)}
    else if(action==='channel-move') {
     if(p.categories[value] && value!==ci){
+     remapDetails(action,ci,index,value,p);
      const channel=c.channels.splice(index,1)[0];
      // Preserve explicit inherited restrictions when moving out of a category; never silently open a private channel.
      if(!channel.access && c.access) channel.access=JSON.parse(JSON.stringify(c.access));
@@ -254,19 +323,22 @@
     for(const cat of p.categories) for(const a of [cat.access,...cat.channels.map(ch=>ch.access)].filter(Boolean)) a.roles=list(a.roles).map(n=>n===old?value:n);
    }
    else if(action==='role-color') {const r=p.roles[ci];if(typeof r==='string') p.roles[ci]={name:r};if(value.trim()) p.roles[ci].color=value;else delete p.roles[ci].color}
-   else if(action==='role-delete') {const r=p.roles.splice(ci,1)[0], name=typeof r==='string'?r:r.name;for(const cat of p.categories) for(const a of [cat.access,...cat.channels.map(ch=>ch.access)].filter(Boolean)) a.roles=list(a.roles).filter(n=>n!==name)}
+   else if(action==='role-delete') {remapDetails(action,ci,index,value,p);const r=p.roles.splice(ci,1)[0], name=typeof r==='string'?r:r.name;for(const cat of p.categories) for(const a of [cat.access,...cat.channels.map(ch=>ch.access)].filter(Boolean)) a.roles=list(a.roles).filter(n=>n!==name)}
    else return;
-   out.value=JSON.stringify(p,null,2);revision++;dirty=true;apply.disabled=true;check.disabled=true;saveDraft.disabled=true;checkStatus.textContent='Validasi sebelum memeriksa server.';status.textContent='Rancangan berubah. Validasi sebelum menerapkan.';drawPlan(preview,p,editAccess,editStructure,existingRoles);
+   out.value=JSON.stringify(p,null,2);setEditState('PERUBAHAN BELUM DIVALIDASI');revision++;dirty=true;apply.disabled=true;check.disabled=true;saveDraft.disabled=true;checkStatus.textContent='Validasi sebelum memeriksa server.';status.textContent='Rancangan berubah. Validasi sebelum menerapkan.';
+   // A text field changes on blur, before the next click. Do not replace that click target synchronously.
+   if (deferRender) window.setTimeout(()=>{if(planId && !jsonDirty){try{drawPlan(preview,JSON.parse(out.value),editAccess,editStructure,existingRoles)}catch{}}},0);
+   else drawPlan(preview,p,editAccess,editStructure,existingRoles);
   }
   const idle = (text) => preview.replaceChildren(el('p', { className: 'f-muted' }, text));
   function reset(text) {
-   planId = null; dirty = false; jsonDirty = false; revision++;
+   planId = null; dirty = false; jsonDirty = false; revision++; setEditState('');
    apply.disabled = true; save.disabled = true; cancel.disabled = true; check.disabled=true; saveDraft.disabled=true; checkStatus.textContent=''; out.disabled = true; out.value = '';
    if (note) { note.hidden = true; note.textContent = ''; }
    idle(text);
   }
   function show(draft, message) {
-   planId = draft.id; dirty = false; jsonDirty = false; revision++;
+   planId = draft.id; dirty = false; jsonDirty = false; revision++; setEditState('');
    drawPlan(preview, draft.plan, editAccess, editStructure, existingRoles);
    out.value = JSON.stringify(draft.plan, null, 2);
    out.disabled = false; save.disabled = false; apply.disabled = false; cancel.disabled = false; check.disabled=false; saveDraft.disabled=false; runPreflight();
@@ -284,7 +356,7 @@
    finally { busy = false; button.disabled = false; }
   }
 
-  out.oninput = () => { revision++; dirty = true; jsonDirty = true; apply.disabled = true; check.disabled=true; saveDraft.disabled=true; checkStatus.textContent='Validasi sebelum memeriksa server.'; status.textContent = 'Rancangan berubah. Validasi sebelum menerapkan.'; };
+  out.oninput = () => { setEditState('PERUBAHAN BELUM DIVALIDASI'); revision++; dirty = true; jsonDirty = true; apply.disabled = true; check.disabled=true; saveDraft.disabled=true; checkStatus.textContent='Validasi sebelum memeriksa server.'; status.textContent = 'Rancangan berubah. Validasi sebelum menerapkan.'; };
   if (themeForm) themeForm.onsubmit = (e) => {
    e.preventDefault();
    const themeId = themeForm.elements.themeId.value;
@@ -307,7 +379,7 @@
     if (revision !== current) { dirty = true; status.textContent = 'Rancangan berubah lagi. Validasi ulang sebelum menerapkan.'; return; }
     out.value = JSON.stringify(r.plan, null, 2);
     drawPlan(preview, r.plan, editAccess, editStructure, existingRoles);
-    dirty = false; jsonDirty = false; apply.disabled = false; check.disabled=false; saveDraft.disabled=false; runPreflight();
+    dirty = false; jsonDirty = false; setEditState(''); apply.disabled = false; check.disabled=false; saveDraft.disabled=false; runPreflight();
     status.textContent = `Rancangan valid. Sisa waktu sekitar ${r.expiresInSeconds} detik.`;
    } catch (err) { dirty = true; status.textContent = err.message; }
    finally { save.disabled = !planId; }
@@ -336,7 +408,7 @@
     // Only this explicit preflight rejection guarantees no Discord operation started.
     // Timeouts, partial failures and unknown errors must never re-enable a blind retry.
     if (err.code === 'PLAN_NAME_CONFLICT') {
-     planId = id; dirty = true; out.disabled = false; save.disabled = false; cancel.disabled = false;
+     planId = id; dirty = true; setEditState('PERUBAHAN PERLU DITINJAU DAN DIVALIDASI'); out.disabled = false; save.disabled = false; cancel.disabled = false;
      out.closest('details').open = true;
     }
     drawItems(result, 'Sudah dibuat sebelum berhenti', err.created);
