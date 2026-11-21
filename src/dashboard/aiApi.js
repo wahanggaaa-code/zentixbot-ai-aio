@@ -20,7 +20,7 @@ import { MESSAGE_MENUS } from '../services/ai/menus.js';
 import { MAX_REPORT_DAYS } from '../services/ai/usage.js';
 
 export function createAIApi(client,{auth,csrf,env=process.env,foundation=client.aiFoundation||createAIFoundation({client,env}),welcomeStore=createAIWelcomeStore(client),goodbyeStore=createAIWelcomeStore(client,'goodbye'),activityStore=createActivityStore(client),chatStore=createChatStore(client),imageService=client.aiImageService||createImageService({client,foundation,env}),builder=createBuilder({client,foundation}),manualBuilder=createManualBuilder({client}),searchService=client.aiSearchService||createSearchService({client,foundation,env})}) {
- const router=express.Router();const json=express.json({limit:'24kb'});router.use((req,res,next)=>(['/image','/smart/faq'].includes(req.path)||req.path==='/knowledge'||req.path.startsWith('/knowledge/'))?next():json(req,res,next));
+ const router=express.Router();const json=express.json({limit:'24kb'});router.use((req,res,next)=>(['/image','/smart/faq','/smart/faq/import'].includes(req.path)||req.path==='/knowledge'||req.path.startsWith('/knowledge/'))?next():json(req,res,next));
  const owner=(req,res,next)=>{const ids=String(env.OWNER_IDS||'').split(',').map(x=>x.trim()).filter(x=>/^\d{17,20}$/.test(x));if(!ids.includes(req.session.user.id))return res.status(403).json({error:'Pengaturan dan uji AI hanya untuk owner bot.'});next()};
  const fail=(res,e)=>res.status(e.status||503).json({error:e.status?e.message:'Layanan AI atau database tidak tersedia.',code:e.code||'UNAVAILABLE',...(e.created?{created:e.created,buildId:e.buildId??null,recorded:e.recorded===true}:{})});
  router.get('/settings',auth,owner,async(req,res)=>{try{res.json({settings:await foundation.store.read(req.guild.id),credentials:foundation.credentials()})}catch(e){fail(res,e)}});
@@ -130,6 +130,14 @@ export function createAIApi(client,{auth,csrf,env=process.env,foundation=client.
    res.json({ok:true,settings,menuSync});
   }catch(e){fail(res,e)}
  };
+ router.post('/smart/faq/import',auth,owner,csrf,express.json({limit:'256kb'}),async(req,res)=>{
+  try{
+   const body=req.body;
+   if(!body||typeof body!=='object'||Array.isArray(body)||Object.keys(body).length!==3||body.confirmed!==true||!Object.hasOwn(body,'entries')||!Object.hasOwn(body,'expected'))return res.status(400).json({error:'Konfirmasi dan data impor FAQ diperlukan.'});
+   const settings=await smart.importFaq(body.entries,body.expected,req.guild);
+   res.json({ok:true,settings});
+  }catch(e){fail(res,e)}
+ });
  router.patch('/smart/faq',auth,owner,csrf,express.json({limit:'96kb'}),saveSmart);
  router.patch('/smart/:section',auth,owner,csrf,saveSmart);
  router.get('/smart/usage',auth,owner,async(req,res)=>{

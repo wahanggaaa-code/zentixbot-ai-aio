@@ -48,6 +48,20 @@
   return id;
  }
 
+ // TXT has explicit Q:/A: pairs separated by a blank line; no guessing from prose.
+ // Continuation lines belong to the answer, but a new label without separation is rejected.
+ function parseFaqImport(raw){
+  const input=String(raw).replace(/^\uFEFF/,'').replace(/\r\n?/g,'\n').trim();
+  if(!/^Q\s*:/i.test(input)){
+   try{return JSON.parse(input)}catch{throw Error('JSON tidak valid. Untuk TXT, mulai setiap pasangan dengan Q: lalu A:.')}
+  }
+  return input.split(/\n[ \t]*\n+/).map((block,i)=>{
+   const lines=block.split('\n'),question=lines[0]?.match(/^Q\s*:\s*(.*)$/i),answer=lines[1]?.match(/^A\s*:\s*(.*)$/i);
+   if(!question||!answer||lines.slice(2).some(line=>/^[ \t]*[QA]\s*:/i.test(line)))throw Error(`Pasangan TXT ${i+1} tidak valid. Gunakan Q: dan A:, lalu baris kosong sebelum pasangan berikutnya.`);
+   return {question:question[1],answer:[answer[1],...lines.slice(2)].join('\n')};
+  });
+ }
+
  function bind(root, tab, notify) {
   const slot = root.querySelector('#aiSmart');
   if (!slot) return;
@@ -90,6 +104,7 @@
      <h3 class="s-head">Daftar FAQ <small>${faq.entries.length} dari ${max}</small></h3>
      <div class="s-list">${faq.entries.length ? faq.entries.map((entry) => `<div class="s-item"><div><b>${esc(entry.question)}</b><p>${esc(entry.answer)}</p></div><button type="button" class="f-outline" data-faq-remove="${esc(entry.id)}">HAPUS</button></div>`).join('') : '<p class="f-muted">Belum ada entri. Tambahkan pertanyaan yang sering muncul di server Anda.</p>'}</div>
      <form id="aiFaqAddForm" class="f-form">${row('Pertanyaan', 'Tulis seperti anggota bertanya, 3–150 karakter. Kata-kata pentingnya yang dicocokkan.', '<input name="question" type="text" minlength="3" maxlength="150" required placeholder="mis. Bagaimana cara dapat role member?">')}${row('Jawaban', 'Dikirim apa adanya, 1–800 karakter. Mention di dalamnya tidak memanggil siapa pun.', '<textarea name="answer" rows="3" maxlength="800" required></textarea>')}<div class="f-form-actions"><span>✳ LANGSUNG TERSIMPAN</span><button class="f-primary" type="submit" ${faq.entries.length >= max ? 'disabled' : ''}>TAMBAH ENTRI ↗</button></div></form>
+     <details class="faq-import"><summary>Impor FAQ dari JSON / TXT</summary><p class="f-muted">Pilih file atau tempel JSON berupa array dengan <code>question</code> dan <code>answer</code>, atau TXT dengan pasangan <code>Q:</code> dan <code>A:</code> dipisah satu baris kosong. Pratinjau dulu; entri baru ditambahkan, FAQ lama dan pengaturan tetap ada. Maksimal ${max} entri total, file maksimal 64 KB.</p><p class="f-muted">Contoh: <code>[{"question":"Bagaimana cara bergabung?","answer":"Baca panduan server."}]</code></p><p class="f-muted">Contoh TXT: <code>Q: Bagaimana cara bergabung?</code> lalu di baris berikutnya <code>A: Baca panduan server.</code> Pisahkan pasangan dengan baris kosong. Jawaban boleh beberapa baris.</p><label class="f-field"><span><b>File JSON / TXT</b><small>Pilih file UTF-8 .json atau .txt.</small></span><input type="file" id="faqImportFile" accept=".json,.txt,application/json,text/plain"></label><label class="f-field"><span><b>Atau tempel JSON / TXT</b><small>Data hanya dipakai untuk membuat FAQ, bukan dokumen rujukan AI.</small></span><textarea id="faqImportText" rows="5" spellcheck="false" placeholder="Tempel JSON atau TXT FAQ di sini"></textarea></label><div class="f-inline"><button class="f-outline" type="button" id="faqImportPreview">PRATINJAU</button><button class="f-primary" type="button" id="faqImportSave" disabled>IMPOR FAQ</button></div><p class="f-muted" id="faqImportStatus" role="status"></p><div id="faqImportResult"></div></details>
      <h3 class="s-head">Cache jawaban</h3>
      <form id="aiCacheForm" class="f-form">${toggle('enabled', 'Aktifkan cache jawaban', 'Pertanyaan yang sama kepada AI interaktif dalam rentang waktu ini memakai jawaban sebelumnya, tanpa kuota.', cache.enabled)}${number('minutes', 'Lama cache (menit)', 'Sejak jawaban dibuat', cache.minutes, 1, 120)}${actions('BERLAKU PADA PESAN BERIKUTNYA')}</form>`;
     const saveFaq = async (next, message) => {
@@ -105,6 +120,43 @@
      saveFaq({ ...faq, entries: [...faq.entries, { id: entryId(question, new Set(faq.entries.map((entry) => entry.id))), question, answer }] }, 'Entri FAQ ditambahkan.');
     };
     slot.querySelectorAll('[data-faq-remove]').forEach((button) => button.addEventListener('click', () => saveFaq({ ...faq, entries: faq.entries.filter((entry) => entry.id !== button.dataset.faqRemove) }, 'Entri FAQ dihapus.')));
+    const file=slot.querySelector('#faqImportFile'), text=slot.querySelector('#faqImportText'), preview=slot.querySelector('#faqImportResult'), importStatus=slot.querySelector('#faqImportStatus'), importButton=slot.querySelector('#faqImportSave');
+    let draft=null, revision=0;
+    const resetImport=()=>{revision++;draft=null;importButton.disabled=true;preview.replaceChildren();importStatus.textContent='';};
+    text.addEventListener('input',resetImport);
+    file.addEventListener('change',()=>{
+     resetImport();text.value='';const selected=file.files?.[0];file.value='';if(!selected)return;
+     if(selected.size>64*1024){importStatus.textContent='File maksimal 64 KB.';return;}
+     const stamp=revision,reader=new FileReader();reader.onload=()=>{if(stamp!==revision||!slot.isConnected)return;text.value=String(reader.result||'');importStatus.textContent='File dibaca. Tekan PRATINJAU untuk memeriksa.';};reader.onerror=()=>{if(stamp===revision)importStatus.textContent='File tidak dapat dibaca.'};reader.readAsText(selected,'UTF-8');
+    });
+    slot.querySelector('#faqImportPreview').addEventListener('click',()=>{
+     resetImport();try{
+      if(new Blob([text.value]).size>64*1024)throw Error('File atau teks maksimal 64 KB.');
+      const items=parseFaqImport(text.value);
+      if(!Array.isArray(items)||!items.length||items.length>max)throw Error(`File harus berisi 1–${max} FAQ; JSON harus berupa array.`);
+      if(faq.entries.length+items.length>max)throw Error(`FAQ maksimal ${max} entri termasuk yang sudah ada.`);
+      const questions=new Set(faq.entries.map(e=>e.question.toLocaleLowerCase('id')));
+      const entries=items.map((item,i)=>{
+       if(!item||typeof item!=='object'||Array.isArray(item)||Object.keys(item).length!==2||typeof item.question!=='string'||typeof item.answer!=='string')throw Error(`Entri ${i+1} harus berisi question dan answer berupa teks.`);
+       const question=item.question.replace(/[\u0000-\u001f\u007f]+/g,' ').replace(/\s+/g,' ').trim(),answer=item.answer.trim();
+       if(question.length<3||question.length>150||!answer||answer.length>800)throw Error(`Entri ${i+1}: pertanyaan 3–150 dan jawaban 1–800 karakter.`);
+       const key=question.toLocaleLowerCase('id');if(questions.has(key))throw Error(`Entri ${i+1}: pertanyaan sama dengan entri lain atau FAQ tersimpan.`);questions.add(key);return {question,answer};
+      });
+      draft={entries,expected:JSON.parse(JSON.stringify(faq))};
+      preview.innerHTML=`<p class="f-muted">${entries.length} entri baru · ${faq.entries.length} tersimpan · ${faq.entries.length+entries.length}/${max} total</p><div class="s-list">${entries.map(e=>`<div class="s-item"><div><b>${esc(e.question)}</b><p style="white-space:pre-wrap">${esc(e.answer)}</p></div></div>`).join('')}</div>`;
+      importStatus.textContent='Pratinjau siap. Belum ada data yang disimpan.';importButton.disabled=false;
+     }catch(error){importStatus.textContent=error.message;}
+    });
+    importButton.addEventListener('click',async()=>{
+     if(!draft)return;const current=draft,stamp=revision;importButton.disabled=true;
+     try{
+      const ok=await (window.ZentixDialog?window.ZentixDialog.confirm(`Tambahkan ${current.entries.length} FAQ? Entri dan pengaturan yang sudah ada tidak dihapus.`):Promise.resolve(window.confirm(`Tambahkan ${current.entries.length} FAQ? Entri dan pengaturan yang sudah ada tidak dihapus.`)));
+      if(!ok||revision!==stamp||!slot.isConnected)return;
+      const out=await req('smart/faq/import',{method:'POST',body:JSON.stringify({confirmed:true,entries:current.entries,expected:current.expected})});
+      faq=out.settings.faq;notify(`${current.entries.length} FAQ berhasil diimpor.`);draw();
+     }catch(error){importStatus.textContent=error.message;notify(error.message);}
+     finally{if(draft===current&&slot.isConnected)importButton.disabled=false;}
+    });
     wire(slot.querySelector('#aiCacheForm'), 'cache', (x) => ({ enabled: x.enabled.checked, minutes: Number(x.minutes.value) }), notify, (out) => { cache = out.settings.cache; notify('Pengaturan cache disimpan.'); });
    };
    draw();

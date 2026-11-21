@@ -1,6 +1,7 @@
 // Settings of the "Fitur pintar" room of AI Studio: one record per server, one section per feature.
 // Every section has its own on/off switch and is saved on its own; every feature starts switched off.
 import { ChannelType } from 'discord.js';
+import crypto from 'node:crypto';
 import { createKV } from './kv.js';
 
 export const MAX_SMART_CHANNELS = 10;
@@ -181,6 +182,31 @@ export function createSmartStore(client, kv = createKV(client)) {
         async saveSection(guildId, section, value) {
             const checked = validateSmartSection(section, value);
             return kv.update(key(guildId), (current) => ({ ...upgradeSmart(current), [section]: checked }));
+        },
+        /** Append a previewed FAQ batch under the same lock as other settings writes. */
+        async importFaq(guildId, entries, expected, guild) {
+            if (!Array.isArray(entries) || !entries.length || entries.length > MAX_FAQ_ENTRIES) throw err(`Impor FAQ harus berisi 1–${MAX_FAQ_ENTRIES} entri.`);
+            const expectedFaq = validateSmartSection('faq', expected, guild);
+            const checked = entries.map((entry, index) => {
+                if (!plain(entry) || Object.keys(entry).length !== 2 || typeof entry.question !== 'string' || typeof entry.answer !== 'string') throw err(`Entri ${index + 1} harus berisi question dan answer berupa teks.`);
+                const question = oneLine(entry.question), answer = entry.answer.trim();
+                if (question.length < 3 || question.length > 150 || !answer || answer.length > 800) throw err(`Entri ${index + 1}: pertanyaan 3–150 dan jawaban 1–800 karakter.`);
+                return {question, answer};
+            });
+            return kv.update(key(guildId), current => {
+                const all = upgradeSmart(current), faq = all.faq;
+                if (JSON.stringify(faq) !== JSON.stringify(expectedFaq)) throw Object.assign(Error('FAQ berubah sejak pratinjau. Muat ulang halaman dan periksa kembali.'), {status:409});
+                if (faq.entries.length + checked.length > MAX_FAQ_ENTRIES) throw err(`FAQ maksimal ${MAX_FAQ_ENTRIES} entri termasuk yang sudah ada.`);
+                const questions = new Set(faq.entries.map(e => e.question.toLocaleLowerCase('id')));
+                const ids = new Set(faq.entries.map(e => e.id));
+                const imported = checked.map(entry => {
+                    const q = entry.question.toLocaleLowerCase('id');
+                    if (questions.has(q)) throw err('Ada pertanyaan yang sama di file atau FAQ tersimpan.');
+                    questions.add(q);let id;do {id=crypto.randomBytes(8).toString('hex')} while(ids.has(id));ids.add(id);
+                    return {id,...entry};
+                });
+                return {...all,faq:validateSmartSection('faq',{...faq,entries:[...faq.entries,...imported]},guild)};
+            });
         },
     };
 }

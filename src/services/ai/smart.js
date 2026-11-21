@@ -63,6 +63,12 @@ export function createSmart({
         return saved;
     }
 
+    async function importFaq(entries, expected, guild) {
+        const saved = await store.importFaq(client.homeGuildId, entries, expected, guild);
+        cached = { at: now(), value: saved };
+        return saved;
+    }
+
     const usage = createUsage({ kv, now, enabled: async () => (await settings()).usage.enabled });
     const replyCache = createReplyCache({ now });
     const recap = createRecap({ client, foundation, now });
@@ -141,7 +147,7 @@ export function createSmart({
     }
 
     return {
-        store, settings, saveSection, usage, recap, menus, digest, facts, translate,
+        store, settings, saveSection, importFaq, usage, recap, menus, digest, facts, translate,
         faqFor, faqResponse, faqWouldAnswer, handleMessage,
         /** Reply cache for the interactive AI: null when the cache is off or has nothing. */
         async cachedReply(text) {
