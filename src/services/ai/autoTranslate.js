@@ -247,16 +247,19 @@ export function createAutoTranslate({ client, settings, foundation = () => clien
             // The guild gate comes first: a stray ❌ outside the home guild would be the bot acting where it should be silent.
             if (!isHomeMessage(message) || !client.user) return note(`message guild is not the configured home guild (${guildGateIds(client, message)})`), false;
             if (!user || user.bot) return false;
-            const target = FLAG_LANGUAGES[emoji];
-            if (!target) {
-                note('flag emoji "' + (emoji ?? '?') + '" has no translation attached; supported flags: ' + Object.keys(FLAG_LANGUAGES).join(' '));
-                try { await message?.react?.('❌'); } catch (error) { logger.info?.(`AI auto-translate: could not add the ❌ reaction on message ${message?.id ?? '?'}: ${error?.message ?? error}`); }
-                return false;
-            }
+            // Ordinary or custom reactions belong to other features and must be
+            // ignored before reading settings or sending any feedback.
+            if (!emoji || !/^[\u{1F1E6}-\u{1F1FF}]{2}$/u.test(emoji)) return false;
             if (message.type !== MessageType.Default && message.type !== MessageType.Reply) return note('message could not be read (partial fetch may have failed) or is not a normal chat message'), false;
             const cfg = (await settings())?.translate;
             if (!cfg?.reactionEnabled) return note('"Terjemahkan dengan reaksi bendera" is off (AI Studio -> Fitur pintar -> Terjemahan otomatis)'), false;
             if (!cfg.channelIds.includes(message.channel.id)) return note(`channel ${message.channel.id} is not a chosen translation channel`), false;
+            const target = FLAG_LANGUAGES[emoji];
+            if (!target) {
+                note('flag emoji "' + emoji + '" has no translation attached; supported flags: ' + Object.keys(FLAG_LANGUAGES).join(' '));
+                try { await message?.react?.('❌'); } catch (error) { logger.info?.(`AI auto-translate: could not add the ❌ reaction on message ${message?.id ?? '?'}: ${error?.message ?? error}`); }
+                return false;
+            }
 
             const text = translatableText(message.cleanContent ?? message.content).slice(0, TEXT_CHARS);
             if (letterCount(text) < minLettersFor(text)) return note('text too short to translate'), false;

@@ -126,11 +126,34 @@ async function imageNotSupported(response) {
 
 export function createAIFoundation({client,store=createAIStore(client),env=process.env,fetchImpl=globalThis.fetch}={}){
  let active=0;
- return {
+ // Volatile, bounded diagnostic metadata only: never store prompts, identities,
+ // model names, credentials, provider bodies, URLs or arbitrary error messages.
+ const failures=[]; let lastSuccess=null;
+ const addFailure=(scope,reason,provider=null)=>{
+  failures.unshift({at:new Date().toISOString(),scope,reason,provider});
+  if(failures.length>20)failures.length=20;
+ };
+ const reasonCodes=Object.freeze({LIMIT_REACHED:'local_quota',BUSY:'busy',DISABLED:'disabled',NO_CREDENTIALS:'credentials_missing',STORAGE_UNAVAILABLE:'storage',PROVIDERS_UNAVAILABLE:'all_providers_failed',REQUEST_REJECTED:'rejected',FILTERED:'filtered',STREAM_PARTIAL:'stream_interrupted',STREAM_FILTERED:'filtered',INVALID_INPUT:'invalid_input',CONSENT_REQUIRED:'consent',FORBIDDEN:'forbidden'});
+ const requestReason=code=>Object.hasOwn(reasonCodes,code)?reasonCodes[code]:'unknown';
+ const statusReason=status=>status===429?'provider_limit':status===401||status===403?'provider_auth':status===404?'provider_not_found':status===408?'timeout':status>=500?'provider_error':'provider_rejected';
+ let generateInternal;
+ const service = {
   store,
   credentials(){return Object.fromEntries(Object.entries(PROVIDERS).map(([id,p])=>[id,Boolean(env[p.key]?.trim())]));},
+  failureStatus(){return {failures:failures.map(x=>({...x})),lastSuccess:lastSuccess?{...lastSuccess}:null};},
+  async generate(request){
+   try {
+    const result=await generateInternal(request);
+    lastSuccess={at:new Date().toISOString(),provider:result.provider,usedFallback:result.usedFallback};
+    return result;
+   } catch(e) {
+    if(request?.guildId===client?.homeGuildId && /^\d{17,20}$/.test(request?.userId||''))addFailure('request',requestReason(e?.code));
+    throw e;
+   }
+  }
+ };
   // `kind` only labels the request for the usage report; it does not reach the provider.
-  async generate({guildId,userId,prompt,consent,image=null,kind='other',onDelta=null}){
+  generateInternal = async function({guildId,userId,prompt,consent,image=null,kind='other',onDelta=null}){
    if(!snowflake.test(guildId||'')||guildId!==client?.homeGuildId||!snowflake.test(userId||''))throw error('FORBIDDEN','Identitas server atau anggota tidak valid.',403);
    if(consent!==true)throw error('CONSENT_REQUIRED','Persetujuan pemrosesan data diperlukan.',403);
    if(typeof prompt!=='string'||!prompt.trim()||prompt.length>MAX_AI_PROMPT_CHARS)throw error('INVALID_INPUT','Input harus 1–4000 karakter.');
@@ -149,8 +172,8 @@ export function createAIFoundation({client,store=createAIStore(client),env=proce
       let emitted=false;
       const send=stream=>fetchImpl(provider.url,{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${key}`},body:JSON.stringify({model,messages:[{role:'user',content:image?[{type:'text',text:prompt},{type:'image_url',image_url:{url:`data:${image.mime};base64,${image.base64}`}}]:prompt}],max_tokens:cfg.maxOutputTokens,stream}),redirect:'error',signal:AbortSignal.timeout(cfg.timeoutSeconds*1000)});
       let response=await send(Boolean(onDelta)), streaming=Boolean(onDelta);
-      if(streaming && [400,415,422].includes(response.status)){if(await streamingNotSupported(response)){response=await send(false);streaming=false;}else throw error('REQUEST_REJECTED','Provider menolak permintaan.',502);}
-      if(!response.ok){if([401,403,404,408,429].includes(response.status)||response.status>=500)continue;if(image && [400,422].includes(response.status) && await imageNotSupported(response))continue;throw error('REQUEST_REJECTED','Provider menolak permintaan.',502);}
+      if(streaming && [400,415,422].includes(response.status)){if(await streamingNotSupported(response)){response=await send(false);streaming=false;}else { addFailure('provider',statusReason(response.status),id); throw error('REQUEST_REJECTED','Provider menolak permintaan.',502); }}
+      if(!response.ok){addFailure('provider',statusReason(response.status),id);if([401,403,404,408,429].includes(response.status)||response.status>=500)continue;if(image && [400,422].includes(response.status) && await imageNotSupported(response))continue;throw error('REQUEST_REJECTED','Provider menolak permintaan.',502);}
       if(streaming && String(response.headers?.get?.('content-type')||'').toLowerCase().includes('application/json')) streaming=false;
       if(streaming){
        try { const output=await readStream(response,onDelta,()=>{emitted=true});
@@ -163,10 +186,10 @@ export function createAIFoundation({client,store=createAIStore(client),env=proce
       const output=choice?.message?.content;if(typeof output!=='string'||!output.trim()||output.length>32000)throw error('PROVIDER_RESPONSE','Respons provider tidak valid.',502);
       try{Promise.resolve(client?.aiUsage?.record?.({guildId,userId,kind,tokens:Number(data?.usage?.total_tokens)||0})).catch(()=>{})}catch{}
       return {text:output,provider:id,model,usedFallback:id!==cfg.primary,usage};
-     }catch(e){if(e.code==='FILTERED'||e.code==='REQUEST_REJECTED'||e.code==='STREAM_PARTIAL'||e.code==='STREAM_FILTERED')throw e; /* no provider body, prompt or secret is logged */}
+     }catch(e){if(e.code==='FILTERED'||e.code==='STREAM_PARTIAL'||e.code==='STREAM_FILTERED')addFailure('provider',requestReason(e.code),id);else if(e.code!=='REQUEST_REJECTED')addFailure('provider',e.name==='TimeoutError'||e.name==='AbortError'?'timeout':e.code==='PROVIDER_RESPONSE'?'invalid_response':'network_or_provider',id);if(e.code==='FILTERED'||e.code==='REQUEST_REJECTED'||e.code==='STREAM_PARTIAL'||e.code==='STREAM_FILTERED')throw e; /* no provider body, prompt or secret is logged */}
     }
     throw error('PROVIDERS_UNAVAILABLE',attempted?'Semua provider gagal atau timeout.':'Tidak ada kredensial provider tersedia.',503);
    }finally{active--}
-  }
- };
+  };
+ return service;
 }
