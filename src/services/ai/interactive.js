@@ -620,11 +620,11 @@ export function createInteractive({
         const helper = getSmart();
         if (!helper) return null;
         const guildId = message.guild.id;
-        const faq = await helper.faqFor?.(text);
+        const faq = await helper.faqFor?.(text, { message });
         if (faq) {
             const result = faq.varyWithAI && helper.faqResponse ? await helper.faqResponse(message, faq, true) : {content:faq.answer,usedAI:false};
             await deliver(message, cfg, 'reply', result.content.slice(0, REPLY_CHARS));
-            if (!result.usedAI) helper.usage?.saved?.({ guildId, how: 'faq' });
+            if (!result.usedAI && !faq.usedAI) helper.usage?.saved?.({ guildId, how: 'faq' });
             return true;
         }
         if (cacheable(message, text)) {
