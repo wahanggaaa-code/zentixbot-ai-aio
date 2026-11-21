@@ -811,6 +811,17 @@ export function createMessageStudio({
                 return { id: channel.id, name: String(channel.name || '').slice(0, 100), botUsable: Boolean(permissions?.has?.([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages])), webhookUsable: Boolean(permissions?.has?.([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ManageWebhooks])) };
             });
     }
+    // Preview names are separate from delivery targets: forum, voice, stage and
+    // cached public threads can be mentioned even though Studio cannot send to them.
+    // Private-thread membership cannot be inferred from ViewChannel alone.
+    function mentionChannels(guild) {
+        const me = guild.members?.me;
+        if (!me) return [];
+        const types = new Set([ChannelType.GuildText, ChannelType.GuildAnnouncement, ChannelType.GuildVoice, ChannelType.GuildStageVoice, ChannelType.GuildForum, ChannelType.GuildMedia, ChannelType.PublicThread, ChannelType.AnnouncementThread].filter(type => typeof type === 'number'));
+        return [...(guild.channels?.cache?.values?.() ?? [])]
+            .filter(channel => types.has(channel.type) && snowflake(channel.id) && typeof channel.name === 'string' && channel.name && channel.permissionsFor?.(me)?.has?.(PermissionFlagsBits.ViewChannel))
+            .map(channel => ({ id: channel.id, name: channel.name.slice(0, 100) }));
+    }
     function roles(guild) {
         const available = [...(guild.roles?.cache?.values?.() ?? [])]
             .filter(role => snowflake(role.id))
@@ -823,7 +834,7 @@ export function createMessageStudio({
     async function overview(guild) {
         ensureGuild(guild);
         const state = await readState(guild.id);
-        return { limits: MESSAGE_STUDIO_LIMITS, channels: channels(guild), ...roles(guild), templates: state.templates.map(safeSummary), messages: state.messages.map(safeSummary) };
+        return { limits: MESSAGE_STUDIO_LIMITS, channels: channels(guild), mentionChannels: mentionChannels(guild), ...roles(guild), templates: state.templates.map(safeSummary), messages: state.messages.map(safeSummary) };
     }
     async function asset(guild, id) { ensureGuild(guild); return readAsset(guild.id, id); }
     async function reply(interaction, content) {

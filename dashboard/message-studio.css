@@ -43,3 +43,10 @@
 .ms-markdown code{font-family:var(--mono)}
 .ms-color-control{position:relative}
 .ms-color-panel:not([hidden]){position:absolute;z-index:20;right:0;top:100%;width:min(320px,calc(100vw - 60px));max-height:70vh;overflow:auto;box-shadow:0 8px 24px #0005}
+
+/* Channel mentions in preview are display-only; the original ID stays in the document. */
+.ms-md-channel{color:#c9cdfb;background:rgba(88,101,242,.3);border-radius:3px;padding:0 2px;font-weight:500}
+
+/* Custom Discord emoji in text and button previews. */
+.ms-custom-emoji{display:inline-block;width:1.375em;height:1.375em;vertical-align:-.3em;object-fit:contain}
+.ms-md-spoiler:not(.revealed) .ms-custom-emoji{visibility:hidden}
