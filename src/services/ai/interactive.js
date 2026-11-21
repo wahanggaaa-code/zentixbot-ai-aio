@@ -40,6 +40,7 @@ export const DEFAULT_INTERACTIVE = Object.freeze({
     imagesEnabled: false,
     galleryVideoEnabled: false,
     galleryReactionEnabled: false,
+    galleryThreadEnabled: false,
     galleryChannelIds: Object.freeze([]),
     // Send members' display names to the provider so the bot can call people by name.
     useNames: true,
@@ -69,7 +70,7 @@ const ZONES = { WIB: 'Asia/Jakarta', WITA: 'Asia/Makassar', WIT: 'Asia/Jayapura'
 const SNOWFLAKE = /^\d{17,20}$/;
 const CLOCK = /^([01]\d|2[0-3]):[0-5]\d$/;
 const RANGES = { joinChance: [1, 100], joinCooldownSeconds: [10, 3600], idleMinutes: [10, 720], idleDailyMax: [1, 24], hourlyLimit: [1, 200], followUpSeconds: [30, 300] };
-const BOOLEANS = ['enabled', 'replyEnabled', 'replyAnywhere', 'joinEnabled', 'idleEnabled', 'imagesEnabled', 'galleryVideoEnabled', 'galleryReactionEnabled', 'useNames', 'etiquetteEnabled', 'nicknameEnabled', 'followUpEnabled', 'linkSummaryEnabled', 'newsSearchEnabled', 'recapEnabled'];
+const BOOLEANS = ['enabled', 'replyEnabled', 'replyAnywhere', 'joinEnabled', 'idleEnabled', 'imagesEnabled', 'galleryVideoEnabled', 'galleryReactionEnabled', 'galleryThreadEnabled', 'useNames', 'etiquetteEnabled', 'nicknameEnabled', 'followUpEnabled', 'linkSummaryEnabled', 'newsSearchEnabled', 'recapEnabled'];
 const NICKNAME = /^[\p{L}\p{N}][\p{L}\p{N} ._-]{0,22}[\p{L}\p{N}]$/u;
 /** Words that tie a question to the member who asks it, or to what was said just before: never served from the reply cache. */
 const NOT_REUSABLE = /(^|[^\p{L}])(aku|saya|gue|gua|gw|ane|aing|abdi|ku|i|me|my|mine|im|tadi|barusan|tersebut|sebelumnya|gitu|begitu|gini|begini|diatas|di atas)(?=$|[^\p{L}])|\p{L}{3,}ku(?=$|[^\p{L}])/iu;
@@ -477,14 +478,17 @@ export function createInteractive({
         const addressed = mentioned || named || followed;
         const hasImage = [...(message.attachments?.values?.() ?? [])].some((a) => String(a.contentType ?? '').startsWith('image/'));
 
+        const animation = findGalleryAnimation(message);
+        const galleryMedia = cfg.galleryChannelIds.includes(channelId) && ((cfg.imagesEnabled && hasImage) || (cfg.galleryVideoEnabled && animation));
+        // Thread mode keeps media posts in the gallery, even if they mention the bot.
+        if (cfg.galleryThreadEnabled && galleryMedia) return busy(channelId) >= QUEUE_PER_CHANNEL ? null : 'gallery';
         if (addressed && cfg.replyEnabled && (inChat || cfg.replyAnywhere)) {
             if (now() - (lastAnswer.get(message.author.id) ?? -Infinity) < USER_COOLDOWN_MS) return null;
             if (busy(channelId) >= QUEUE_PER_CHANNEL) return null;
             if (followed) { follow.left -= 1; follow.pending = message.id; }
             return 'reply';
         }
-        const animation = findGalleryAnimation(message);
-        if (cfg.galleryChannelIds.includes(channelId) && ((cfg.imagesEnabled && hasImage) || (cfg.galleryVideoEnabled && animation))) {
+        if (galleryMedia) {
             return busy(channelId) >= QUEUE_PER_CHANNEL ? null : 'gallery';
         }
         if (inChat && cfg.joinEnabled && text && !addressed) {
@@ -502,7 +506,26 @@ export function createInteractive({
     async function deliver(message, cfg, kind, content) {
         const channel = message.channel;
         const allowedMentions = { parse: [], repliedUser: kind === 'reply' };
-        if (canWrite(channel, true)) await message.reply({ content, allowedMentions, failIfNotExists: false });
+        if (kind === 'gallery' && cfg.galleryThreadEnabled) {
+            // A message thread shares its starter's ID; never send to an unrelated thread.
+            const fetchThread = async () => channel.threads?.fetch?.(message.id);
+            let thread = message.thread || null;
+            if (!thread && message.hasThread) thread = await fetchThread();
+            if (!thread) {
+                const permissions = channel.permissionsFor?.(channel.guild?.members?.me);
+                if (!permissions?.has(PermissionFlagsBits.CreatePublicThreads)) throw new Error('izin Create Public Threads tidak tersedia');
+                try { thread = await message.startThread({ name: 'Komentar galeri', reason: 'Komentar AI untuk kiriman galeri' }); }
+                catch (error) {
+                    // Another member may have created a thread after the message event arrived.
+                    if (error?.code !== 160004) throw error;
+                    thread = await fetchThread();
+                }
+            }
+            if (!thread || thread.id !== message.id || thread.parentId !== channel.id || thread.type !== ChannelType.PublicThread) throw new Error('thread kiriman tidak tersedia');
+            const permissions = thread.permissionsFor?.(channel.guild?.members?.me);
+            if (!permissions?.has([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessagesInThreads])) throw new Error('izin mengirim di thread tidak tersedia');
+            await thread.send({ content, allowedMentions: { parse: [], repliedUser: false } });
+        } else if (canWrite(channel, true)) await message.reply({ content, allowedMentions, failIfNotExists: false });
         else await channel.send({ content, allowedMentions: { parse: [] } });
         countSent(channel.id);
         if (lastAnswer.size > 5000) lastAnswer.clear();
@@ -618,7 +641,18 @@ export function createInteractive({
     async function answer(message, cfg, kind, who) {
         const channel = message.channel;
         const ai = getFoundation();
-        if (!ai || !underHourlyLimit(channel.id, cfg) || !canWrite(channel)) return false;
+        if (!ai || !underHourlyLimit(channel.id, cfg)) return false;
+        if (kind === 'gallery' && cfg.galleryThreadEnabled) {
+            const permissions = channel.permissionsFor?.(channel.guild?.members?.me);
+            if (!permissions?.has([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.SendMessagesInThreads])) {
+                warnOnce('GALLERY_THREAD_PERMISSION', 'gallery thread needs View Channel, Read Message History and Send Messages in Threads');
+                return false;
+            }
+            if (!message.thread && !message.hasThread && !permissions.has(PermissionFlagsBits.CreatePublicThreads)) {
+                warnOnce('GALLERY_THREAD_PERMISSION', 'gallery thread needs Create Public Threads');
+                return false;
+            }
+        } else if (!canWrite(channel)) return false;
 
         let mediaMessage=message;
         let animation=cfg.galleryVideoEnabled && (kind==='gallery'||kind==='reply') ? findGalleryAnimation(message) : null;
@@ -680,7 +714,14 @@ export function createInteractive({
         // An answer that names the member who asked is not kept for the next one.
         const namesAsker = String(who ?? '').trim().length >= 3 && content.toLowerCase().includes(String(who).trim().toLowerCase());
         const reusable = kind === 'reply' && !wantsImage && !namesAsker && cacheable(message, own.text);
-        await deliver(message, cfg, kind, content);
+        try { await deliver(message, cfg, kind, content); }
+        catch (error) {
+            if (kind === 'gallery' && cfg.galleryThreadEnabled) {
+                warnOnce('GALLERY_THREAD', `could not post gallery thread comment (${error?.message ?? error}); no channel fallback`);
+                return false;
+            }
+            throw error;
+        }
         // A failed reaction (e.g. missing Add Reactions permission) never cancels the comment.
         if (gallery && typeof message.react === 'function') {
             try { await message.react(gallery.emoji); }
