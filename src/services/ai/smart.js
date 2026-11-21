@@ -19,6 +19,7 @@ import { createMenus } from './menus.js';
 import { createDigest } from './digest.js';
 import { createDailyFacts } from './dailyFacts.js';
 import { createAutoTranslate } from './autoTranslate.js';
+import { createSupport } from './support.js';
 import { createPersonalLanguageStore } from './personalLanguage.js';
 import { decorateGreeting } from './greetings.js';
 import { logger as defaultLogger } from '../../utils/logger.js';
@@ -36,6 +37,7 @@ export function createSmart({
     interactiveSettings = async () => client.aiInteractive?.settings?.() ?? null,
     now = () => Date.now(),
     random = Math.random,
+    prefix = async () => null,
     logger = defaultLogger,
 } = {}) {
     let cached = { at: -Infinity, value: null };
@@ -182,6 +184,12 @@ export function createSmart({
      * For messages the interactive AI left alone: the FAQ answers by itself, or the message is translated.
      * Resolves to 'faq', 'translate' or null. Never throws.
      */
+    const support = createSupport({client,kv,foundation,now,prefix,faqAnswer:async message=>{
+        if (!(await faqWouldAnswer(message))) return false;
+        await answerFaq(message);
+        return true; // suppress a duplicate open-ended answer during the FAQ cooldown
+    }});
+
     async function handleMessage(message) {
         try {
             if (!message?.guild || message.guild.id !== client.homeGuildId || !client.user) return null;
@@ -197,7 +205,7 @@ export function createSmart({
 
     return {
         store, settings, saveSection, importFaq, usage, recap, menus, digest, facts, translate,
-        faqFor, faqResponse, faqWouldAnswer, handleMessage,
+        faqFor, faqResponse, faqWouldAnswer, handleMessage, support,
         /** Reply cache for the interactive AI: null when the cache is off or has nothing. */
         async cachedReply(text) {
             const cfg = (await settings()).cache;

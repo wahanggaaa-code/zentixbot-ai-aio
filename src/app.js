@@ -78,7 +78,9 @@ class ZentixBot extends Client {
       },
     });
     // FAQ, reply cache, usage report, message menu, morning digest, greeting extras, auto-translate.
-    this.aiSmart = createSmart({ client: this });
+    this.aiSmart = createSmart({ client: this, prefix: async (message) => {
+      try { return (await getGuildConfig(this, message.guild.id))?.prefix || getCommandPrefix(); } catch { return getCommandPrefix(); }
+    } });
     this.aiUsage = this.aiSmart.usage;
     // Message-menu commands registered next to the slash commands: only the ones switched on.
     this.messageMenus = () => this.aiSmart.menus.payloads();
