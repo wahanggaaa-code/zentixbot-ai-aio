@@ -140,7 +140,7 @@ export function createAIApi(client,{auth,csrf,env=process.env,foundation=client.
    res.json({enabled:settings.usage.enabled,limits:{perUserDaily:limits.perUserDaily,guildDaily:limits.guildDaily},...report,members});
   }catch(e){fail(res,e)}
  });
- router.get('/smart/facts/status',auth,owner,async(req,res)=>{try{res.json({status:await smart.facts.lastStatus(req.guild)})}catch(e){fail(res,e)}});
+ router.get('/smart/facts/status',auth,owner,async(req,res)=>{try{res.json({status:await smart.facts.lastStatus(req.guild),preparation:await smart.facts.preparation(req.guild)})}catch(e){fail(res,e)}});
  router.post('/smart/facts/test',auth,owner,csrf,async(req,res)=>{
   if(!req.body||Object.keys(req.body).length!==1||req.body.confirmed!==true)return res.status(400).json({error:'Konfirmasi pengiriman diperlukan.'});
   try{res.json({ok:true,...await smart.facts.sendNow(req.guild,(await smart.settings({strict:true})).facts)})}catch(e){fail(res,e)}

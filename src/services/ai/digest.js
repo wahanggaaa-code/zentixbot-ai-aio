@@ -2,12 +2,17 @@
 // News needs a web-search key (Tavily, Parallel or Exa); without results no edition is sent.
 // One AI request per edition, charged to the bot's own daily quota.
 import { PermissionFlagsBits } from 'discord.js';
+import crypto from 'node:crypto';
 import { cleanReply } from './interactive.js';
 import { ZONES } from './smartSettings.js';
 import { logger as defaultLogger } from '../../utils/logger.js';
 
 /** A digest that was missed at its minute (bot restarting) is still sent within this time. */
 const LATE_MINUTES = 60;
+const PREP_AHEAD_MS = 15 * 60_000, PREP_TTL = 2 * 24 * 60 * 60;
+const fingerprint = cfg => crypto.createHash('sha256').update(JSON.stringify({enabled:cfg.enabled,channelIds:cfg.channelIds,times:cfg.times,zone:cfg.zone,topics:cfg.topics})).digest('hex').slice(0,24);
+const prepKey = (guild,cfg,day,time) => `ai:digest:prep:${guild.id}:${day}:${time}:${fingerprint(cfg)}`;
+const validEdition = edition => edition?.news === true && typeof edition.content === 'string' && edition.content.length > 0 && edition.content.length <= 2000;
 const err = (message, status = 400, code = 'DIGEST') => Object.assign(new Error(message), { status, code });
 
 function localParts(ms, zone) {
@@ -30,10 +35,10 @@ export function createDigest({ client, settings, kv, foundation = () => client.a
     const get = (value) => (typeof value === 'function' ? value() : value);
 
     /** Writes today's text. Resolves to { content, news, note }. */
-    async function compose(cfg, guild) {
+    async function compose(cfg, guild, editionTime = now()) {
         const ai = get(foundation);
         if (!ai || !client.user) throw err('AI tidak tersedia.', 503);
-        const local = localParts(now(), cfg.zone);
+        const local = localParts(editionTime, cfg.zone);
         const topics = cfg.topics.trim();
         let sources = [], note = null;
         {
@@ -79,6 +84,26 @@ export function createDigest({ client, settings, kv, foundation = () => client.a
         return { sent, failed };
     }
 
+    function upcoming(cfg, clock) {
+        return cfg.times.map(time => ({ time, day: digestDue({ ...cfg, time }, clock + PREP_AHEAD_MS) }))
+            .filter(x => x.day && !digestDue({ ...cfg, time: x.time }, clock));
+    }
+
+    // Persist one attempt per configuration and slot. If it fails or is still running
+    // at delivery time, the normal on-demand path is used without waiting for it.
+    async function prepare(guild, cfg, day, time, clock) {
+        const key = prepKey(guild, cfg, day, time), token = crypto.randomBytes(16).toString('hex');
+        const claimed = await kv.update(key, current => current ? undefined : { state: 'working', token }, PREP_TTL);
+        if (!claimed) return;
+        let edition = null;
+        try { edition = await compose(cfg, guild, clock + PREP_AHEAD_MS); }
+        catch { logger.warn(`AI digest: persiapan slot ${time} gagal; akan dicoba pada jadwal.`); }
+        await kv.update(key, current => {
+            if (current?.state !== 'working' || current.token !== token) return undefined;
+            return validEdition(edition) ? { state: 'ready', edition } : { state: 'failed' };
+        }, PREP_TTL);
+    }
+
     return {
         /** Called once a minute. Resolves to the number of channels written to, or null when nothing was due. */
         async run() {
@@ -98,13 +123,22 @@ export function createDigest({ client, settings, kv, foundation = () => client.a
                     });
                     if (!claimed) continue;
                     try {
-                        const { content } = await compose(cfg, guild);
-                        sent += (await post(guild, cfg, content)).sent;
+                        const prepared = await kv.get(prepKey(guild, cfg, day, time));
+                        const edition = prepared?.state === 'ready' && validEdition(prepared.edition)
+                            ? prepared.edition : await compose(cfg, guild);
+                        // Configuration may have changed while a request was in flight.
+                        const latest = (await settings())?.digest;
+                        if (!latest?.enabled || fingerprint(latest) !== fingerprint(cfg)) continue;
+                        sent += (await post(guild, cfg, edition.content)).sent;
                         success = true;
                     } catch (error) {
                         logger.warn(`AI digest: slot ${time} skipped (${error?.status ? error.message : 'unexpected error'})`);
                     }
                 }
+                await Promise.all(upcoming(cfg, clock).map(async ({ time, day }) => {
+                    try { await prepare(guild, cfg, day, time, clock); }
+                    catch { logger.warn('AI digest: persiapan tidak dapat disimpan.'); }
+                }));
                 return success ? sent : null;
             } catch (error) {
                 logger.warn(`AI digest: skipped (${error?.status ? error.message : 'unexpected error'})`);
