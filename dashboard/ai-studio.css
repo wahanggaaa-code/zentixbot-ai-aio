@@ -120,3 +120,11 @@ main :is(.discord-demo,.main-card,.ai-index-intro,.ai-quiz,.music-player) :is(p,
  main .f-index-card h2{font-size:16px;line-height:1.25;letter-spacing:-.025em}
  main .intro-copy,main .right-desc,main .f-index-card p,main .f-index-head p{font-size:11px;line-height:1.5}
 }
+/* Access editors belong to each preview row, including on narrow screens. */
+.b-group li .b-access{grid-column:2;min-width:0}
+.b-access{margin:8px 0;font:11px/1.5 var(--mono)}
+.b-access select{max-width:100%;font:inherit;padding:5px;background:transparent;color:inherit;border:1px solid var(--line)}
+.b-access .b-perms{margin:8px 0;padding:8px;min-width:0}
+.b-access .b-perms label{display:inline-flex;align-items:center;margin:3px 8px 3px 0;overflow-wrap:anywhere}
+
+.b-group li .b-structure{grid-column:2}.b-structure{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0;min-width:0}.b-structure input,.b-structure select,.b-structure button,.b-group>button,.b-access-summary{font:11px/1.5 var(--mono);color:inherit}.b-structure input{min-width:0;max-width:100%;width:180px}.b-structure input,.b-structure select,.b-structure button,.b-group>button{border:1px solid var(--line);background:transparent;padding:5px}.b-access-summary p{margin:6px 0;overflow-wrap:anywhere}

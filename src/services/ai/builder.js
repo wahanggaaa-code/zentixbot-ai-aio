@@ -11,6 +11,7 @@ import crypto from 'node:crypto';
 import { ChannelType, PermissionFlagsBits } from 'discord.js';
 import { createBuilderHistory, MAX_BUILDS } from './builderHistory.js';
 import { getTheme, pickTheme } from './builderThemes.js';
+import { createKV } from './kv.js';
 
 const err = (message, status = 400, extra = {}) => Object.assign(new Error(message), { status, ...extra });
 
@@ -58,11 +59,31 @@ function shaped(value, required, optional = []) {
     return required.every((key) => Object.hasOwn(value, key)) && Object.keys(value).every((key) => required.includes(key) || optional.includes(key));
 }
 
+// Raw permission bits are never accepted. Existing roles are selected explicitly by ID and rechecked against Discord.
+function cleanAccess(access, where) {
+    if (!shaped(access, ['mode', 'roles'], ['existingRoles']) || !['read-only', 'private', 'private-read-only'].includes(access.mode) || !Array.isArray(access.roles) || access.roles.length > PLAN_LIMITS.roles || (access.existingRoles !== undefined && !Array.isArray(access.existingRoles))) throw err(`${where}: access harus berisi mode dan daftar role.`);
+    const roles = access.roles.map(label), existingRoles = access.existingRoles ?? [];
+    if (roles.some(x => !x) || new Set(roles.map(x => x.toLowerCase())).size !== roles.length || existingRoles.length > 25 || new Set(existingRoles).size !== existingRoles.length || existingRoles.some(id=>typeof id !== 'string' || !/^\d{17,20}$/.test(id)) || roles.length + existingRoles.length === 0) throw err(`${where}: daftar role akses tidak valid atau berulang.`);
+    return { mode: access.mode, roles, ...(existingRoles.length ? {existingRoles:[...existingRoles]} : {}) };
+}
+const WRITING = [PermissionFlagsBits.SendMessages, PermissionFlagsBits.SendMessagesInThreads, PermissionFlagsBits.CreatePublicThreads, PermissionFlagsBits.CreatePrivateThreads];
+function accessOverwrites(access, guild, botId, roleIds) {
+    const restricted = access.mode === 'private' || access.mode === 'private-read-only';
+    const readOnly = access.mode === 'read-only' || access.mode === 'private-read-only';
+    const denied = [...(restricted ? [PermissionFlagsBits.ViewChannel] : []), ...(readOnly ? WRITING : [])];
+    const allowed = [...(restricted ? [PermissionFlagsBits.ViewChannel] : []), ...(readOnly ? WRITING : [])];
+    return [
+        { id: guild.id, deny: denied },
+        ...access.roles.map(name => ({ id: roleIds.get(name.toLowerCase()), allow: allowed })),
+        ...(access.existingRoles || []).map(id => ({id, allow: allowed})),
+        { id: botId, type: 1, allow: allowed },
+    ];
+}
+
 /**
  * Checks a plan and returns a clean copy; throws (status 400) with the place of the first problem.
  *
- * Shape: {categories:[{name, channels:[{name, type, topic?}]}], roles:[{name, color?}]}. A role may also be
- * given as a bare string. Any other key is refused: a plan cannot carry permissions, IDs or deletions.
+ * Access uses fixed presets and explicitly selected role IDs. Raw permission bits and deletions are not accepted.
  */
 export function validatePlan(value) {
     if (!shaped(value, ['categories', 'roles']) || !Array.isArray(value.categories) || !Array.isArray(value.roles)) {
@@ -75,7 +96,7 @@ export function validatePlan(value) {
     let total = 0;
     const categories = value.categories.map((category, c) => {
         const at = `Kategori ke-${c + 1}`;
-        if (!shaped(category, ['name', 'channels']) || !Array.isArray(category.channels)) throw err(`${at}: harus berisi "name" dan "channels" saja.`);
+        if (!shaped(category, ['name', 'channels'], ['access']) || !Array.isArray(category.channels)) throw err(`${at}: harus berisi "name" dan "channels" saja.`);
         const name = label(category.name);
         if (!name) throw err(`${at}: nama tidak valid.`);
         if (categoryNames.has(name.toLowerCase())) throw err(`${at}: nama kategori dipakai dua kali.`);
@@ -83,7 +104,7 @@ export function validatePlan(value) {
         if (category.channels.length > PLAN_LIMITS.channelsPerCategory) throw err(`${at}: paling banyak ${PLAN_LIMITS.channelsPerCategory} channel per kategori.`);
         const channels = category.channels.map((channel, i) => {
             const where = `Channel ke-${i + 1} di kategori ke-${c + 1}`;
-            if (!shaped(channel, ['name', 'type'], ['topic'])) throw err(`${where}: harus berisi "name" dan "type", boleh ditambah "topic".`);
+            if (!shaped(channel, ['name', 'type'], ['topic', 'access'])) throw err(`${where}: harus berisi "name" dan "type", boleh ditambah "topic".`);
             const type = Object.hasOwn(TYPES, channel.type) ? TYPES[channel.type] : null;
             if (!type) throw err(`${where}: "type" harus salah satu dari ${CHANNEL_TYPES.join(', ')}.`);
             const channelName = type.slug ? slug(channel.name) : label(channel.name);
@@ -101,9 +122,10 @@ export function validatePlan(value) {
                     clean.topic = topic;
                 }
             }
+            if (channel.access !== undefined) clean.access = cleanAccess(channel.access, where);
             return clean;
         });
-        return { name, channels };
+        return { name, channels, ...(category.access !== undefined ? { access: cleanAccess(category.access, at) } : {}) };
     });
     if (total < 1 || total > PLAN_LIMITS.channels) throw err(`Rancangan harus memiliki 1–${PLAN_LIMITS.channels} channel.`);
 
@@ -119,6 +141,13 @@ export function validatePlan(value) {
         if (typeof given.color !== 'string' || !/^#[0-9a-f]{6}$/i.test(given.color)) throw err(`${at}: "color" harus berbentuk #RRGGBB.`);
         return { name, color: given.color.toUpperCase() };
     });
+    for (const category of categories) {
+        if (['private', 'private-read-only'].includes(category.access?.mode) && category.channels.some(c => c.access?.mode === 'read-only')) throw err(`Kategori ${category.name} privat: channel baca saja harus memakai private-read-only agar tidak membuka akses lihat.`);
+    }
+    for (const category of categories) for (const access of [category.access, ...category.channels.map(c => c.access)].filter(Boolean)) {
+        for (const name of access.roles) if (!roleNames.has(name.toLowerCase())) throw err(`Role akses ${name} tidak ada di rancangan.`);
+        access.roles = access.roles.map(name => roles.find(r => r.name.toLowerCase() === name.toLowerCase()).name);
+    }
     return { categories, roles };
 }
 
@@ -167,7 +196,8 @@ function buildPrompt(description, size, community) {
         `- Semua nama paling banyak ${PLAN_LIMITS.nameLength} karakter, tanpa @ # < > : dan tidak boleh ada dua channel bernama sama.`,
         size.topics ? `- "topic" opsional, hanya untuk channel selain voice dan stage, satu kalimat pendek tanpa tautan.` : '- Jangan sertakan "topic".',
         '- "color" opsional, berbentuk #RRGGBB.',
-        '- Jangan sertakan izin, ID, penghapusan atau kunci lain.',
+        '- Untuk izin channel/kategori opsional tambahkan contoh "access":{"mode":"read-only","roles":["Admin"]}, dengan mode yang boleh hanya read-only, private atau private-read-only. read-only: everyone tidak boleh mengirim pesan atau membuat thread, role tersebut boleh; private: everyone tidak bisa melihat, role tersebut boleh melihat. private-read-only: gabungkan keduanya. Dalam kategori privat gunakan private-read-only, bukan read-only, untuk channel baca saja. Jika tidak ada access, channel mengikuti kategori atau pengaturan server. Role harus ada di roles, tidak boleh kosong. Jangan gunakan access untuk sekadar channel umum.',
+        '- Jangan sertakan izin mentah, ID, penghapusan atau kunci lain.',
         'Deskripsi:',
         description,
     ].join('\n');
@@ -187,7 +217,7 @@ const shortLabel = (value, max = 60) => {
 };
 const UNKNOWN_CHANNEL = 10003, UNKNOWN_ROLE = 10011;
 
-export function createBuilder({ client, foundation = client.aiFoundation, now = Date.now, history = createBuilderHistory(client) }) {
+export function createBuilder({ client, foundation = client.aiFoundation, now = Date.now, history = createBuilderHistory(client), drafts = createKV(client) }) {
     const plans = new Map();   // plan id → {guildId, userId, plan, expires, source, label, edited}
     const tickets = new Map(); // undo review id → {guildId, userId, buildId, count, expires}
     const activeGuilds = new Set();
@@ -261,6 +291,45 @@ export function createBuilder({ client, foundation = client.aiFoundation, now = 
     }
     const deletable = (items) => items.filter((item) => item.state === 'delete').length;
 
+    // Identical checks are run for preview and immediately before applying. They inspect cache state; Discord remains authoritative.
+    function checkPlan(guild, plan, freshRoles) {
+            const me = guild.members.me;
+            if (!me?.permissions?.has(PermissionFlagsBits.ManageChannels) || (plan.roles.length && !me.permissions.has(PermissionFlagsBits.ManageRoles))) {
+                throw err('Bot memerlukan Manage Channels dan Manage Roles sesuai rencana.', 403);
+            }
+            const accesses = plan.categories.flatMap(c => [c.access, ...c.channels.map(ch => ch.access)]).filter(Boolean);
+            if (accesses.length) {
+                if (!me?.permissions?.has(PermissionFlagsBits.ManageRoles) || !client.user?.id) throw err('Izin channel memerlukan Manage Roles dan identitas bot.', 403);
+                const needed = [...(accesses.some(a => a.mode === 'private' || a.mode === 'private-read-only') ? [PermissionFlagsBits.ViewChannel] : []), ...(accesses.some(a => a.mode === 'read-only' || a.mode === 'private-read-only') ? WRITING : [])];
+                if (needed.some(bit => !me.permissions.has(bit))) throw err('Bot harus memiliki izin dasar yang akan diatur pada channel sebelum menerapkan.', 403);
+            }
+            for (const access of accesses) for (const roleId of access.existingRoles || []) {
+                const role = freshRoles?.get(roleId);
+                if (!role || role.id === guild.id || role.managed) throw err('Role yang dipilih tidak tersedia, adalah @everyone atau dikelola integrasi. Pilih ulang.',409, {code:'PLAN_NAME_CONFLICT'});
+            }
+            const planned = planCounts(plan);
+            const needsCommunity = plan.categories.flatMap((category) => category.channels).filter((channel) => TYPES[channel.type].community);
+            if (needsCommunity.length && !guild.features?.includes?.('COMMUNITY')) {
+                throw err(`Channel bertipe forum, news dan stage memerlukan fitur Komunitas Discord, yang belum aktif di server ini. Ubah tipe ${needsCommunity.length} channel itu menjadi text atau voice, atau aktifkan Komunitas di Pengaturan Server.`, 409);
+            }
+            const existing = [...guild.channels.cache.values()];
+            const existingCategories = existing.filter((channel) => channel.type === ChannelType.GuildCategory).length;
+            if (existingCategories + planned.categories > 50 || existing.length + planned.categories + planned.channels > 500 || guild.roles.cache.size + planned.roles > 250) {
+                throw err('Rencana melewati batas server.', 409);
+            }
+            const channelNames = new Set(existing.map((channel) => String(channel.name || '').toLowerCase()));
+            const roleNames = new Set([...guild.roles.cache.values()].map((role) => String(role.name || '').toLowerCase()));
+            const conflicts = [];
+            for (const category of plan.categories) {
+                if (channelNames.has(category.name.toLowerCase())) conflicts.push(`kategori: ${category.name}`);
+                for (const channel of category.channels) if (channelNames.has(channel.name.toLowerCase())) conflicts.push(`channel: ${channel.name}`);
+            }
+            for (const role of plan.roles) if (roleNames.has(role.name.toLowerCase())) conflicts.push(`role: ${role.name}`);
+            if (conflicts.length) throw err(`Nama sudah ada di server: ${conflicts.slice(0, 10).join(', ')}${conflicts.length > 10 ? ' dan lainnya' : ''}. Sunting nama lalu validasi lagi.`, 409, {code:'PLAN_NAME_CONFLICT'});
+
+            return accesses;
+    }
+
     return {
         /** Drafts a plan with the AI. When the AI gives no usable plan, the closest theme is used and `note` says so. */
         async draft({ guildId, userId, description, consent }) {
@@ -278,7 +347,9 @@ export function createBuilder({ client, foundation = client.aiFoundation, now = 
                 const output = await foundation.generate({ guildId, userId, consent: true,kind:'builder', prompt: buildPrompt(description, planSizeFor(maxOutputTokens), community) });
                 try {
                     plan = validatePlan(parsePlanText(output.text));
+                    if (plan.categories.some(c => [c.access, ...c.channels.map(ch=>ch.access)].some(a=>a?.existingRoles?.length))) throw err('AI tidak boleh memilih role yang sudah ada.');
                 } catch {
+                    plan = null;
                     reason = 'AI tidak menghasilkan rancangan yang valid (jawabannya terpotong atau bentuknya salah).';
                 }
             } catch (error) {
@@ -321,6 +392,42 @@ export function createBuilder({ client, foundation = client.aiFoundation, now = 
             return { plan: updated, counts: planCounts(updated), expiresInSeconds: secondsLeft(entry) };
         },
 
+        async preflight({guild,userId,id}) {
+            const entry=owned(id,guild.id,userId), plan=entry.plan;
+            let freshRoles=null;
+            if (plan.categories.some(c=>[c.access,...c.channels.map(ch=>ch.access)].some(a=>a?.existingRoles?.length))) {
+                try {freshRoles=await guild.roles.fetch();} catch {throw err('Daftar role Discord tidak dapat dibaca.',503)}
+            }
+            if (owned(id,guild.id,userId)!==entry || entry.plan!==plan) throw err('Rancangan berubah. Tinjau lagi.',409);
+            checkPlan(guild,plan,freshRoles);
+            return {ready:true, warning:'Pemeriksaan memakai keadaan saat ini dan tidak menjamin Discord menerima penerapan; akan diperiksa lagi saat diterapkan.'};
+        },
+
+        /** A saved, validated snapshot is separate from the short-lived one-shot apply ticket. */
+        async saveDraft({guildId,userId,id}) {
+            const entry=owned(id,guildId,userId);
+            await drafts.set(`ai:builder:draft:${guildId}:${userId}`, {plan:entry.plan, source:entry.source, label:entry.label, theme:entry.theme, note:entry.note});
+            return {saved:true};
+        },
+        async deleteDraft({guildId,userId}) {
+            if (!home(guildId) || typeof userId !== 'string' || !/^\d{17,20}$/.test(userId)) throw err('Server atau pengguna tidak valid.',403);
+            await drafts.set(`ai:builder:draft:${guildId}:${userId}`, null);
+            return {deleted:true};
+        },
+        async restoreDraft({guildId,userId}) {
+            if (!home(guildId) || typeof userId !== 'string' || !/^\d{17,20}$/.test(userId)) throw err('Server atau pengguna tidak valid.',403);
+            const saved=await drafts.get(`ai:builder:draft:${guildId}:${userId}`);
+            if (!saved) throw err('Belum ada draft tersimpan.',404);
+            const plan=validatePlan(saved.plan);
+            const source=['ai','theme','fallback'].includes(saved.source)?saved.source:'theme';
+            return keep({guildId,userId,plan,source,label:shortLabel(saved.label||'Draft tersimpan'),theme:saved.theme||null,note:'Draft tersimpan dimuat kembali. Tinjau dan periksa sebelum diterapkan.'});
+        },
+        async listExistingRoles({guild}) {
+            if (!home(guild.id)) throw err('Server tidak valid.',403);
+            let roles;try {roles=await guild.roles.fetch();} catch {throw err('Daftar role Discord tidak dapat dibaca.',503)}
+            return [...roles.values()].filter(r=>r && r.id !== guild.id && !r.managed).map(r=>({id:r.id,name:String(r.name||'Role').slice(0,100)}));
+        },
+
         /** Drops a waiting plan. */
         async cancel({ guildId, userId, id }) {
             owned(id, guildId, userId);
@@ -334,33 +441,18 @@ export function createBuilder({ client, foundation = client.aiFoundation, now = 
             if (confirmed !== true) throw err('Konfirmasi penerapan diperlukan.');
             // Without a readable history the result could not be recorded, and so not be taken down again.
             try { await history.read(guild.id); } catch { throw err('Riwayat pembangunan tidak dapat dibaca, jadi penerapan dibatalkan. Coba lagi nanti.', 503); }
+            let freshRoles = null;
+            const candidate = owned(id, guild.id, userId);
+            const candidatePlan = candidate.plan;
+            if (candidatePlan.categories.some(c=>[c.access,...c.channels.map(ch=>ch.access)].some(a=>a?.existingRoles?.length))) {
+                try { freshRoles = await guild.roles.fetch(); } catch { throw err('Daftar role Discord tidak dapat dibaca. Coba lagi.',503); }
+            }
             // No await from here until the plan is consumed: a second request for the same plan finds it gone.
             const entry = owned(id, guild.id, userId);
             if (activeGuilds.has(guild.id)) throw err('Penerapan atau pembongkaran lain masih berjalan.', 409);
             const plan = entry.plan;
-            const me = guild.members.me;
-            if (!me?.permissions?.has(PermissionFlagsBits.ManageChannels) || (plan.roles.length && !me.permissions.has(PermissionFlagsBits.ManageRoles))) {
-                throw err('Bot memerlukan Manage Channels dan Manage Roles sesuai rencana.', 403);
-            }
-            const planned = planCounts(plan);
-            const needsCommunity = plan.categories.flatMap((category) => category.channels).filter((channel) => TYPES[channel.type].community);
-            if (needsCommunity.length && !guild.features?.includes?.('COMMUNITY')) {
-                throw err(`Channel bertipe forum, news dan stage memerlukan fitur Komunitas Discord, yang belum aktif di server ini. Ubah tipe ${needsCommunity.length} channel itu menjadi text atau voice, atau aktifkan Komunitas di Pengaturan Server.`, 409);
-            }
-            const existing = [...guild.channels.cache.values()];
-            const existingCategories = existing.filter((channel) => channel.type === ChannelType.GuildCategory).length;
-            if (existingCategories + planned.categories > 50 || existing.length + planned.categories + planned.channels > 500 || guild.roles.cache.size + planned.roles > 250) {
-                throw err('Rencana melewati batas server.', 409);
-            }
-            const channelNames = new Set(existing.map((channel) => String(channel.name || '').toLowerCase()));
-            const roleNames = new Set([...guild.roles.cache.values()].map((role) => String(role.name || '').toLowerCase()));
-            const conflicts = [];
-            for (const category of plan.categories) {
-                if (channelNames.has(category.name.toLowerCase())) conflicts.push(`kategori: ${category.name}`);
-                for (const channel of category.channels) if (channelNames.has(channel.name.toLowerCase())) conflicts.push(`channel: ${channel.name}`);
-            }
-            for (const role of plan.roles) if (roleNames.has(role.name.toLowerCase())) conflicts.push(`role: ${role.name}`);
-            if (conflicts.length) throw err(`Nama sudah ada di server: ${conflicts.slice(0, 10).join(', ')}${conflicts.length > 10 ? ' dan lainnya' : ''}. Sunting nama lalu validasi lagi.`, 409, {code:'PLAN_NAME_CONFLICT'});
+            if (entry !== candidate || entry.plan !== candidatePlan) throw err('Rancangan berubah saat diperiksa. Tinjau lagi.',409);
+            const accesses = checkPlan(guild, plan, freshRoles);
 
             // Consumed before the first side effect: no repeat even if Discord later reports an error.
             plans.delete(id);
@@ -370,24 +462,34 @@ export function createBuilder({ client, foundation = client.aiFoundation, now = 
             let failed = false;
             try {
                 try {
+                    const roleIds = new Map();
+                    const createRoles = async () => {
+                        for (const role of plan.roles) {
+                            const result = await guild.roles.create({
+                                name: role.name, permissions: 0n, mentionable: false, hoist: false,
+                                ...(role.color ? { colors: { primaryColor: role.color } } : {}), reason,
+                            });
+                            created.push({ type: 'role', id: result.id, name: role.name });
+                            roleIds.set(role.name.toLowerCase(), result.id);
+                        }
+                    };
+                    // Restricted channels are never created until their planned staff roles exist.
+                    if (accesses.length) await createRoles();
                     for (const category of plan.categories) {
-                        const parent = await guild.channels.create({ name: category.name, type: ChannelType.GuildCategory, reason });
+                        const parentAccess = category.access ? accessOverwrites(category.access, guild, client.user.id, roleIds) : null;
+                        const parent = await guild.channels.create({ name: category.name, type: ChannelType.GuildCategory, ...(parentAccess ? { permissionOverwrites: parentAccess } : {}), reason });
                         created.push({ type: 'category', id: parent.id, name: category.name });
                         for (const channel of category.channels) {
+                            const overrides = channel.access ? accessOverwrites(channel.access, guild, client.user.id, roleIds) : parentAccess;
                             const result = await guild.channels.create({
                                 name: channel.name, type: TYPES[channel.type].discord, parent: parent.id,
+                                ...(overrides ? { permissionOverwrites: overrides } : {}),
                                 ...(channel.topic ? { topic: channel.topic } : {}), reason,
                             });
                             created.push({ type: channel.type, id: result.id, name: channel.name });
                         }
                     }
-                    for (const role of plan.roles) {
-                        const result = await guild.roles.create({
-                            name: role.name, permissions: 0n, mentionable: false, hoist: false,
-                            ...(role.color ? { colors: { primaryColor: role.color } } : {}), reason,
-                        });
-                        created.push({ type: 'role', id: result.id, name: role.name });
-                    }
+                    if (!accesses.length) await createRoles();
                 } catch {
                     failed = true;
                 }
