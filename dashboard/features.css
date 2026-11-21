@@ -94,3 +94,28 @@ fieldset.f-field{border:0;margin:0;padding:16px 0;min-width:0}
 
 /* Keep detail pages as close to the top as dashboard index pages on phones. */
 @media(max-width:650px){.f-detail-head{padding-top:20px}}
+
+/* Local Lucide category icons: masks follow the dashboard text color. */
+.zx-category-icon{display:block;width:22px;height:22px;background-color:currentColor;mask:var(--zx-icon) center / contain no-repeat;-webkit-mask:var(--zx-icon) center / contain no-repeat}.f-big-icon .zx-category-icon{width:34px;height:34px}
+.zx-icon-audio-lines{--zx-icon:url("icons/lucide/audio-lines.svg")}
+.zx-icon-badge-check{--zx-icon:url("icons/lucide/badge-check.svg")}
+.zx-icon-blocks{--zx-icon:url("icons/lucide/blocks.svg")}
+.zx-icon-book-open{--zx-icon:url("icons/lucide/book-open.svg")}
+.zx-icon-bot-message-square{--zx-icon:url("icons/lucide/bot-message-square.svg")}
+.zx-icon-cake{--zx-icon:url("icons/lucide/cake.svg")}
+.zx-icon-chart-column{--zx-icon:url("icons/lucide/chart-column.svg")}
+.zx-icon-chart-no-axes-combined{--zx-icon:url("icons/lucide/chart-no-axes-combined.svg")}
+.zx-icon-gamepad-2{--zx-icon:url("icons/lucide/gamepad-2.svg")}
+.zx-icon-gift{--zx-icon:url("icons/lucide/gift.svg")}
+.zx-icon-heart-handshake{--zx-icon:url("icons/lucide/heart-handshake.svg")}
+.zx-icon-image{--zx-icon:url("icons/lucide/image.svg")}
+.zx-icon-languages{--zx-icon:url("icons/lucide/languages.svg")}
+.zx-icon-message-square-text{--zx-icon:url("icons/lucide/message-square-text.svg")}
+.zx-icon-music{--zx-icon:url("icons/lucide/music.svg")}
+.zx-icon-network{--zx-icon:url("icons/lucide/network.svg")}
+.zx-icon-radio{--zx-icon:url("icons/lucide/radio.svg")}
+.zx-icon-scroll-text{--zx-icon:url("icons/lucide/scroll-text.svg")}
+.zx-icon-shield-check{--zx-icon:url("icons/lucide/shield-check.svg")}
+.zx-icon-terminal{--zx-icon:url("icons/lucide/terminal.svg")}
+.zx-icon-ticket{--zx-icon:url("icons/lucide/ticket.svg")}
+.zx-icon-wrench{--zx-icon:url("icons/lucide/wrench.svg")}

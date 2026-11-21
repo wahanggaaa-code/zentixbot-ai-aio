@@ -1,27 +1,22 @@
 // Discover articles through the configured search provider, then read only selected publishers.
 import {fetchPublicText} from './linkSummary.js';
+import {FACT_COUNTRIES, factCountryName, nextFactCountries} from './factCountries.js';
 export const FACT_SITE_ORDER=['en.wikipedia.org','mentalfloss.com','todayifoundout.com','science.nasa.gov','oceanexplorer.noaa.gov','britannica.com','nationalgeographic.com','smithsonianmag.com','nhm.ac.uk','guinnessworldrecords.com','whc.unesco.org'];
 const HOSTS=new Set(FACT_SITE_ORDER.flatMap(host=>[host,`www.${host}`]));
 export const allowedFactUrl=u=>u.protocol==='https:' && !u.username && !u.password && !u.port && HOSTS.has(u.hostname.toLowerCase());
-// Each list covers a different broad region; rotate both country and publisher group.
-const COUNTRIES=[
- ['Brazil','Canada','Mexico','Peru','Argentina','Chile','Colombia','Jamaica','Bolivia','Ecuador'],
- ['Thailand','Indonesia','Japan','Australia','India','Vietnam','Philippines','New Zealand','South Korea','Nepal'],
- ['Kenya','Egypt','Morocco','Norway','South Africa','Turkey','France','Ghana','Italy','Madagascar'],
-];
 const SITE_GROUPS=[
  'site:en.wikipedia.org OR site:britannica.com OR site:nhm.ac.uk OR site:whc.unesco.org',
  'site:mentalfloss.com OR site:todayifoundout.com OR site:guinnessworldrecords.com',
  'site:science.nasa.gov OR site:oceanexplorer.noaa.gov OR site:smithsonianmag.com OR site:nationalgeographic.com',
 ];
-export async function discoverFactSources({search,guildId,userId,topics='',read=fetchPublicText,onDiagnostics=()=>{},rotation=0,recent=[]}) {
+export async function discoverFactSources({search,guildId,userId,topics='',read=fetchPublicText,onDiagnostics=()=>{},rotation=0,recent=[],countries=null}) {
  const index=Number.isSafeInteger(rotation)&&rotation>=0?rotation:0;
- // Search several countries per edition, not a single country for all five facts.
- // Explicit owner topics remain unchanged and override the general country rotation.
+ // A saved custom topic always wins; general searches draw three countries.
  const custom=typeof topics==='string'&&topics.trim()?topics.trim():null;
+ const validCountries=Array.isArray(countries)&&countries.length===3&&new Set(countries).size===3&&countries.every(c=>FACT_COUNTRIES.includes(c));
+ const selected=custom?[]:validCountries?countries:nextFactCountries(null).picked;
  const queries=SITE_GROUPS.map((group,i)=>{
-  const region=COUNTRIES[(i+index)%COUNTRIES.length];
-  const theme=custom||`${region[Math.floor(index/COUNTRIES.length)%region.length]} geography nature culture history`;
+  const theme=custom||`${factCountryName(selected[i])} geography nature culture history`;
   return `(${group}) interesting facts ${theme}`;
  });
  const urls=[],seen=new Set(), counts={searchOk:0,searchFailed:0,candidates:0,readAttempted:0,readFailed:0,readShort:0,readOk:0};
