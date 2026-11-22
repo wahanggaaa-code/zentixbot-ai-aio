@@ -62,6 +62,8 @@ AI is configured in **AI Studio**. To let members generate images, configure an 
 
 Processed content is sent to external providers and may consume quota or incur charges. Inform members before enabling features that read channels. Long-term DM memory is opt-in and managed by each member; do not store sensitive data. Link summaries do not execute JavaScript, and scanned PDFs or videos cannot always be read.
 
+Members can use `/terjemahkan` with text, a target language and consent to post the result in the channel. The command uses the AI provider and daily quota, independently of automatic translation and flag-reaction settings. Do not submit sensitive data.
+
 ## Data & backups
 
 Without database configuration, the bot uses SQLite at `data/zentix.db`. When PostgreSQL is configured, database data is stored in PostgreSQL; the bot does not automatically migrate data or switch databases if the connection fails. Keep data and backups in a persistent, secure location—backups may contain personal data and are not encrypted.

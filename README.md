@@ -62,6 +62,8 @@ AI diatur melalui **AI Studio**. Untuk mengizinkan anggota membuat gambar, konfi
 
 Konten yang diproses dikirim ke provider eksternal dan dapat memakai kuota atau biaya. Beri tahu anggota sebelum mengaktifkan fitur yang membaca channel. Memori jangka panjang DM hanya aktif atas persetujuan dan dikelola anggota; jangan simpan data sensitif. Ringkasan link tidak menjalankan JavaScript, dan PDF scan atau video tidak selalu dapat dibaca.
 
+Anggota dapat memakai `/terjemahkan` dengan teks, bahasa tujuan dan persetujuan untuk menampilkan hasil di channel. Command ini memakai provider serta kuota AI harian, dan terpisah dari pengaturan terjemahan otomatis dan reaksi bendera. Jangan kirim data sensitif.
+
 ## Data & backup
 
 Tanpa konfigurasi database, bot memakai SQLite di `data/zentix.db`. Jika PostgreSQL dikonfigurasi, data database berada di PostgreSQL; bot tidak otomatis memindahkan data atau beralih database saat koneksi gagal. Simpan data dan backup di lokasi persisten dan aman—backup dapat berisi data pribadi dan tidak dienkripsi.
