@@ -183,6 +183,7 @@ export default {
                     eventType: EVENT_TYPES.GIVEAWAY_REROLL,
                     data: {
                         description: `Giveaway rerolled: ${giveaway.prize}`,
+                        userIds: newWinners,
                         channelId: giveaway.channelId,
                         userId: interaction.user.id,
                         fields: [
@@ -260,6 +261,7 @@ export default {
                 eventType: EVENT_TYPES.GIVEAWAY_REROLL,
                 data: {
                     description: `Giveaway rerolled: ${giveaway.prize}`,
+                    userIds: newWinners,
                     channelId: giveaway.channelId,
                     userId: interaction.user.id,
                     fields: [

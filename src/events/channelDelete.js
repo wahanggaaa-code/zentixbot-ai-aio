@@ -2,6 +2,7 @@ import { getTicketData, saveTicketData } from '../utils/database.js';
 import { handleJoinToCreateChannelDelete } from '../services/joinToCreateRuntime.js';
 import { forgetDeletedCounterChannel } from '../services/serverStats/manage.js';
 import { logger } from '../utils/logger.js';
+import { logEvent, EVENT_TYPES } from '../services/loggingService.js';
 
 export default {
     name: 'channelDelete',
@@ -31,6 +32,7 @@ export default {
 
         if (!channel.guild) return;
         const guildId = channel.guild.id;
+        await logEvent({client,guildId,eventType:EVENT_TYPES.CHANNEL_DELETE,data:{title:'Channel dihapus',lines:[`Channel: ${channel.name || 'Tanpa nama'} (${channel.id})`,`Tipe: ${channel.type}`],channelId:channel.id,parentChannelId:channel.parentId}});
 
         // A counter can be a voice or a text channel; the lookup is by channel id, so every type is checked.
         try {

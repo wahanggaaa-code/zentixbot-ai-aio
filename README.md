@@ -8,6 +8,7 @@
   <img alt="discord.js v14" src="https://img.shields.io/badge/discord.js-v14-5865F2?logo=discord&logoColor=white">
   <img alt="Node.js 22.13 atau lebih baru" src="https://img.shields.io/badge/Node.js-%E2%89%A5%2022.13-339933?logo=node.js&logoColor=white">
   <img alt="Satu instance untuk satu server" src="https://img.shields.io/badge/single%20server-self--hosted-1f6feb?logo=server&logoColor=white">
+  <a href="https://discord.gg/v7cBZBUFm9"><img alt="Gabung server Discord Zentix" src="https://img.shields.io/badge/Discord-Gabung%20server-5865F2?logo=discord&logoColor=white"></a>
 </p>
 
 > **Status:** proyek ini masih dalam persiapan beta. Beberapa alur sudah diuji pemilik di Discord, tetapi tidak semua kombinasi fitur, provider, dan hosting telah diverifikasi. Gunakan server uji dan cadangkan data sebelum mengandalkannya.

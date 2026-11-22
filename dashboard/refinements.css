@@ -1,0 +1,57 @@
+/* Shared finishing touches for Overview, feature pages, AI Studio and Message Studio.
+   Keep the existing layout and colours; these rules only address narrow screens,
+   long content and keyboard navigation. */
+main, .app-shell, .f-content, .f-layout, .f-panel, .f-field,
+.ms-workspace, .ms-inspector, .ms-preview, .ai-options {
+  min-width: 0;
+}
+
+.f-index-card, .f-panel-head > div, .f-title-row > div,
+.f-toolbar > div, .module-name, .usage-card {
+  min-width: 0;
+}
+
+.f-index-card h2, .f-index-card p, .f-panel-head h2, .f-panel-head p,
+.f-field b, .f-field small, .f-toolbar h2, .f-toolbar p,
+.module-name strong, .module-name small, .usage-sub {
+  overflow-wrap: anywhere;
+}
+
+/* Make keyboard focus visible beyond buttons and links, without overriding
+   custom switch, slider, or colour-picker focus indicators. */
+main :is(input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]), select, textarea):focus-visible {
+  outline: 2px solid #536f12;
+  outline-offset: 2px;
+}
+
+.f-tabs, .f-table-wrap, .ms-tree-body, .zentix-select-list {
+  overscroll-behavior-inline: contain;
+}
+
+@media (max-width: 650px) {
+  .app-shell { padding-bottom: calc(130px + env(safe-area-inset-bottom, 0px)); }
+  .nav-wrap { bottom: calc(18px + env(safe-area-inset-bottom, 0px)); }
+  .mobile-menu:not([hidden]) {
+    max-height: calc(100dvh - 110px - env(safe-area-inset-bottom, 0px));
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  .f-index-card { min-height: 180px; }
+  .f-index-card h2 { line-height: 1.2; }
+  .f-index-card p { line-height: 1.6; }
+  .f-title-row { gap: 12px; }
+  .f-title-row h1 { font-size: clamp(34px, 9vw, 60px); line-height: 1.02; }
+  .f-toolbar, .f-panel-head, .f-form-actions { flex-wrap: wrap; }
+  .f-field input:not([type=checkbox]):not([type=radio]),
+  .f-field select, .f-field textarea, .f-search-form input { min-width: 0; }
+  .f-tabs { scroll-padding-inline: 12px; }
+  .f-tabs button { flex: 0 0 auto; }
+  .ms-workspace > *, .ms-delivery > *, .ms-library-grid > * { min-width: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+}
+
+/* Audit log entries contain line breaks and sometimes long Discord IDs. */
+.audit-log-description { white-space: pre-wrap; overflow-wrap: anywhere; }

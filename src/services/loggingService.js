@@ -14,6 +14,16 @@ import {
 
 const LOG_DESTINATIONS = ['audit', 'applications', 'reports'];
 
+// Process-local diagnostic only; never store message content, IDs or provider errors.
+const recentLogStatus = new Map();
+function rememberLogStatus(guildId, state) {
+  if (!guildId) return;
+  if (!recentLogStatus.has(guildId) && recentLogStatus.size >= 100) recentLogStatus.delete(recentLogStatus.keys().next().value);
+  recentLogStatus.set(guildId,{state,at:new Date().toISOString()});
+}
+export function getRecentLogStatus(guildId) { return recentLogStatus.get(guildId) ?? null; }
+
+
 const EVENT_TYPES = {
   MODERATION_BAN: 'moderation.ban',
   MODERATION_KICK: 'moderation.kick',
@@ -38,6 +48,14 @@ const EVENT_TYPES = {
   ROLE_CREATE: 'role.create',
   ROLE_DELETE: 'role.delete',
   ROLE_UPDATE: 'role.update',
+
+  CHANNEL_CREATE: 'channel.create',
+  CHANNEL_DELETE: 'channel.delete',
+  VOICE_MOVE: 'voice.move',
+  DISCORD_MOD_BAN: 'discordmod.ban',
+  DISCORD_MOD_UNBAN: 'discordmod.unban',
+  DISCORD_MOD_KICK: 'discordmod.kick',
+  DISCORD_MOD_TIMEOUT: 'discordmod.timeout',
 
   MEMBER_JOIN: 'member.join',
   MEMBER_LEAVE: 'member.leave',
@@ -179,6 +197,9 @@ export function getIgnoreList(config) {
   return config?.logging?.ignore ?? config?.logIgnore ?? { users: [], channels: [] };
 }
 
+// Newly introduced high-volume or previously unimplemented event types require explicit opt-in.
+export const OPT_IN_LOG_EVENTS = new Set(['message.bulkdelete','role.update','channel.create','channel.delete','voice.move','discordmod.ban','discordmod.unban','discordmod.kick','discordmod.timeout']);
+
 export function isEventEnabled(config, eventType) {
   if (!config?.logging?.enabled) {
     return false;
@@ -190,6 +211,8 @@ export function isEventEnabled(config, eventType) {
 
   const category = eventType.split('.')[0];
   const enabledEvents = config.logging.enabledEvents || {};
+
+  if (OPT_IN_LOG_EVENTS.has(eventType) && enabledEvents[eventType] !== true) return false;
 
   if (enabledEvents[eventType] === false) {
     return false;
@@ -233,11 +256,16 @@ export async function logEvent({
 
     const config = await getGuildConfig(client, guildId);
     const ignore = getIgnoreList(config);
+    // A partial message can lack its author or a thread's parent. With exclusions
+    // configured, do not publish potentially private content we cannot classify.
+    if (data?.skipWhenUsersIgnored && ignore.users?.length) return null;
+    if (data?.requireKnownUserForIgnore && ignore.users?.length && !data.userId) return null;
+    if (data?.requireKnownParentForIgnore && ignore.channels?.length && !data.parentChannelId) return null;
 
-    if (data?.userId && ignore.users?.includes(data.userId)) {
+    if ([data?.userId, ...(data?.userIds || [])].some(id => id && ignore.users?.includes(id))) {
       return null;
     }
-    if (data?.channelId && ignore.channels?.includes(data.channelId)) {
+    if ([data?.channelId, data?.parentChannelId, ...(data?.channelIds || [])].some(id => id && ignore.channels?.includes(id))) {
       return null;
     }
 
@@ -247,6 +275,7 @@ export async function logEvent({
 
     const logChannelId = getLogChannelForEvent(config, eventType, overrideChannelId);
     if (!logChannelId) {
+      rememberLogStatus(guildId, 'missing_channel');
       return null;
     }
 
@@ -254,12 +283,14 @@ export async function logEvent({
       await guild.channels.fetch(logChannelId).catch(() => null);
 
     if (!channel || channel.type !== ChannelType.GuildText) {
+      rememberLogStatus(guildId, 'invalid_channel');
       logger.warn(`logEvent: Invalid log channel ${logChannelId} for guild ${guildId}`);
       return null;
     }
 
     const permissions = channel.permissionsFor(guild.members.me);
     if (!permissions || !permissions.has(['SendMessages', 'EmbedLinks'])) {
+      rememberLogStatus(guildId, 'missing_permissions');
       logger.warn(`logEvent: Missing permissions in channel ${logChannelId}`);
       return null;
     }
@@ -278,9 +309,11 @@ export async function logEvent({
     }
 
     const sent = await channel.send(messageOptions);
+    rememberLogStatus(guildId, 'sent');
     logger.info(`Event logged: ${eventType} in guild ${guildId}`);
     return sent;
   } catch (error) {
+    rememberLogStatus(guildId, 'failed');
     logger.error('Error in logEvent:', error);
     return null;
   }
@@ -359,6 +392,7 @@ function createLogContainer(guild, eventType, data, content = null) {
     author: data.author || null,
     timestamp: true,
     footer: data.footer || { text: guild.name },
+    eventType,
   });
 }
 
@@ -518,6 +552,8 @@ export async function recordPanelChange(client, guildId, action, details = {}) {
       eventType: known[0],
       data: {
         title: known[1],
+        userId: details.actorId,
+        channelId: details.channelId,
         lines: [
           `**Source:** ${details.source === 'dashboard' ? 'web dashboard' : String(details.source ?? 'panel')}`,
           ...(SID(details.actorId) ? [`**By:** <@${details.actorId}> (${details.actorId})`] : []),

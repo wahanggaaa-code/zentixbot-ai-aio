@@ -19,6 +19,7 @@ import {inspectTicketResponses,readResponseSlaConfig} from '../services/tickets/
 import {calculateTotalXp, getLevelingConfig, getLevelLockKey} from '../services/leveling/leveling.js';
 import {syncMemberRewardRoles} from '../services/leveling/rewardRoles.js';
 import { Mutex } from '../utils/mutex.js';
+import { summarizeAuditMessage } from './logHistory.js';
 
 const tables=pgConfig.tables;
 const idRe=/^\d{17,20}$/;
@@ -206,9 +207,13 @@ export function createOperationsApi(client,{auth,csrf}) {
   res.json({ok:true,rewardRoles:await rewardRolesAfterLevel(client,req.guild,member,b.value)});
  }catch(e){fail(res,e)}});
  router.get('/logs',auth,async(req,res)=>{try{
+  res.set('Cache-Control','no-store');
+  if(Object.keys(req.query).some(k=>!['before','channel'].includes(k)) || (req.query.before!==undefined && (typeof req.query.before!=='string'||!idRe.test(req.query.before))) || (req.query.channel!==undefined && (typeof req.query.channel!=='string'||!idRe.test(req.query.channel))) || Boolean(req.query.before)!==Boolean(req.query.channel))throw bad('Cursor riwayat tidak valid.');
   const sqlite=sqliteBackend(client);const config=sqlite?sqlite.botGet(`guild:${req.guild.id}:config`):(await pool(client).query(`SELECT config FROM ${tables.guilds} WHERE id=$1`,[req.guild.id])).rows[0]?.config;const id=config?.logging?.channels?.audit;
-  if(!id)throw bad('Channel audit logging belum dikonfigurasi.',404);const channel=req.guild.channels.cache.get(id);if(!channel?.messages||!channel.permissionsFor(req.guild.members.me)?.has([PermissionFlagsBits.ViewChannel,PermissionFlagsBits.ReadMessageHistory]))throw bad('Bot tidak dapat membaca channel audit.',403);
-  const m=await channel.messages.fetch({limit:100});res.json({logs:[...m.values()].filter(x=>x.author?.id===client.user.id).slice(0,50).map(x=>({id:x.id,at:x.createdAt,title:x.embeds?.[0]?.title||'Log',description:x.embeds?.[0]?.description||x.content||''}))});
+  if(!id)throw bad('Channel audit logging belum dikonfigurasi.',404);if(req.query.channel && req.query.channel!==id)throw bad('Channel audit berubah. Muat ulang riwayat.',409);const channel=req.guild.channels.cache.get(id);if(!channel?.messages||!channel.permissionsFor(req.guild.members.me)?.has([PermissionFlagsBits.ViewChannel,PermissionFlagsBits.ReadMessageHistory]))throw bad('Bot tidak dapat membaca channel audit.',403);
+  const m=await channel.messages.fetch({limit:100,...(req.query.before?{before:req.query.before}:{})});const all=[...m.values()],bot=all.filter(x=>x.author?.id===client.user.id),selected=bot.slice(0,50);
+  const cursor=bot.length>50 ? selected.at(-1)?.id : all.length===100 ? all.at(-1)?.id : null;
+  res.json({logs:selected.map(summarizeAuditMessage),nextBefore:cursor&&idRe.test(cursor)?cursor:null,channelId:id});
  }catch(e){fail(res,e)}});
  router.get('/music',auth,(req,res)=>{const player=getPlayer(client,req.guild.id);const channels=[...req.guild.channels.cache.values()];res.json({voiceChannels:channels.filter(c=>c.type===ChannelType.GuildVoice).map(c=>({id:c.id,name:c.name})),textChannels:channels.filter(c=>c.type===ChannelType.GuildText).map(c=>({id:c.id,name:c.name})),available:!!client.riffy?.nodeMap && [...client.riffy.nodeMap.values()].some(n=>n.connected),active:!!player,paused:!!player?.paused,voiceChannel:player?.voiceChannel||null,current:track(player?.current),queue:player?.queue?[...player.queue].slice(0,50).map(track):[],volume:player?getGuildMusicData(req.guild.id).volume:null,loop:getGuildMusicData(req.guild.id).loop,twentyFourSeven:getGuildMusicData(req.guild.id).twentyFourSeven});});
  router.post('/music/search',auth,csrf,async(req,res)=>{try{

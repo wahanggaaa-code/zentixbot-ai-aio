@@ -24,6 +24,8 @@ async function notePanelMessageDeleted(message) {
       eventType: EVENT_TYPES.SELF_ROLE_DELETE,
       data: {
         title: 'Self-Role Panel Message Deleted',
+        channelId: message.channelId || message.channel?.id,
+        parentChannelId: message.channel?.isThread?.() ? message.channel.parentId : undefined,
         lines: [
           formatLogLine('Channel', message.channel ? `${message.channel.name} ${message.channel.toString()}` : 'Unknown'),
           formatLogLine('Message ID', `\`${message.id}\``),
@@ -78,6 +80,9 @@ export default {
           section: messageBody ? { title: 'Message', body: messageBody || '*(empty message)*' } : null,
           userId: message.author?.id,
           channelId: message.channel.id,
+          parentChannelId: message.channel.isThread?.() ? message.channel.parentId : undefined,
+          requireKnownUserForIgnore: true,
+          requireKnownParentForIgnore: Boolean(message.channel.isThread?.()),
         }
       });
 

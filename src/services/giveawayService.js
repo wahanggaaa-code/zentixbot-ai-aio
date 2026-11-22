@@ -426,6 +426,7 @@ export async function checkGiveaways(client) {
               eventType: EVENT_TYPES.GIVEAWAY_WINNER,
               data: {
                 description: `Giveaway ended with ${winners.length} winner(s)`,
+                userIds: winners,
                 channelId: channel.id,
                 fields: [
                   {

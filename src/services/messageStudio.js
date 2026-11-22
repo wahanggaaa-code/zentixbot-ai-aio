@@ -35,6 +35,7 @@ import { createV2Container, v2Message } from '../utils/componentsV2.js';
 import { normalizeStudioFlow, runStudioFlow, supportsDurableStudioFlow } from './messageStudioFlow.js';
 import { createStudioDurableQueue } from './messageStudioDurableQueue.js';
 import { createStudioDurableWorker } from './messageStudioDurableWorker.js';
+import { createStudioRecurring, createStudioRecurringWorker } from './messageStudioRecurring.js';
 import { checkPanelRole, resolveRole, roleReason } from './selfRoles/manage.js';
 import { logger } from '../utils/logger.js';
 
@@ -427,11 +428,13 @@ export function createMessageStudio({
     webhookClientFactory = (data) => new WebhookClient(data, client?.rest ? { rest: client.rest } : undefined),
 } = {}) {
     if (!client) throw Error('Message Studio membutuhkan client Discord.');
-    let durableQueue, durableWorker;
+    let durableQueue, durableWorker, recurringQueue, recurringWorker;
+    const recurring = () => recurringQueue ||= createStudioRecurring({ kv, guildId: client.homeGuildId, now });
     const queue = () => durableQueue ||= createStudioDurableQueue({ kv, guildId: client.homeGuildId, now });
     let lastWorkerWarning = 0;
-    const startDurableWorker = () => { if (!durableWorker) durableWorker = createStudioDurableWorker({ client, queue: queue(), resumeFlow: resumeDurableFlow, onError: () => { if (Date.now() - lastWorkerWarning >= 60000) { lastWorkerWarning = Date.now(); logger.warn('Message Studio: antrean terjadwal tidak dapat diproses; akan diperiksa lagi.'); } } }); durableWorker.start(); };
-    const stopDurableWorker = async () => { if (durableWorker) await durableWorker.stop(); };
+    const workerWarning = () => { if (Date.now() - lastWorkerWarning >= 60000) { lastWorkerWarning = Date.now(); logger.warn('Message Studio: antrean terjadwal tidak dapat diproses; akan diperiksa lagi.'); } };
+    const startDurableWorker = () => { if (!durableWorker) durableWorker = createStudioDurableWorker({ client, queue: queue(), resumeFlow: resumeDurableFlow, onError: workerWarning }); if (!recurringWorker) recurringWorker = createStudioRecurringWorker({ client, queue: recurring(), send, onError: workerWarning }); durableWorker.start(); recurringWorker.start(); };
+    const stopDurableWorker = async () => { if (durableWorker) await durableWorker.stop(); if (recurringWorker) await recurringWorker.stop(); };
     const changing = new Set();
     const flowCooldowns = new Map();
     let activeFlows = 0;
@@ -1184,7 +1187,20 @@ export function createMessageStudio({
         }
         return reply(interaction, picked.map((option) => `**${option.label}**\n${option.response}`).join('\n\n'));
     }
+    async function createRecurring({guild, actorId, templateId, channelId, sender, identity, recurrence}) {
+        ensureGuild(guild);
+        if (!safeId(templateId) || !snowflake(actorId)) throw err('Template atau pemilik tidak valid.');
+        const template=(await readState(guild.id)).templates.find(item=>item.id===templateId);
+        if (!template) throw err('Template tidak ditemukan.',404,'MESSAGE_STUDIO_TEMPLATE_MISSING');
+        const document=normalizeMessageDocument(template.document), cleanSender=normalizeSender(sender), cleanIdentity=normalizeIdentity(identity,cleanSender);
+        assertSenderDocument(cleanSender,document);
+        resolveChannel(guild,channelId,cleanSender,document);
+        await assetsFor(guild.id,document);
+        return recurring().add({id:makeId(),recurrence,payload:{actorId,channelId,sender:cleanSender,identity:cleanIdentity,document,templateName:template.name}});
+    }
+    async function listRecurring(guild) { ensureGuild(guild); return recurring().list(); }
+    async function removeRecurring(guild,id) { ensureGuild(guild); if(!await recurring().remove(id)) throw err('Jadwal tidak ditemukan atau sedang diproses.',409,'MESSAGE_STUDIO_JOB_BUSY'); }
     async function listScheduled(guild) { ensureGuild(guild); return queue().list(); }
     async function removeScheduled(guild, id) { ensureGuild(guild); if (!await queue().remove(id)) throw err('Jadwal tidak ditemukan atau sedang diproses.', 409, 'MESSAGE_STUDIO_JOB_BUSY'); }
-    return { overview, asset, send, edit, remove, forget, saveTemplate, deleteTemplate, handleButton, handleSelect, handleModal, listScheduled, removeScheduled, startDurableWorker, stopDurableWorker, normalizeDocument: normalizeMessageDocument };
+    return { overview, asset, send, edit, remove, forget, saveTemplate, deleteTemplate, handleButton, handleSelect, handleModal, listScheduled, removeScheduled, createRecurring, listRecurring, removeRecurring, startDurableWorker, stopDurableWorker, normalizeDocument: normalizeMessageDocument };
 }

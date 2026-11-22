@@ -96,7 +96,7 @@ function listChannels(guild){
 async function defaultAudit(client,guildId,actorId,action,details){
  const eventType=action==='create'?EVENT_TYPES.GIVEAWAY_CREATE:action.startsWith('delete')?EVENT_TYPES.GIVEAWAY_DELETE:EVENT_TYPES.GIVEAWAY_WINNER;
  const titles={create:'Giveaway Created',delete:'Giveaway Deleted',delete_record:'Giveaway Record Removed',mark_delivered:'Giveaway Delivery Marked Complete',redeliver:'Giveaway Result Sent Again'};
- await logEvent({client,guildId,eventType,data:{title:titles[action]??'Giveaway Changed',lines:[
+ await logEvent({client,guildId,eventType,data:{title:titles[action]??'Giveaway Changed',userId:actorId,channelId:details.channelId,lines:[
   `**Source:** dashboard`,
   `**By:** <@${actorId}> (${actorId})`,
   `**Message:** ${details.messageId}`,

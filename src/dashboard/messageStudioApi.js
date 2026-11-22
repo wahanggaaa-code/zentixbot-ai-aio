@@ -62,6 +62,22 @@ export function createMessageStudioApi(client, { auth, csrf, env = process.env, 
             await studio.removeScheduled(req.guild, req.params.id); res.json({ ok: true });
         } catch (error) { fail(res, error); }
     });
+    router.get('/recurring', auth, owner, async (req, res) => {
+        try { noQuery(req); res.json({ schedules: await studio.listRecurring(req.guild) }); }
+        catch (error) { fail(res,error); }
+    });
+    router.post('/recurring', auth, owner, csrf, async (req,res) => {
+        try {
+            noQuery(req); own(req.body,['confirmed','templateId','channelId','sender','recurrence'],['identity']);
+            if (req.body.confirmed !== true) throw bad('Konfirmasi diperlukan.');
+            const schedule=await studio.createRecurring({guild:req.guild,actorId:req.session.user.id,templateId:req.body.templateId,channelId:req.body.channelId,sender:req.body.sender,identity:req.body.identity,recurrence:req.body.recurrence});
+            const {payload,...summary}=schedule; res.status(201).json({ok:true,schedule:summary});
+        } catch(error) { fail(res,error); }
+    });
+    router.delete('/recurring/:id', auth, owner, csrf, async (req,res) => {
+        try { noQuery(req); if(!validId(req.params.id)) throw bad('ID jadwal tidak valid.'); own(req.body,['confirmed']); if(req.body.confirmed!==true) throw bad('Konfirmasi diperlukan.'); await studio.removeRecurring(req.guild,req.params.id); res.json({ok:true}); }
+        catch(error) { fail(res,error); }
+    });
     router.post('/import-discord', auth, owner, csrf, (req, res) => {
         try { noQuery(req); own(req.body, ['message']); res.json({ ok: true, ...importDiscordMessage(req.body.message) }); }
         catch (error) { fail(res, error); }

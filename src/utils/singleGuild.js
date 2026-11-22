@@ -34,6 +34,7 @@ export function mayDispatchEvent(client, eventName, args) {
     return isHomeGuild(client, message?.guildId ?? message?.guild?.id);
   }
   if (eventName === 'clientReady' || eventName === 'ready' || eventName === 'userUpdate') return Boolean(client?.homeGuildId);
+  if (eventName === 'guildAuditLogEntryCreate') return isHomeGuild(client, args[1]?.id);
   if (eventName === 'guildCreate' || eventName === 'guildDelete' || eventName === 'guildUpdate') {
     return args.some(x => isHomeGuild(client, x?.id));
   }

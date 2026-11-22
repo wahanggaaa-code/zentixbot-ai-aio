@@ -39,6 +39,7 @@ const memberName=member=>String(member.displayName??member.user?.globalName??mem
 async function defaultAudit(client,guildId,actorId,action,targetId){
  await logEvent({client,guildId,eventType:EVENT_TYPES.MODERATION_CONFIG,data:{
   title:'Birthday Record Changed',
+  userId:targetId, userIds:[actorId].filter(Boolean),
   lines:[
    `**Action:** ${action} (dashboard)`,
    `**Member:** <@${targetId}> (${targetId})`,

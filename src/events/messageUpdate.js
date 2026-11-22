@@ -45,6 +45,9 @@ export default {
           ],
           userId: newMessage.author?.id,
           channelId: newMessage.channel.id,
+          parentChannelId: newMessage.channel.isThread?.() ? newMessage.channel.parentId : undefined,
+          requireKnownUserForIgnore: true,
+          requireKnownParentForIgnore: Boolean(newMessage.channel.isThread?.()),
         }
       });
 

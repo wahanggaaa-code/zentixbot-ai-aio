@@ -63,6 +63,8 @@ function buildModerationLogData(event) {
     lines,
     meta,
     userId: event.metadata?.userId || targetId || undefined,
+    userIds: [event.metadata?.moderatorId || executorIdMatch?.[1]].filter(Boolean),
+    channelId: event.metadata?.channelId,
     thumbnail: targetId ? `https://cdn.discordapp.com/embed/avatars/${Number(targetId) % 5}.png` : undefined,
     footer: executorIdMatch
       ? { text: executorTag, iconURL: undefined }

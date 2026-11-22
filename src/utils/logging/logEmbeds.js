@@ -122,6 +122,7 @@ export function buildStandardLogContainer({
   author = null,
   timestamp = true,
   footer,
+  eventType,
 } = {}) {
   const container = new ContainerBuilder().setAccentColor(resolveAccentColor(color));
 
@@ -169,6 +170,10 @@ export function buildStandardLogContainer({
   if (timestamp) footerParts.push(`<t:${Math.floor(Date.now() / 1000)}:F>`);
   if (footerParts.length > 0) {
     container.addTextDisplayComponents(v2Text(`-# ${footerParts.join(' • ')}`));
+  }
+
+  if (eventType && /^[a-z]+\.[a-z]+$/.test(eventType)) {
+    container.addTextDisplayComponents(v2Text(`-# Zentix event: ${eventType}`));
   }
 
   return container;

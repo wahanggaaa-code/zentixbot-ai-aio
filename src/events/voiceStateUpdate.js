@@ -1,4 +1,5 @@
 import { logger } from '../utils/logger.js';
+import { logEvent, EVENT_TYPES } from '../services/loggingService.js';
 import { handleMusicVoiceState } from '../services/music/musicVoiceState.js';
 import { handleJoinToCreateVoiceState } from '../services/joinToCreateRuntime.js';
 
@@ -11,6 +12,12 @@ export default {
             handleMusicVoiceState(client, oldState, newState).catch((error) => {
                 logger.error('Music voice state handler error:', error);
             });
+        }
+
+        // Only channel changes; mute/deafen and stream changes are deliberately omitted.
+        if (oldState.channelId !== newState.channelId && (newState.guild || oldState.guild) && !(newState.member || oldState.member)?.user?.bot) {
+            const guild=newState.guild || oldState.guild, userId=newState.id || oldState.id;
+            logEvent({client,guildId:guild.id,eventType:EVENT_TYPES.VOICE_MOVE,data:{title:'Perubahan voice',lines:[`Anggota: ${userId}`,`Dari: ${oldState.channelId || 'tidak di voice'}`,`Ke: ${newState.channelId || 'tidak di voice'}`],userId,channelIds:[oldState.channelId,newState.channelId].filter(Boolean)}}).catch(error=>logger.warn('Voice log gagal:',error));
         }
 
         try {

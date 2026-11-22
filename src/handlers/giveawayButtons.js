@@ -152,6 +152,7 @@ export const giveawayEndHandler = {
                     eventType: EVENT_TYPES.GIVEAWAY_WINNER,
                     data: {
                         description: `Giveaway ended with ${winners.length} winner(s)`,
+                        userIds: winners,
                         channelId: interaction.channelId,
                         userId: interaction.user.id,
                         fields: [
@@ -271,6 +272,7 @@ export const giveawayRerollHandler = {
                     eventType: EVENT_TYPES.GIVEAWAY_REROLL,
                     data: {
                         description: `Giveaway rerolled`,
+                        userIds: newWinners,
                         channelId: interaction.channelId,
                         userId: interaction.user.id,
                         fields: [

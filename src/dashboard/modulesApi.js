@@ -6,7 +6,7 @@ import { sqliteBackend } from '../services/storage/sqlite.js';
 import { unwrapReplitData } from '../utils/database/guildConfigStorage.js';
 import { normalizeGuildConfig } from '../utils/schemas.js';
 import { GUILD_CONFIG_DEFAULTS } from '../config/guild/guildConfigDefaults.js';
-import { EVENT_TYPES } from '../services/loggingService.js';
+import { EVENT_TYPES, OPT_IN_LOG_EVENTS, getRecentLogStatus } from '../services/loggingService.js';
 import { messageHasPanelMarker } from '../utils/panelStatus.js';
 import { createV2Container, v2Message } from '../utils/componentsV2.js';
 import { Mutex } from '../utils/mutex.js';
@@ -122,6 +122,19 @@ export function createModulesApi(client,{auth,csrf}) {
   const b=req.body;exact(b,['replies','revision','confirmed']);if(b.confirmed!==true||typeof b.revision!=='string'||!/^[a-f0-9]{16}$/.test(b.revision))throw bad('Konfirmasi atau versi jawaban cepat tidak valid.');let replies;try{replies=validateQuickReplies(b.replies)}catch(e){throw bad(e.message)}
   const result=await transaction(client,req.guild.id,cfg=>{if(quickRepliesRevision(quickRepliesFromConfig(cfg))!==b.revision)throw bad('Jawaban cepat sudah berubah. Muat ulang sebelum menyimpan.',409);cfg.ticketQuickReplies=replies;return {replies,revision:quickRepliesRevision(replies)}});res.json({ok:true,...result});
  }catch(e){answer(res,e)}});
+ // A diagnostic send, not a synthetic moderation event; it uses the saved audit destination.
+ const loggingTests=new Map();
+ router.post('/logging/test',auth,csrf,async(req,res)=>{try{
+  exact(req.body,['confirmed']);if(req.body.confirmed!==true)throw bad('Konfirmasi diperlukan.');
+  const cfg=await read(client,req.guild.id);if(!cfg.logging?.enabled)throw bad('Aktifkan dan simpan Logging terlebih dahulu.',409);
+  const id=cfg.logging?.channels?.audit;if(!id)throw bad('Pilih dan simpan channel audit terlebih dahulu.',409);
+  const channel=req.guild.channels.cache.get(id);if(!channel||channel.type!==ChannelType.GuildText)throw bad('Channel audit tersimpan tidak tersedia.',409);
+  const perms=channel.permissionsFor(req.guild.members.me);if(!perms?.has(['ViewChannel','SendMessages','EmbedLinks']))throw bad('Bot perlu izin View Channel, Send Messages, dan Embed Links di channel audit.',403);
+  const now=Date.now();for(const [key,at] of loggingTests)if(now-at>=10000)loggingTests.delete(key);
+  if(loggingTests.has(req.guild.id))throw bad('Tunggu 10 detik sebelum mengirim tes lagi.',429);loggingTests.set(req.guild.id,now);
+  try{await channel.send({...v2Message([createV2Container({title:'Tes Logging',description:'Channel audit menerima pesan tes dari dashboard.'})]),allowedMentions:{parse:[]}})}catch{throw bad('Pengiriman tes gagal atau hasilnya tidak diketahui. Periksa channel sebelum mencoba lagi.',502)}
+  res.json({ok:true});
+ }catch(e){answer(res,e)}});
  router.get('/settings/:kind',auth,async(req,res)=>{try{
   if(!['logging','leveling','ticket'].includes(req.params.kind))throw bad('Modul tidak tersedia.',404);
   const cfg=await read(client,req.guild.id);const kind=req.params.kind;
@@ -130,14 +143,15 @@ export function createModulesApi(client,{auth,csrf}) {
   if(kind==='leveling')data={...LEVEL_DEFAULTS,...(cfg.leveling||{}),publicLeaderboard:cfg.publicLeaderboard===true};
   if(kind==='ticket')data={channelId:cfg.ticketPanelChannelId||null,messageId:cfg.ticketPanelMessageId||null,staffRoleId:cfg.ticketStaffRoleId||null,categoryId:cfg.ticketCategoryId||null,closedCategoryId:cfg.ticketClosedCategoryId||null,message:cfg.ticketPanelMessage||'Click the button below to create a support ticket.',buttonText:cfg.ticketButtonLabel||'Create Ticket',logsChannelId:cfg.ticketLogsChannelId||null,transcriptChannelId:cfg.ticketTranscriptChannelId||null,maxTicketsPerUser:cfg.maxTicketsPerUser||3,dmOnClose:cfg.dmOnClose!==false,reminderMinutes:Number.isInteger(cfg.ticketReminderMinutes)?cfg.ticketReminderMinutes:0,reminderRevision:ticketReminderRevision(cfg),ticketTypes:ticketTypesFromConfig(cfg),ticketTypesRevision:ticketTypesRevision(ticketTypesFromConfig(cfg))};
   const levelingExtra=kind==='leveling'?{revision:levelingRevision(cfg),rewardRoles:rewardRoleStatus(req.guild,data),rewardSync:getRewardSyncStatus(req.guild.id)}:{};
-  res.json({settings:data,...channelsRoles(req.guild),...(kind==='ticket'?{roles:listStaffRoles(req.guild)}:{}),...levelingExtra,events,groups});
+  res.json({settings:data,...channelsRoles(req.guild),...(kind==='ticket'?{roles:listStaffRoles(req.guild)}:{}),...levelingExtra,...(kind==='logging'?{loggingStatus:getRecentLogStatus(req.guild.id)}:{}),events,groups,optInEvents:[...OPT_IN_LOG_EVENTS]});
  }catch(e){answer(res,e)}});
  router.patch('/settings/:kind',auth,csrf,async(req,res)=>{try{
   const b=req.body,g=req.guild,kind=req.params.kind;let updated;
   if(kind==='logging'){
-   exact(b,['enabled','channels','enabledEvents']);bool(b.enabled);exact(b.channels,['audit','applications','reports']);Object.values(b.channels).forEach(x=>channelId(g,x));
+   if(!b||typeof b!=='object'||Array.isArray(b)||['enabled','channels','enabledEvents'].some(k=>!(k in b))||Object.keys(b).some(k=>!['enabled','channels','enabledEvents','ignore'].includes(k)))throw bad('Data tidak valid.');bool(b.enabled);
+   if('ignore' in b){exact(b.ignore,['users','channels']);for(const list of [b.ignore.users,b.ignore.channels])if(!Array.isArray(list)||list.length>100||new Set(list).size!==list.length||list.some(id=>typeof id!=='string'||!/^\d{17,20}$/.test(id)))throw bad('Daftar pengecualian harus berisi maksimal 100 ID Discord yang berbeda.');}exact(b.channels,['audit','applications','reports']);Object.values(b.channels).forEach(x=>channelId(g,x));
    if(!b.enabledEvents||typeof b.enabledEvents!=='object'||Array.isArray(b.enabledEvents)||Object.entries(b.enabledEvents).some(([k,v])=>!([...events,...groups.map(x=>x+'.*')].includes(k))||typeof v!=='boolean'))throw bad('Event logging tidak valid.');
-   updated=await transaction(client,g.id,cfg=>{cfg.logging={...(cfg.logging||{}),enabled:b.enabled,channels:{...cfg.logging?.channels,...b.channels},enabledEvents:{...cfg.logging?.enabledEvents,...b.enabledEvents}};return cfg.logging});
+   updated=await transaction(client,g.id,cfg=>{cfg.logging={...(cfg.logging||{}),enabled:b.enabled,channels:{...cfg.logging?.channels,...b.channels},enabledEvents:{...cfg.logging?.enabledEvents,...b.enabledEvents},...('ignore' in b?{ignore:b.ignore}:{})};return cfg.logging});
   } else if(kind==='leveling'){
    const required=['enabled','min','max','cooldown','channelId','announce','publicLeaderboard'];
    const optional=['levelUpMessage','ignoredChannels','ignoredRoles','roleRewards'];
