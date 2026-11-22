@@ -32,6 +32,12 @@ const preview = fileURLToPath(new URL('../../dashboard/', import.meta.url));
 const random = () => crypto.randomBytes(32).toString('hex');
 const cookie = (req, name) => (req.headers.cookie || '').split(';').map(x => x.trim().split('=')).find(x => x[0] === name)?.[1];
 const NO_CACHE = 'no-store';
+// These public, content-hashed font files are the only long-lived cacheable assets.
+// When a font changes, give it a new hash/name and update the CSS, preload and this list.
+const IMMUTABLE_FONTS = new Set([
+  'PlusJakartaSans-Variable-125781d6bce03ed5.woff2',
+  'RobotoMono-Variable-e9f8c13b3398231d.woff2',
+]);
 
 /**
  * Puts the dashboard at /dashboard on the web server.
@@ -246,6 +252,17 @@ export function createDashboardRouter(client, { fetchImpl = globalThis.fetch, en
     purge(); if (!sessions.has(cookie(req,'zx_session'))) return res.redirect('/dashboard/login');
     auth(req,res,() => res.sendFile(path.join(preview,'index.html')));
   });
-  router.use(express.static(preview, { index:false, dotfiles:'deny', extensions:false }));
+  router.use(express.static(preview, {
+    index:false, dotfiles:'deny', extensions:false,
+    setHeaders(res, filePath) {
+      if (path.dirname(filePath) === path.join(preview, 'fonts') && IMMUTABLE_FONTS.has(path.basename(filePath))) {
+        res.setHeader('Cache-Control', 'private, max-age=31536000, immutable');
+      } else if (path.dirname(filePath) === preview.replace(/[\\/]$/, '') && /\.(?:css|js)$/.test(filePath)) {
+        // Public application code, not HTML or API responses. Always revalidate so
+        // a deployment never leaves a browser running an outdated dashboard.
+        res.setHeader('Cache-Control', 'private, no-cache');
+      }
+    },
+  }));
   return router;
 }
