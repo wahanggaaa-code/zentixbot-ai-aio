@@ -37,6 +37,8 @@ export const DISK_SCAN_TTL_MS = 5 * 60 * 1000;
 /** A walk that stopped at the entry limit is repeated sooner. */
 export const DISK_SCAN_RETRY_MS = 30 * 1000;
 export const DISK_SCAN_MAX_ENTRIES = 60000;
+/** Limit concurrent filesystem work even when one directory has thousands of files. */
+export const DISK_SCAN_STAT_BATCH = 128;
 
 // ---------------------------------------------------------------------------------------------
 // Reading the kernel's text files
@@ -122,23 +124,29 @@ export function diskRoot(cwd) {
  * Bytes of all files under `root`. Symbolic links are not followed, so the walk cannot go in
  * circles or leave the folder. Stops after `maxEntries`
  * files and says so (`complete: false`), so that a huge or slow disk cannot hold the bot up.
- * Files of one folder are read together, folders one after another: thousands of requests at
- * once would slow down everything else that reads the disk, the bot included.
+ * File sizes are read in small batches, folders one after another, to bound
+ * outstanding requests and memory even when a directory has many entries.
  */
 export async function folderBytes(root, maxEntries = DISK_SCAN_MAX_ENTRIES) {
     let bytes = 0, files = 0, complete = true;
     async function walk(dir) {
         let entries;
         try { entries = await readdir(dir, { withFileTypes: true }); } catch { return; }
-        const folders = [], sizes = [];
+        const folders = [];
+        let sizes = [];
+        async function flush() {
+            for (const size of await Promise.all(sizes)) bytes += size;
+            files += sizes.length;
+            sizes = [];
+        }
         for (const entry of entries) {
             if (entry.isDirectory()) { folders.push(path.join(dir, entry.name)); continue; }
             if (!entry.isFile()) continue;
             if (files + sizes.length >= maxEntries) { complete = false; break; }
             sizes.push(stat(path.join(dir, entry.name)).then((info) => info.size, () => 0));
+            if (sizes.length >= DISK_SCAN_STAT_BATCH) await flush();
         }
-        for (const size of await Promise.all(sizes)) bytes += size;
-        files += sizes.length;
+        await flush();
         for (const folder of folders) { if (!complete) return; await walk(folder); }
     }
     await walk(root);

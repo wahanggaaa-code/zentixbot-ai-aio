@@ -70,18 +70,18 @@ function presenceStats(guild) {
     const presences = guild?.presences?.cache;
     if (!presences || typeof presences.filter !== 'function') return empty;
     try {
-        const byStatus = (status) => presences.filter((presence) => presence?.status === status).size;
-        const online = byStatus('online');
-        const idle = byStatus('idle');
-        const dnd = byStatus('dnd');
+        let online = 0, idle = 0, dnd = 0, cachedOffline = 0, streaming = 0;
+        for (const presence of presences.values()) {
+            if (presence?.status === 'online') online++;
+            else if (presence?.status === 'idle') idle++;
+            else if (presence?.status === 'dnd') dnd++;
+            else if (presence?.status === 'offline') cachedOffline++;
+            if (Array.isArray(presence?.activities) && presence.activities.some((activity) => activity?.type === 1)) streaming++;
+        }
         const connected = online + idle + dnd;
         const total = safeCount(guild?.memberCount);
-        // Offline from the presence cache is unreliable (invisible members are indistinguishable);
-        // derive it from the member count instead. Clamped at 0 for when the cache cannot keep up.
-        const offline = total !== null ? Math.max(total - connected, 0) : byStatus('offline');
-        // While a member streams, Discord reports an activity of type STREAMING (1).
-        const streaming = presences.filter((presence) => Array.isArray(presence?.activities)
-            && presence.activities.some((activity) => activity?.type === 1)).size;
+        // Invisible members cannot be distinguished from offline members.
+        const offline = total !== null ? Math.max(total - connected, 0) : cachedOffline;
         return { connected, online, idle, dnd, offline, streaming };
     } catch {
         return empty;
@@ -122,16 +122,31 @@ export async function gatherCounterStats(guild, counters = [], { fresh = false }
             }
         }
         if (list && typeof list.filter === 'function') {
-            const bots = list.filter((member) => member.user?.bot).size;
-            const pending = list.filter((member) => member.pending === true).size;
-            // Humans with no assigned role (bots are not counted as needing one).
-            const norole = list.filter((member) => !member.user?.bot && member.roles?.cache
-                && typeof member.roles.cache.filter === 'function'
-                && member.roles.cache.filter((role) => role.id !== guild.id).size === 0).size;
+            // Count in one pass rather than allocating a filtered Collection for
+            // every statistic, member and role counter on every refresh.
+            let bots = 0, pending = 0, norole = 0;
             const roleCounts = {};
             for (const counter of active) {
-                if (statTypeOf(counter) !== 'role' || !counter.roleId) continue;
-                roleCounts[counter.roleId] = list.filter((member) => member.roles?.cache?.has?.(counter.roleId)).size;
+                if (statTypeOf(counter) === 'role' && counter.roleId) roleCounts[counter.roleId] = 0;
+            }
+            const trackedRoles = Object.keys(roleCounts);
+            for (const member of list.values()) {
+                if (member.user?.bot) bots++;
+                if (member.pending === true) pending++;
+                const roles = member.roles?.cache;
+                if (!member.user?.bot && roles && typeof roles.filter === 'function') {
+                    let hasOtherRole = false;
+                    for (const role of roles.values()) if (role.id !== guild.id) { hasOtherRole = true; break; }
+                    if (!hasOtherRole) norole++;
+                }
+                // Most members have far fewer roles than there are counters. Walk
+                // whichever side is smaller without creating intermediate collections.
+                if (roles && typeof roles.has === 'function' && typeof roles.keys === 'function'
+                    && Number.isSafeInteger(roles.size) && roles.size < trackedRoles.length) {
+                    for (const id of roles.keys()) if (Object.hasOwn(roleCounts, id)) roleCounts[id]++;
+                } else {
+                    for (const id of trackedRoles) if (roles?.has?.(id)) roleCounts[id]++;
+                }
             }
             const all = total ?? list.size;
             members = { total: all, bots, humans: Math.max(all - bots, 0), pending, norole, roleCounts };

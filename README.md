@@ -66,6 +66,7 @@ Tanpa konfigurasi database, bot memakai SQLite di `data/zentix.db`. Jika Postgre
 
 ## Dokumentasi
 
+- 📖 [Baca panduan lengkap ZentixBot di Wiki](https://github.com/wahanggaaa-code/zentixbot-ai-aio/wiki).
 - [Berkontribusi & melaporkan bug](CONTRIBUTING.md) · [Kebijakan keamanan](SECURITY.md) · [Lisensi MIT](LICENSE).
 
 Folder `tests/`, `.github/` dan `docs/` hanya ada di repository kerja, bukan salinan publik. Pengujian dilakukan di repository kerja sebelum publikasi.
