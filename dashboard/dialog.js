@@ -1,6 +1,7 @@
 /* Asynchronous dashboard confirmations; no action is taken on cancel or dismissal. */
 (() => {
  let active = false;
+ const tr=(id,en)=>window.ZentixI18n?.language==='en'?en:id;
  // A backdrop click is retargeted to the dialog itself. Check both ends of the
  // gesture so dragging from inside to outside never dismisses accidentally.
  function dismissOnBackdrop(dialog, dismiss) {
@@ -20,11 +21,11 @@
   if (typeof dialog.showModal !== 'function') { if (notice) { window.alert(message); return true; } return window.confirm(message); }
   active = true;
   dialog.className = 'zentix-dialog';
-  const title = document.createElement('h2'); title.textContent = notice ? 'Informasi' : 'Konfirmasi';
+  const title = document.createElement('h2'); title.textContent = notice ? tr('Informasi','Information') : tr('Konfirmasi','Confirmation');
   const description = document.createElement('p'); description.textContent = String(message);
   const actions = document.createElement('div'); actions.className = 'zentix-dialog-actions';
-  const cancel = document.createElement('button'); cancel.type='button'; cancel.className='f-outline'; cancel.textContent='BATAL';
-  const accept = document.createElement('button'); accept.type='button'; accept.className='f-primary'; accept.textContent=notice?'TUTUP':'LANJUTKAN';
+  const cancel = document.createElement('button'); cancel.type='button'; cancel.className='f-outline'; cancel.textContent=tr('BATAL','CANCEL');
+  const accept = document.createElement('button'); accept.type='button'; accept.className='f-primary'; accept.textContent=notice?tr('TUTUP','CLOSE'):tr('LANJUTKAN','CONTINUE');
   if(!notice) actions.append(cancel); actions.append(accept); dialog.append(title,description,actions); document.body.append(dialog);
   const previous = document.activeElement, originalUrl = location.href;
   const wasInMain = Boolean(previous?.closest?.('#main'));

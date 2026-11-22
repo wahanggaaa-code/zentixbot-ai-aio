@@ -45,3 +45,8 @@
 
 /* Logo dock tetap proporsional pada navigasi desktop dan mobile. */
 .dock-brand img{display:block;width:30px;height:33px;object-fit:contain;margin:auto}
+
+/* Language control sits before the robot in the navigation dock, on mobile and desktop. */
+.dock-language{flex:none;max-width:58px;border:1px solid #777;border-radius:7px;background:#30312d;color:#fff;font:700 10px var(--mono);padding:7px 3px;cursor:pointer}
+.dock-language:focus-visible{outline:2px solid var(--lime);outline-offset:2px}
+@media(max-width:360px){.dock-language{max-width:49px;font-size:9px;padding:6px 1px}}

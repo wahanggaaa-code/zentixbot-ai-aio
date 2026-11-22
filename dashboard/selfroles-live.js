@@ -1,30 +1,31 @@
 /* Self-role panels on the logged-in dashboard. This page acts on Discord: creating or reposting a panel
    sends a message, changing it edits that message, deleting it deletes the message. */
 (() => {
+  const tr=(id,en)=>window.ZentixI18n?.language==='en'?en:id;
   const API = '/dashboard/api/bot/self-roles';
   const esc = (value) => String(value ?? '').replace(/[&<>\"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', "'": '&#39;' }[c]));
   const STATUS = {
-    ok: 'Aktif di Discord',
-    message_missing: 'Pesan panel sudah dihapus di Discord — pasang ulang untuk memakainya lagi',
-    channel_missing: 'Channel panel sudah tidak ada — hapus panel ini lalu buat panel baru',
-    unknown: 'Belum dapat diperiksa di Discord saat ini',
+    ok: tr('Aktif di Discord','Active in Discord'),
+    message_missing: tr('Pesan panel sudah dihapus di Discord — pasang ulang untuk memakainya lagi','Panel message deleted in Discord — repost to use it again'),
+    channel_missing: tr('Channel panel sudah tidak ada — hapus panel ini lalu buat panel baru','Panel channel no longer exists — delete this panel and create a new one'),
+    unknown: tr('Belum dapat diperiksa di Discord saat ini','Cannot currently check Discord'),
   };
   /** What happened to the posted message after a stored change, from the `message` field of the API. */
   const REDRAW = {
-    updated: 'Pesan panel di Discord sudah mengikuti.',
-    missing: 'Tersimpan, tetapi pesan panelnya sudah tidak ada di Discord. Pasang ulang panel.',
-    channel_missing: 'Tersimpan, tetapi channel panelnya sudah tidak ada.',
-    no_roles: 'Tersimpan, tetapi tidak ada lagi role panel yang masih ada di server, jadi pesannya tidak diubah.',
+    updated: tr('Pesan panel di Discord sudah mengikuti.','Discord panel message updated.'),
+    missing: tr('Tersimpan, tetapi pesan panelnya sudah tidak ada di Discord. Pasang ulang panel.','Saved, but the panel message no longer exists in Discord. Repost the panel.'),
+    channel_missing: tr('Tersimpan, tetapi channel panelnya sudah tidak ada.','Saved, but the panel channel no longer exists.'),
+    no_roles: tr('Tersimpan, tetapi tidak ada lagi role panel yang masih ada di server, jadi pesannya tidak diubah.','Saved, but none of the panel roles remain on the server, so the message was not changed.'),
   };
-  const redrawText = (state) => REDRAW[state] || 'Tersimpan, tetapi pesan panel belum dapat diperbarui. Tekan SEGARKAN PESAN untuk mencoba lagi.';
+  const redrawText = (state) => REDRAW[state] || tr('Tersimpan, tetapi pesan panel belum dapat diperbarui. Tekan SEGARKAN PESAN untuk mencoba lagi.','Saved, but the panel message could not be updated. Press REFRESH MESSAGE to try again.');
   /** Only a Discord message link is turned into a link. */
   const messageLink = (url) => (typeof url === 'string' && /^https:\/\/discord\.com\/channels\/\d+\/\d+\/\d+$/.test(url)
-    ? ` · <a href="${esc(url)}" target="_blank" rel="noopener noreferrer">buka pesan ↗</a>` : '');
+    ? ` · <a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${tr('buka pesan ↗','open message ↗')}</a>` : '');
   /** An uploaded banner lives inside the panel message: it is not a link anyone can open. */
   const bannerText = (url) => {
     if (!url) return null;
-    if (String(url).startsWith('attachment://')) return '<p><b>Banner:</b> unggahan tersimpan ✓</p>';
-    return `<p><b>Banner:</b> <a href="${esc(url)}" target="_blank" rel="noopener noreferrer">lihat gambar ↗</a></p>`;
+    if (String(url).startsWith('attachment://')) return `<p><b>Banner:</b> ${tr('unggahan tersimpan','saved upload')} ✓</p>`;
+    return `<p><b>Banner:</b> <a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${tr('lihat gambar ↗','view image ↗')}</a></p>`;
   };
   const PREVIEW_ACCENT = '#99aab5';
   const STYLE_COLORS = { Primary: '#5865f2', Secondary: '#4e5058', Success: '#248046', Danger: '#da373c' };
@@ -33,9 +34,9 @@
   /** The (empty) preview card markup; filled by paintPreview. Not a form control. */
   function previewShell() {
     return `<div style="margin:14px 0;max-width:440px">`
-      + `<p class="f-muted" style="margin:0 0 6px;font-size:12px;text-transform:uppercase;letter-spacing:.06em">Pratinjau tampilan pesan</p>`
+      + `<p class="f-muted" style="margin:0 0 6px;font-size:12px;text-transform:uppercase;letter-spacing:.06em">${tr('Pratinjau tampilan pesan','Message appearance preview')}</p>`
       + `<div data-card style="background:#2b2d31;border:1px solid #1e1f22;border-left:4px solid ${PREVIEW_ACCENT};border-radius:14px;overflow:hidden;color:#dbdee1"></div>`
-      + `<p class="f-muted" style="margin:6px 0 0;font-size:11px">Mode perilaku tidak terlihat di pesan. Isi form di atas mengubah pratinjau ini.</p>`
+      + `<p class="f-muted" style="margin:6px 0 0;font-size:11px">${tr('Mode perilaku tidak terlihat di pesan. Isi form di atas mengubah pratinjau ini.','Behavior mode is not shown in the message. The form above updates this preview.')}</p>`
       + `</div>`;
   }
 
@@ -46,7 +47,7 @@
     const isCreate = scope.matches('form');
     const settings = isCreate ? scope : scope.querySelector('form[data-text]');
     if (!settings) return;
-    const roleNameOf = (id) => { const found = roles.find((role) => role.id === id); return found ? roleName(found) : 'Role terhapus'; };
+    const roleNameOf = (id) => { const found = roles.find((role) => role.id === id); return found ? roleName(found) : tr('Role terhapus','Deleted role'); };
 
     const title = settings.elements.title.value.trim() || 'Self-Role';
     const description = settings.elements.description.value.trim() || 'Select your roles.';
@@ -69,7 +70,7 @@
     } else if (/^https:\/\//.test(url)) {
       bannerHtml = `<img src="${esc(url)}" alt="" style="display:block;width:100%;max-height:180px;object-fit:cover" onerror="this.style.display='none'">`;
     } else if (scope.__storedBannerUpload === true && !settings.elements.bannerClear?.checked) {
-      bannerHtml = `<div style="padding:18px;text-align:center;color:#dbdee1;border-bottom:1px dashed #3f4147">Banner unggahan tersimpan akan dipakai</div>`;
+      bannerHtml = `<div style="padding:18px;text-align:center;color:#dbdee1;border-bottom:1px dashed #3f4147">${tr('Banner unggahan tersimpan akan dipakai','The saved uploaded banner will be used')}</div>`;
     }
 
     // Items, in display order.
@@ -94,14 +95,14 @@
 
     let body;
     if (!items.length) {
-      body = '<p style="color:#dbdee1;font-style:italic;margin:0">Pilih role untuk melihat pratinjau.</p>';
+      body = `<p style="color:#dbdee1;font-style:italic;margin:0">${tr('Pilih role untuk melihat pratinjau.','Select roles to see the preview.')}</p>`;
     } else if (interactionType === 'buttons') {
       body = `<div style="display:flex;flex-wrap:wrap;gap:6px">${items.map((item) => `<span style="background:${STYLE_COLORS[item.buttonStyle]};color:#fff;border-radius:4px;padding:4px 10px;font-size:13px;font-weight:500;display:inline-flex;gap:6px;align-items:center">${esc(item.emoji)} ${esc(item.label)}</span>`).join('')}</div>`;
     } else if (interactionType === 'section_buttons') {
       const accessory = behaviorMode === 'verify' ? 'Verifikasi' : behaviorMode === 'unique' ? 'Ambil' : 'Ambil/Lepas';
       body = items.map((item) => `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;background:#313338;border-radius:6px;padding:8px 10px;margin-bottom:6px"><span style="min-width:0"><span style="display:block;color:#f2f3f5">${esc(item.emoji)} ${esc(item.label)}</span>${item.description ? `<span style="display:block;color:#dbdee1;font-size:12px;margin-top:2px">${esc(item.description)}</span>` : ''}</span><span style="flex:none;background:${STYLE_COLORS[item.buttonStyle]};color:#fff;border-radius:4px;padding:4px 10px;font-size:12px;font-weight:500">${accessory}</span></div>`).join('');
     } else if (interactionType === 'dropdown') {
-      body = `<div style="background:#1e1f22;border:1px solid #3f4147;border-radius:6px;padding:8px 12px;display:flex;justify-content:space-between;gap:10px;color:#dbdee1"><span>${esc(placeholder)}</span><span>▾</span></div><p style="color:#dbdee1;font-size:12px;margin:6px 2px 0">Maks ${esc(maxSelect)} dari ${esc(items.length)} role</p>`;
+      body = `<div style="background:#1e1f22;border:1px solid #3f4147;border-radius:6px;padding:8px 12px;display:flex;justify-content:space-between;gap:10px;color:#dbdee1"><span>${esc(placeholder)}</span><span>▾</span></div><p style="color:#dbdee1;font-size:12px;margin:6px 2px 0">${tr('Maks','Max')} ${esc(maxSelect)} ${tr('dari','of')} ${esc(items.length)} role</p>`;
     } else {
       body = items.map((item) => `<div style="display:flex;gap:8px;align-items:center;padding:5px 2px;border-bottom:1px dashed #3f4147"><span>${esc(item.emoji)}</span><span style="flex:1;color:#f2f3f5">${esc(item.name)}${item.label && item.label !== item.name ? ` (${esc(item.label)})` : ''}</span></div>`).join('');
     }
@@ -119,7 +120,7 @@
   const readFile = (file) => new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(String(reader.result).split(',')[1] ?? '');
-    reader.onerror = () => reject(new Error('Berkas tidak dapat dibaca.'));
+    reader.onerror = () => reject(new Error(tr('Berkas tidak dapat dibaca.','Could not read file.')));
     reader.readAsDataURL(file);
   });
   const BANNER_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
@@ -133,128 +134,128 @@
       ...(body ? { body: JSON.stringify(body) } : {}),
     });
     const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw Error(data.error || 'Permintaan gagal.');
+    if (!response.ok) throw Error(data.error || tr('Permintaan gagal.','Request failed.'));
     return data;
   }
 
   function render() {
-    return `<div id="selfRolesLive"><section class="f-panel"><div class="f-panel-head"><div><h2>Panel tersimpan</h2>`
-      + `<p>Pesan interaktif tempat anggota memilih sendiri role-nya: tombol, daftar section, dropdown atau reaksi klasik.</p></div><span>✳</span></div>`
-      + `<div id="selfRolesList" aria-live="polite">Memuat…</div></section>`
-      + `<section class="f-panel" style="margin-top:18px"><div class="f-panel-head"><div><h2>Buat panel</h2>`
-      + `<p>Mengirim pesan baru ke channel yang dipilih.</p></div><span>✳</span></div>`
-      + `<div id="selfRolesCreate" aria-live="polite">Memuat…</div></section>`
-      + `<div class="f-callout">ⓘ &nbsp; Mode <b>Toggle</b>: klik/pilih lagi untuk lepas. <b>Unique</b>: hanya 1 role dari panel ini. <b>Verify</b>: hanya bisa menambah. `
-      + `Pada tipe <b>Dropdown</b>, role panel yang tidak terpilih akan dilepas (kecuali mode Verify). `
-      + `Pada tipe <b>Reaction</b>, tiap item wajib punya emoji yang berbeda. `
-      + `Role dengan izin pengelolaan server, moderasi, atau mention @everyone, role milik bot/integrasi, dan role yang tidak berada di bawah role tertinggi bot tidak dapat ditawarkan.</div></div>`;
+    return `<div id="selfRolesLive"><section class="f-panel"><div class="f-panel-head"><div><h2>${tr('Panel tersimpan','Saved panels')}</h2>`
+      + `<p>${tr('Pesan interaktif tempat anggota memilih sendiri role-nya: tombol, daftar section, dropdown atau reaksi klasik.','Interactive messages where members choose roles: buttons, section lists, dropdowns or classic reactions.')}</p></div><span>✳</span></div>`
+      + `<div id="selfRolesList" aria-live="polite">${tr('Memuat…','Loading…')}</div></section>`
+      + `<section class="f-panel" style="margin-top:18px"><div class="f-panel-head"><div><h2>${tr('Buat panel','Create panel')}</h2>`
+      + `<p>${tr('Mengirim pesan baru ke channel yang dipilih.','Sends a new message to the selected channel.')}</p></div><span>✳</span></div>`
+      + `<div id="selfRolesCreate" aria-live="polite">${tr('Memuat…','Loading…')}</div></section>`
+      + `<div class="f-callout">ⓘ &nbsp; Mode <b>Toggle</b>: ${tr('klik/pilih lagi untuk lepas.','click/select again to remove.')} <b>Unique</b>: ${tr('hanya 1 role dari panel ini.','only one role from this panel.')} <b>Verify</b>: ${tr('hanya bisa menambah.','add only.')} `
+      + `${tr('Pada tipe','For')} <b>Dropdown</b>, ${tr('role panel yang tidak terpilih akan dilepas (kecuali mode Verify).','unselected panel roles are removed (except in Verify mode).')} `
+      + `${tr('Pada tipe','For')} <b>Reaction</b>, ${tr('tiap item wajib punya emoji yang berbeda.','each item must have a different emoji.')} `
+      + `${tr('Role dengan izin pengelolaan server, moderasi, atau mention @everyone, role milik bot/integrasi, dan role yang tidak berada di bawah role tertinggi bot tidak dapat ditawarkan.','Roles with server management, moderation or mention @everyone permissions, bot/integration roles, and roles not below the bot’s highest role cannot be offered.')}</div></div>`;
   }
 
-  const roleName = (role) => (role.name === null ? `Role terhapus (${role.id})` : role.name);
-  const TYPE_TEXT = { buttons: 'Tombol Grid', section_buttons: 'Section List', dropdown: 'Dropdown', reaction: 'Reaction' };
-  const MODE_TEXT = { toggle: 'Toggle', unique: 'Unique (1 role)', verify: 'Verify (hanya tambah)' };
+  const roleName = (role) => (role.name === null ? tr(`Role terhapus (${role.id})`,`Deleted role (${role.id})`) : role.name);
+  const TYPE_TEXT = { buttons: tr('Tombol Grid','Button grid'), section_buttons: 'Section List', dropdown: 'Dropdown', reaction: 'Reaction' };
+  const MODE_TEXT = { toggle: 'Toggle', unique: 'Unique (1 role)', verify: tr('Verify (hanya tambah)','Verify (add only)') };
   const STYLE_OPTIONS = ['Primary', 'Secondary', 'Success', 'Danger'];
-  const requiredRoleOptions = (selected, roles) => ['<option value="">Tidak ada</option>']
+  const requiredRoleOptions = (selected, roles) => [`<option value="">${tr('Tidak ada','None')}</option>`]
     .concat(roles.filter((role) => role.usable).map((role) => `<option value="${esc(role.id)}"${role.id === selected ? ' selected' : ''}>${esc(role.name)}</option>`))
     .join('');
 
   function panelBlock(panel, index, data) {
     const onPanel = new Set(panel.roles.map((role) => role.id));
     const free = data.roles.filter((role) => role.usable && !onPanel.has(role.id));
-    const place = panel.channelName === null ? 'Channel tidak terlihat oleh bot' : `#${panel.channelName}`;
+    const place = panel.channelName === null ? tr('Channel tidak terlihat oleh bot','Channel not visible to the bot') : `#${panel.channelName}`;
     const roles = panel.roles.map((role) => `<li style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:6px 0">`
-      + `<span><b>${esc(roleName(role))}</b>${role.ok ? '' : ` <small role="note">⚠ Tidak dapat diberikan: ${esc(role.reason)}</small>`}</span>`
-      + `<button type="button" class="f-outline" data-remove="${esc(role.id)}"${panel.roles.length < 2 ? ' disabled title="Role terakhir tidak dapat dilepas; hapus panelnya."' : ''}>LEPAS</button></li>`).join('');
+      + `<span><b>${esc(roleName(role))}</b>${role.ok ? '' : ` <small role="note">⚠ ${tr('Tidak dapat diberikan:','Cannot be assigned:')} ${esc(role.reason)}</small>`}</span>`
+      + `<button type="button" class="f-outline" data-remove="${esc(role.id)}"${panel.roles.length < 2 ? ` disabled title="${tr('Role terakhir tidak dapat dilepas; hapus panelnya.','The last role cannot be removed; delete the panel instead.')}"` : ''}>${tr('LEPAS','REMOVE')}</button></li>`).join('');
 
     const interactionType = panel.interactionType || 'buttons';
     const behaviorMode = panel.behaviorMode || 'toggle';
     const requiredRole = panel.requiredRoleId ? (data.roles.find((entry) => entry.id === panel.requiredRoleId)?.name ?? panel.requiredRoleId) : null;
 
-    const add = panel.roles.length >= data.limits.roles ? `<p class="f-muted">Panel sudah memuat ${esc(data.limits.roles)} role (batas maksimum).</p>`
-      : free.length ? `<form class="f-form" data-add="${index}"><label class="f-field"><span><b>Tambah role</b><small>Hanya role yang boleh ditawarkan dan belum ada di panel ini.</small></span>`
-        + `<select name="roleId"><option value="">Pilih role</option>${free.map((role) => `<option value="${esc(role.id)}">${esc(role.name)}</option>`).join('')}</select></label>`
-        + `<div class="f-form-actions"><span>MENGUBAH PESAN DI DISCORD</span><button type="submit" class="f-primary">TAMBAH ROLE ↗</button></div></form>`
-        : '<p class="f-muted">Tidak ada role lain yang boleh ditawarkan.</p>';
+    const add = panel.roles.length >= data.limits.roles ? `<p class="f-muted">${tr(`Panel sudah memuat ${esc(data.limits.roles)} role (batas maksimum).`,`The panel already has ${esc(data.limits.roles)} roles (maximum).`)}</p>`
+      : free.length ? `<form class="f-form" data-add="${index}"><label class="f-field"><span><b>${tr('Tambah role','Add role')}</b><small>${tr('Hanya role yang boleh ditawarkan dan belum ada di panel ini.','Only eligible roles not already on this panel.')}</small></span>`
+        + `<select name="roleId"><option value="">${tr('Pilih role','Choose role')}</option>${free.map((role) => `<option value="${esc(role.id)}">${esc(role.name)}</option>`).join('')}</select></label>`
+        + `<div class="f-form-actions"><span>${tr('MENGUBAH PESAN DI DISCORD','CHANGES THE DISCORD MESSAGE')}</span><button type="submit" class="f-primary">${tr('TAMBAH ROLE ↗','ADD ROLE ↗')}</button></div></form>`
+        : `<p class="f-muted">${tr('Tidak ada role lain yang boleh ditawarkan.','No other roles are eligible to be offered.')}</p>`;
 
-    const settings = `<p><b>Tipe:</b> ${esc(TYPE_TEXT[interactionType] || interactionType)} · <b>Mode:</b> ${esc(MODE_TEXT[behaviorMode] || behaviorMode)}`
-      + (interactionType === 'dropdown' ? ` · <b>Maks pilihan:</b> ${esc(panel.maxSelect ?? 1)}` : '') + `</p>`
-      + (requiredRole ? `<p><b>Butuh role:</b> ${esc(requiredRole)}</p>` : '')
+    const settings = `<p><b>${tr('Tipe:','Type:')}</b> ${esc(TYPE_TEXT[interactionType] || interactionType)} · <b>Mode:</b> ${esc(MODE_TEXT[behaviorMode] || behaviorMode)}`
+      + (interactionType === 'dropdown' ? ` · <b>${tr('Maks pilihan:','Max selections:')}</b> ${esc(panel.maxSelect ?? 1)}` : '') + `</p>`
+      + (requiredRole ? `<p><b>${tr('Butuh role:','Required role:')}</b> ${esc(requiredRole)}</p>` : '')
       + (bannerText(panel.bannerUrl) || '')
-      + (panel.accentColor ? `<p><b>Warna:</b> <span style="color:#${esc(panel.accentColor)}">#${esc(panel.accentColor)}</span></p>` : '');
+      + (panel.accentColor ? `<p><b>${tr('Warna:','Color:')}</b> <span style="color:#${esc(panel.accentColor)}">#${esc(panel.accentColor)}</span></p>` : '');
 
     // Item editor: order with ↑/↓ and per-item label, description, emoji and button style.
     const itemRows = panel.roles.map((role) => {
       const item = role.item || {};
       return `<li data-item="${esc(role.id)}" style="display:grid;grid-template-columns:auto 2fr 2fr 1.6fr 110px;gap:6px;align-items:center;padding:6px 0;border-bottom:1px dashed var(--softline)">`
-        + `<span style="white-space:nowrap"><button type="button" class="f-outline" data-move="up" aria-label="Naikkan">↑</button> <button type="button" class="f-outline" data-move="down" aria-label="Turunkan">↓</button></span>`
+        + `<span style="white-space:nowrap"><button type="button" class="f-outline" data-move="up" aria-label="${tr('Naikkan','Move up')}">↑</button> <button type="button" class="f-outline" data-move="down" aria-label="${tr('Turunkan','Move down')}">↓</button></span>`
         + `<input aria-label="Label ${esc(roleName(role))}" name="label" maxlength="80" placeholder="${esc(roleName(role))}" value="${esc(item.label ?? '')}">`
-        + `<input aria-label="Deskripsi ${esc(roleName(role))}" name="description" maxlength="100" placeholder="deskripsi" value="${esc(item.description ?? '')}">`
-        + `<input aria-label="Emoji ${esc(roleName(role))}" name="emoji" maxlength="48" placeholder="🎭 atau &lt;:nama:id&gt;" value="${esc(item.emoji ?? '')}">`
-        + `<select aria-label="Gaya tombol ${esc(roleName(role))}" name="buttonStyle">${STYLE_OPTIONS.map((style) => `<option value="${style}"${style === (item.buttonStyle || 'Primary') ? ' selected' : ''}>${style}</option>`).join('')}</select>`
+        + `<input aria-label="${tr('Deskripsi','Description')} ${esc(roleName(role))}" name="description" maxlength="100" placeholder="${tr('deskripsi','description')}" value="${esc(item.description ?? '')}">`
+        + `<input aria-label="Emoji ${esc(roleName(role))}" name="emoji" maxlength="48" placeholder="${tr('🎭 atau &lt;:nama:id&gt;','🎭 or &lt;:name:id&gt;')}" value="${esc(item.emoji ?? '')}">`
+        + `<select aria-label="${tr('Gaya tombol','Button style')} ${esc(roleName(role))}" name="buttonStyle">${STYLE_OPTIONS.map((style) => `<option value="${style}"${style === (item.buttonStyle || 'Primary') ? ' selected' : ''}>${style}</option>`).join('')}</select>`
         + `</li>`;
     }).join('');
     const itemsForm = `<form class="f-form" data-items="${index}">`
-      + `<div class="f-field"><span><b>Atur item</b><small>Urutan tampil, label, deskripsi, emoji dan gaya tombol per role. Emoji wajib dan berbeda untuk mode Reaction.</small></span>`
+      + `<div class="f-field"><span><b>${tr('Atur item','Configure items')}</b><small>${tr('Urutan tampil, label, deskripsi, emoji dan gaya tombol per role. Emoji wajib dan berbeda untuk mode Reaction.','Display order, label, description, emoji and button style for each role. Reaction mode requires a unique emoji for each item.')}</small></span>`
       + `<ol style="list-style:none;margin:0;padding:0" data-itemrows>${itemRows}</ol></div>`
-      + `<div class="f-form-actions"><span>MENGUBAH PESAN DI DISCORD</span><button type="submit" class="f-primary">SIMPAN ITEM ↗</button></div></form>`;
+      + `<div class="f-form-actions"><span>${tr('MENGUBAH PESAN DI DISCORD','CHANGES THE DISCORD MESSAGE')}</span><button type="submit" class="f-primary">${tr('SIMPAN ITEM ↗','SAVE ITEMS ↗')}</button></div></form>`;
 
     const typeOptions = Object.entries(TYPE_TEXT).map(([value, label]) => `<option value="${value}"${value === interactionType ? ' selected' : ''}>${esc(label)}</option>`).join('');
     const modeOptions = Object.entries(MODE_TEXT).map(([value, label]) => `<option value="${value}"${value === behaviorMode ? ' selected' : ''}>${esc(label)}</option>`).join('');
 
-    return `<div data-panel="${index}" style="padding:18px 0;border-bottom:1px solid var(--softline)"><h3>${esc(panel.title ?? 'Panel tanpa judul')}</h3>`
-      + `<p class="f-muted">${esc(place)} · ID pesan ${esc(panel.messageId)}${messageLink(panel.url)}</p>`
+    return `<div data-panel="${index}" style="padding:18px 0;border-bottom:1px solid var(--softline)"><h3>${esc(panel.title ?? tr('Panel tanpa judul','Untitled panel'))}</h3>`
+      + `<p class="f-muted">${esc(place)} · ${tr('ID pesan','Message ID')} ${esc(panel.messageId)}${messageLink(panel.url)}</p>`
       + `<p><b>Status:</b> ${esc(STATUS[panel.status] || STATUS.unknown)}</p>`
       + settings
       + `<form class="f-form" data-text="${index}">`
-      + `<label class="f-field"><span><b>Judul</b><small>Paling banyak ${esc(data.limits.title)} karakter.</small></span><input name="title" maxlength="${esc(data.limits.title)}" value="${esc(panel.title ?? '')}"></label>`
-      + `<label class="f-field"><span><b>Deskripsi</b><small>Paling banyak ${esc(data.limits.description)} karakter.</small></span><textarea name="description" maxlength="${esc(data.limits.description)}">${esc(panel.description ?? '')}</textarea></label>`
-      + `<label class="f-field"><span><b>Banner URL</b><small>${String(panel.bannerUrl || '').startsWith('attachment://') ? 'Banner unggahan tersimpan — isi untuk menggantinya dengan link, kosongkan untuk mempertahankannya' : '(opsional, harus https://)'}</small></span><input name="bannerUrl" type="url" maxlength="2048" value="${esc(panel.bannerUrl && !String(panel.bannerUrl).startsWith('attachment://') ? panel.bannerUrl : '')}" placeholder="https://…"></label>`
-      + `<label class="f-field"><span><b>Unggah banner</b><small>PNG, JPEG, WebP atau GIF, paling banyak 5 MB. Menggantikan banner yang ada.</small></span><input name="bannerFile" type="file" accept="${BANNER_TYPES.join(',')}"></label>`
-      + `<label class="f-field"><span><b>Hapus banner</b><small>Hapus banner tanpa menggantinya.</small></span><span class="f-check"><input type="checkbox" name="bannerClear"><span class="fake-switch" aria-hidden="true"></span></span></label>`
-      + `<div class="f-field"><span><b>Warna container</b><small>Pilih warna atau tekan Tanpa warna.</small></span>${window.ZentixGreetingColor?.render(panel.accentColor ? '#' + panel.accentColor : '', PREVIEW_ACCENT, {name:'accentColor',optional:true}) || `<input name="accentColor" maxlength="7" value="${esc(panel.accentColor ? '#' + panel.accentColor : '')}" placeholder="#99aab5">`}</div>`
-      + `<label class="f-field"><span><b>Tipe interaksi</b></span><select name="interactionType">${typeOptions}</select></label>`
-      + `<label class="f-field"><span><b>Mode perilaku</b></span><select name="behaviorMode">${modeOptions}</select></label>`
-      + `<label class="f-field data-dropdown-only"><span><b>Maks pilihan</b><small>Dropdown saja: 1–25.</small></span><input name="maxSelect" type="number" min="1" max="25" value="${esc(panel.maxSelect ?? 1)}"></label>`
-      + `<label class="f-field data-dropdown-only"><span><b>Placeholder dropdown</b><small>Teks sebelum dipilih.</small></span><input name="dropdownPlaceholder" maxlength="100" value="${esc(panel.dropdownPlaceholder ?? '')}"></label>`
-      + `<label class="f-field"><span><b>Butuh role</b><small>(opsional) Hanya anggota dengan role ini yang bisa memakai panel.</small></span><select name="requiredRoleId">${requiredRoleOptions(panel.requiredRoleId ?? '', data.roles)}</select></label>`
-      + `<div class="f-form-actions"><span>MENGUBAH PESAN DI DISCORD</span><button type="submit" class="f-primary">SIMPAN PENGATURAN ↗</button></div></form>`
-      + `<p><b>Role di panel (${esc(panel.roles.length)} / ${esc(data.limits.roles)})</b></p><ul style="list-style:none;margin:0;padding:0">${roles}</ul>${add}`
+      + `<label class="f-field"><span><b>${tr('Judul','Title')}</b><small>${tr(`Paling banyak ${esc(data.limits.title)} karakter.`,`Maximum ${esc(data.limits.title)} characters.`)}</small></span><input name="title" maxlength="${esc(data.limits.title)}" value="${esc(panel.title ?? '')}"></label>`
+      + `<label class="f-field"><span><b>${tr('Deskripsi','Description')}</b><small>${tr(`Paling banyak ${esc(data.limits.description)} karakter.`,`Maximum ${esc(data.limits.description)} characters.`)}</small></span><textarea name="description" maxlength="${esc(data.limits.description)}">${esc(panel.description ?? '')}</textarea></label>`
+      + `<label class="f-field"><span><b>Banner URL</b><small>${String(panel.bannerUrl || '').startsWith('attachment://') ? tr('Banner unggahan tersimpan — isi untuk menggantinya dengan link, kosongkan untuk mempertahankannya','Saved uploaded banner — enter a link to replace it, leave blank to keep it') : tr('(opsional, harus https://)','(optional, must use https://)')}</small></span><input name="bannerUrl" type="url" maxlength="2048" value="${esc(panel.bannerUrl && !String(panel.bannerUrl).startsWith('attachment://') ? panel.bannerUrl : '')}" placeholder="https://…"></label>`
+      + `<label class="f-field"><span><b>${tr('Unggah banner','Upload banner')}</b><small>${tr('PNG, JPEG, WebP atau GIF, paling banyak 5 MB. Menggantikan banner yang ada.','PNG, JPEG, WebP or GIF, maximum 5 MB. Replaces the existing banner.')}</small></span><input name="bannerFile" type="file" accept="${BANNER_TYPES.join(',')}"></label>`
+      + `<label class="f-field"><span><b>${tr('Hapus banner','Delete banner')}</b><small>${tr('Hapus banner tanpa menggantinya.','Delete the banner without replacing it.')}</small></span><span class="f-check"><input type="checkbox" name="bannerClear"><span class="fake-switch" aria-hidden="true"></span></span></label>`
+      + `<div class="f-field"><span><b>${tr('Warna container','Container color')}</b><small>${tr('Pilih warna atau tekan Tanpa warna.','Choose a color or press No color.')}</small></span>${window.ZentixGreetingColor?.render(panel.accentColor ? '#' + panel.accentColor : '', PREVIEW_ACCENT, {name:'accentColor',optional:true}) || `<input name="accentColor" maxlength="7" value="${esc(panel.accentColor ? '#' + panel.accentColor : '')}" placeholder="#99aab5">`}</div>`
+      + `<label class="f-field"><span><b>${tr('Tipe interaksi','Interaction type')}</b></span><select name="interactionType">${typeOptions}</select></label>`
+      + `<label class="f-field"><span><b>${tr('Mode perilaku','Behavior mode')}</b></span><select name="behaviorMode">${modeOptions}</select></label>`
+      + `<label class="f-field data-dropdown-only"><span><b>${tr('Maks pilihan','Maximum selections')}</b><small>${tr('Dropdown saja: 1–25.','Dropdown only: 1–25.')}</small></span><input name="maxSelect" type="number" min="1" max="25" value="${esc(panel.maxSelect ?? 1)}"></label>`
+      + `<label class="f-field data-dropdown-only"><span><b>${tr('Placeholder dropdown','Dropdown placeholder')}</b><small>${tr('Teks sebelum dipilih.','Text before selection.')}</small></span><input name="dropdownPlaceholder" maxlength="100" value="${esc(panel.dropdownPlaceholder ?? '')}"></label>`
+      + `<label class="f-field"><span><b>${tr('Butuh role','Required role')}</b><small>${tr('(opsional) Hanya anggota dengan role ini yang bisa memakai panel.','(optional) Only members with this role can use the panel.')}</small></span><select name="requiredRoleId">${requiredRoleOptions(panel.requiredRoleId ?? '', data.roles)}</select></label>`
+      + `<div class="f-form-actions"><span>${tr('MENGUBAH PESAN DI DISCORD','CHANGES THE DISCORD MESSAGE')}</span><button type="submit" class="f-primary">${tr('SIMPAN PENGATURAN ↗','SAVE SETTINGS ↗')}</button></div></form>`
+      + `<p><b>${tr('Role di panel','Roles on panel')} (${esc(panel.roles.length)} / ${esc(data.limits.roles)})</b></p><ul style="list-style:none;margin:0;padding:0">${roles}</ul>${add}`
       + itemsForm
       + previewShell()
       + `<div class="f-form-actions"><span></span><span>`
-      + (panel.status === 'message_missing' ? `<button type="button" class="f-outline" data-repost="${index}">PASANG ULANG ↗</button> ` : '')
-      + (panel.status === 'ok' ? `<button type="button" class="f-outline" data-refresh="${index}">SEGARKAN PESAN ↻</button> ` : '')
-      + `<button type="button" class="f-outline" data-delete="${index}">HAPUS PANEL</button></span></div></div>`;
+      + (panel.status === 'message_missing' ? `<button type="button" class="f-outline" data-repost="${index}">${tr('PASANG ULANG ↗','REPOST ↗')}</button> ` : '')
+      + (panel.status === 'ok' ? `<button type="button" class="f-outline" data-refresh="${index}">${tr('SEGARKAN PESAN ↻','REFRESH MESSAGE ↻')}</button> ` : '')
+      + `<button type="button" class="f-outline" data-delete="${index}">${tr('HAPUS PANEL','DELETE PANEL')}</button></span></div></div>`;
   }
 
   function createForm(data) {
-    if (data.panels.length >= data.limits.panels) return `<p class="f-muted">Server ini sudah memiliki ${esc(data.limits.panels)} panel (batas maksimum). Hapus satu panel untuk membuat yang baru.</p>`;
-    if (!data.channels.length) return '<p class="f-muted">Bot tidak melihat channel teks di server ini.</p>';
+    if (data.panels.length >= data.limits.panels) return `<p class="f-muted">${tr(`Server ini sudah memiliki ${esc(data.limits.panels)} panel (batas maksimum). Hapus satu panel untuk membuat yang baru.`,`This server already has ${esc(data.limits.panels)} panels (maximum). Delete one to create another.`)}</p>`;
+    if (!data.channels.length) return `<p class="f-muted">${tr('Bot tidak melihat channel teks di server ini.','The bot cannot see text channels on this server.')}</p>`;
     const usable = data.roles.filter((role) => role.usable);
-    if (!usable.length) return '<p class="f-muted">Belum ada role yang boleh ditawarkan. Buat role biasa di Discord dan letakkan di bawah role bot.</p>';
+    if (!usable.length) return `<p class="f-muted">${tr('Belum ada role yang boleh ditawarkan. Buat role biasa di Discord dan letakkan di bawah role bot.','No eligible roles yet. Create a regular role in Discord and place it below the bot role.')}</p>`;
 
-    const channels = data.channels.map((channel) => `<option value="${esc(channel.id)}"${channel.usable ? '' : ' disabled'}>#${esc(channel.name)}${channel.usable ? '' : ' (izin bot kurang)'}</option>`).join('');
+    const channels = data.channels.map((channel) => `<option value="${esc(channel.id)}"${channel.usable ? '' : ' disabled'}>#${esc(channel.name)}${channel.usable ? '' : tr(' (izin bot kurang)',' (bot lacks permissions)')}</option>`).join('');
     const boxes = data.roles.map((role) => `<div style="display:flex;align-items:center;gap:8px;padding:4px 0"><label style="flex:1;display:flex;align-items:center;gap:6px"><input type="checkbox" name="roleIds" value="${esc(role.id)}"${role.usable ? '' : ' disabled'}> `
       + `${esc(role.name)}${role.usable ? '' : ` <small>— ${esc(role.reason)}</small>`}</label>`
-      + `<input name="emoji-${esc(role.id)}" maxlength="48" placeholder="emoji" aria-label="Emoji untuk ${esc(role.name)}" style="width:130px"${role.usable ? '' : ' disabled'}></div>`).join('');
+      + `<input name="emoji-${esc(role.id)}" maxlength="48" placeholder="emoji" aria-label="${tr('Emoji untuk','Emoji for')} ${esc(role.name)}" style="width:130px"${role.usable ? '' : ' disabled'}></div>`).join('');
 
     return `<form class="f-form" id="selfRolesCreateForm">`
-      + `<label class="f-field"><span><b>Channel</b><small>Bot memerlukan View Channel, Send Messages, dan Embed Links di sana.${data.channelsTruncated ? ' Daftar dipotong.' : ''}</small></span>`
-      + `<select name="channelId"><option value="">Pilih channel</option>${channels}</select></label>`
-      + `<label class="f-field"><span><b>Judul</b><small>Paling banyak ${esc(data.limits.title)} karakter.</small></span><input name="title" maxlength="${esc(data.limits.title)}"></label>`
-      + `<label class="f-field"><span><b>Deskripsi</b><small>Paling banyak ${esc(data.limits.description)} karakter.</small></span><textarea name="description" maxlength="${esc(data.limits.description)}"></textarea></label>`
-      + `<label class="f-field"><span><b>Banner URL</b><small>(opsional, harus https://)</small></span><input name="bannerUrl" type="url" maxlength="2048" placeholder="https://…"></label>`
-      + `<label class="f-field"><span><b>Unggah banner</b><small>PNG, JPEG, WebP atau GIF, paling banyak 5 MB. Dipilih lebih diutamakan daripada URL.</small></span><input name="bannerFile" type="file" accept="${BANNER_TYPES.join(',')}"></label>`
-      + `<div class="f-field"><span><b>Warna container</b><small>Pilih warna atau tekan Tanpa warna.</small></span>${window.ZentixGreetingColor?.render('', PREVIEW_ACCENT, {name:'accentColor',optional:true}) || `<input name="accentColor" maxlength="7" placeholder="#99aab5">`}</div>`
-      + `<label class="f-field"><span><b>Tipe interaksi</b></span><select name="interactionType"><option value="buttons">Tombol Grid</option><option value="section_buttons">Section List</option><option value="dropdown">Dropdown</option><option value="reaction">Reaction (Klasik)</option></select></label>`
-      + `<label class="f-field"><span><b>Mode perilaku</b></span><select name="behaviorMode"><option value="toggle">Toggle (klik/pilih lagi untuk lepas)</option><option value="unique">Unique (hanya 1 role)</option><option value="verify">Verify (hanya tambah)</option></select></label>`
-      + `<label class="f-field data-dropdown-only"><span><b>Maks pilihan</b><small>Dropdown saja: 1–25.</small></span><input name="maxSelect" type="number" min="1" max="25" value="1"></label>`
-      + `<label class="f-field data-dropdown-only"><span><b>Placeholder dropdown</b><small>Teks sebelum dipilih.</small></span><input name="dropdownPlaceholder" maxlength="100" placeholder="Select your roles"></label>`
-      + `<label class="f-field"><span><b>Butuh role</b><small>(opsional) Hanya anggota dengan role ini yang bisa memakai panel.</small></span><select name="requiredRoleId">${requiredRoleOptions('', data.roles)}</select></label>`
-      + `<div class="f-field"><span><b>Role yang ditawarkan</b><small>Pilih 1 sampai ${esc(data.limits.roles)} role. Emoji hanya wajib untuk mode Reaction.${data.rolesTruncated ? ' Daftar role dipotong.' : ''}</small></span>`
+      + `<label class="f-field"><span><b>Channel</b><small>${tr('Bot memerlukan View Channel, Send Messages, dan Embed Links di sana.','The bot needs View Channel, Send Messages and Embed Links there.')}${data.channelsTruncated ? tr(' Daftar dipotong.',' List truncated.') : ''}</small></span>`
+      + `<select name="channelId"><option value="">${tr('Pilih channel','Choose channel')}</option>${channels}</select></label>`
+      + `<label class="f-field"><span><b>${tr('Judul','Title')}</b><small>${tr(`Paling banyak ${esc(data.limits.title)} karakter.`,`Maximum ${esc(data.limits.title)} characters.`)}</small></span><input name="title" maxlength="${esc(data.limits.title)}"></label>`
+      + `<label class="f-field"><span><b>${tr('Deskripsi','Description')}</b><small>${tr(`Paling banyak ${esc(data.limits.description)} karakter.`,`Maximum ${esc(data.limits.description)} characters.`)}</small></span><textarea name="description" maxlength="${esc(data.limits.description)}"></textarea></label>`
+      + `<label class="f-field"><span><b>Banner URL</b><small>${tr(tr('(opsional, harus https://)','(optional, must use https://)'),'(optional, must use https://)')}</small></span><input name="bannerUrl" type="url" maxlength="2048" placeholder="https://…"></label>`
+      + `<label class="f-field"><span><b>${tr('Unggah banner','Upload banner')}</b><small>${tr('PNG, JPEG, WebP atau GIF, paling banyak 5 MB. Dipilih lebih diutamakan daripada URL.','PNG, JPEG, WebP or GIF, maximum 5 MB. The selected file takes precedence over the URL.')}</small></span><input name="bannerFile" type="file" accept="${BANNER_TYPES.join(',')}"></label>`
+      + `<div class="f-field"><span><b>${tr('Warna container','Container color')}</b><small>${tr('Pilih warna atau tekan Tanpa warna.','Choose a color or press No color.')}</small></span>${window.ZentixGreetingColor?.render('', PREVIEW_ACCENT, {name:'accentColor',optional:true}) || `<input name="accentColor" maxlength="7" placeholder="#99aab5">`}</div>`
+      + `<label class="f-field"><span><b>${tr('Tipe interaksi','Interaction type')}</b></span><select name="interactionType"><option value="buttons">${tr('Tombol Grid','Button grid')}</option><option value="section_buttons">Section List</option><option value="dropdown">Dropdown</option><option value="reaction">${tr('Reaction (Klasik)','Reaction (classic)')}</option></select></label>`
+      + `<label class="f-field"><span><b>${tr('Mode perilaku','Behavior mode')}</b></span><select name="behaviorMode"><option value="toggle">${tr('Toggle (klik/pilih lagi untuk lepas)','Toggle (click/select again to remove)')}</option><option value="unique">${tr('Unique (hanya 1 role)','Unique (one role only)')}</option><option value="verify">${tr('Verify (hanya tambah)','Verify (add only)')}</option></select></label>`
+      + `<label class="f-field data-dropdown-only"><span><b>${tr('Maks pilihan','Maximum selections')}</b><small>${tr('Dropdown saja: 1–25.','Dropdown only: 1–25.')}</small></span><input name="maxSelect" type="number" min="1" max="25" value="1"></label>`
+      + `<label class="f-field data-dropdown-only"><span><b>${tr('Placeholder dropdown','Dropdown placeholder')}</b><small>${tr('Teks sebelum dipilih.','Text before selection.')}</small></span><input name="dropdownPlaceholder" maxlength="100" placeholder="Select your roles"></label>`
+      + `<label class="f-field"><span><b>${tr('Butuh role','Required role')}</b><small>${tr('(opsional) Hanya anggota dengan role ini yang bisa memakai panel.','(optional) Only members with this role can use the panel.')}</small></span><select name="requiredRoleId">${requiredRoleOptions('', data.roles)}</select></label>`
+      + `<div class="f-field"><span><b>${tr('Role yang ditawarkan','Offered roles')}</b><small>${tr(`Pilih 1 sampai ${esc(data.limits.roles)} role. Emoji hanya wajib untuk mode Reaction.`,`Choose 1 to ${esc(data.limits.roles)} roles. Emoji are required only for Reaction mode.`)}${data.rolesTruncated ? tr(' Daftar role dipotong.',' Role list truncated.') : ''}</small></span>`
       + `<div style="max-height:260px;overflow:auto">${boxes}</div></div>`
       + previewShell()
-      + `<div class="f-form-actions"><span>MENGIRIM PESAN KE DISCORD</span><button type="submit" class="f-primary">BUAT PANEL ↗</button></div></form>`;
+      + `<div class="f-form-actions"><span>${tr('MENGIRIM PESAN KE DISCORD','SENDS A DISCORD MESSAGE')}</span><button type="submit" class="f-primary">${tr('BUAT PANEL ↗','CREATE PANEL ↗')}</button></div></form>`;
   }
 
   function bind(root) {
@@ -279,26 +280,26 @@
     }
 
     async function load(message = '') {
-      list.textContent = 'Memuat…';
-      create.textContent = 'Memuat…';
+      list.textContent = tr('Memuat…','Loading…');
+      create.textContent = tr('Memuat…','Loading…');
       let data;
       try {
         data = await request();
       } catch (error) {
         if (!list.isConnected) return;
-        list.innerHTML = `<p role="alert">${esc(error.message)}</p><button type="button" class="f-outline" id="selfRolesRetry">COBA LAGI ↻</button>`;
+        list.innerHTML = `<p role="alert">${esc(error.message)}</p><button type="button" class="f-outline" id="selfRolesRetry">${tr('COBA LAGI ↻','RETRY ↻')}</button>`;
         list.querySelector('#selfRolesRetry').onclick = () => load();
-        create.innerHTML = '<p class="f-muted">Tidak tersedia sampai daftar panel dapat dibaca.</p>';
+        create.innerHTML = `<p class="f-muted">${tr('Tidak tersedia sampai daftar panel dapat dibaca.','Unavailable until the panel list can be read.')}</p>`;
         return;
       }
       if (!list.isConnected) return;
 
       const note = `<p id="selfRolesStatus" class="f-muted" role="status">${esc(message)}</p>`;
-      const rejected = data.rejected > 0 ? `<p role="alert">${esc(data.rejected)} catatan panel tersimpan tidak dapat dibaca dan tidak ditampilkan.</p>` : '';
+      const rejected = data.rejected > 0 ? `<p role="alert">${esc(data.rejected)} ${tr('catatan panel tersimpan tidak dapat dibaca dan tidak ditampilkan.','saved panel records could not be read and are not displayed.')}</p>` : '';
       list.innerHTML = note + rejected + (data.panels.length
         ? data.panels.map((panel, index) => panelBlock(panel, index, data)).join('')
-        : '<p class="f-muted">Belum ada panel.</p>')
-        + '<div class="f-form-actions"><button type="button" class="f-outline" id="selfRolesReload">MUAT ULANG ↻</button></div>';
+        : `<p class="f-muted">${tr('Belum ada panel.','No panels yet.')}</p>`)
+        + `<div class="f-form-actions"><button type="button" class="f-outline" id="selfRolesReload">${tr('MUAT ULANG ↻','RELOAD ↻')}</button></div>`;
       create.innerHTML = '<p id="selfRolesCreateStatus" class="f-muted" role="status"></p>' + createForm(data);
       list.querySelector('#selfRolesReload').onclick = () => load();
       const status = list.querySelector('#selfRolesStatus');
@@ -310,14 +311,14 @@
       async function change(where, run, done) {
         const controls = [...root.querySelectorAll('#selfRolesLive button, #selfRolesLive select, #selfRolesLive input, #selfRolesLive textarea')].filter((control) => !control.disabled);
         controls.forEach((control) => { control.disabled = true; });
-        where.textContent = 'Memproses…';
+        where.textContent = tr('Memproses…','Processing…');
         let result;
         try {
           result = await run();
         } catch (error) {
           if (!list.isConnected) return;
           controls.forEach((control) => { control.disabled = false; });
-          where.textContent = `${error.message} Bila hasilnya tidak jelas, muat ulang dan periksa sebelum mengulang.`;
+          where.textContent = `${error.message} ${tr('Bila hasilnya tidak jelas, muat ulang dan periksa sebelum mengulang.','If the result is unclear, reload and check before retrying.')}`;
           return;
         }
         if (!list.isConnected) return;
@@ -330,8 +331,8 @@
       async function bannerUpload(fileInput) {
         const file = fileInput?.files?.[0];
         if (!file) return null;
-        if (!BANNER_TYPES.includes(file.type)) throw Error('Banner harus PNG, JPEG, WebP atau GIF.');
-        if (file.size > 5 * 1024 * 1024) throw Error('Banner paling banyak 5 MB.');
+        if (!BANNER_TYPES.includes(file.type)) throw Error(tr('Banner harus PNG, JPEG, WebP atau GIF.','Banner must be PNG, JPEG, WebP or GIF.'));
+        if (file.size > 5 * 1024 * 1024) throw Error(tr('Banner paling banyak 5 MB.','Banner must be at most 5 MB.'));
         return { name: file.name, mime: file.type, base64: await readFile(file) };
       }
 
@@ -361,7 +362,7 @@
           try {
             bannerFile = await bannerUpload(form.elements.bannerFile);
           } catch (error) { status.textContent = error.message; return; }
-          if (!title || !description) { status.textContent = 'Judul dan deskripsi wajib diisi.'; return; }
+          if (!title || !description) { status.textContent = tr('Judul dan deskripsi wajib diisi.','Title and description are required.'); return; }
           const originalBannerUrl = storedUpload ? '' : (panel.bannerUrl || '');
           const unchanged = title === (panel.title ?? '') && description === (panel.description ?? '')
             && bannerUrl === originalBannerUrl && accentColor === (panel.accentColor ? '#' + panel.accentColor : '')
@@ -369,8 +370,8 @@
             && dropdownPlaceholder === (panel.dropdownPlaceholder ?? '') && maxSelect === (panel.maxSelect ?? 1)
             && (requiredRoleId || '') === (panel.requiredRoleId ?? '')
             && !bannerFile && !bannerClear;
-          if (unchanged) { status.textContent = 'Tidak ada yang berubah.'; return; }
-          if (!(await (window.ZentixDialog ? window.ZentixDialog.confirm(`Ubah pengaturan panel "${label}"? Pesannya di Discord ikut diubah.`) : Promise.resolve(window.confirm(`Ubah pengaturan panel "${label}"? Pesannya di Discord ikut diubah.`))))) return;
+          if (unchanged) { status.textContent = tr('Tidak ada yang berubah.','Nothing changed.'); return; }
+          if (!(await (window.ZentixDialog ? window.ZentixDialog.confirm(tr(`Ubah pengaturan panel "${label}"? Pesannya di Discord ikut diubah.`,`Change settings for panel "${label}"? Its Discord message will also be changed.`)) : Promise.resolve(window.confirm(tr(`Ubah pengaturan panel "${label}"? Pesannya di Discord ikut diubah.`,`Change settings for panel "${label}"? Its Discord message will also be changed.`)))))) return;
           change(status, () => request('PATCH', path, {
             confirmed: true, revision: panel.revision, title, description,
             ...(sendingBannerUrl !== undefined ? { bannerUrl: sendingBannerUrl } : {}),
@@ -382,11 +383,11 @@
             ...(bannerFile ? { bannerFile } : {}),
             ...(bannerClear ? { bannerClear: true } : {}),
           }),
-          (result) => `Pengaturan panel disimpan. ${redrawText(result.message)}`);
+          (result) => `${tr('Pengaturan panel disimpan.','Panel settings saved.')} ${redrawText(result.message)}`);
         };
 
         block.__storedBannerUpload = typeof panel.bannerUrl === 'string' && panel.bannerUrl.startsWith('attachment://');
-        const panelRoles = panel.roles.map((role) => ({ id: role.id, name: role.name === null ? 'Role terhapus' : role.name }));
+        const panelRoles = panel.roles.map((role) => ({ id: role.id, name: role.name === null ? tr('Role terhapus','Deleted role') : role.name }));
         const repaintPanel = () => paintPreview(block, panelRoles);
         block.addEventListener('input', repaintPanel);
         block.addEventListener('change', repaintPanel);
@@ -410,10 +411,10 @@
             emoji: row.querySelector('input[name="emoji"]').value.trim() || null,
             buttonStyle: row.querySelector('select[name="buttonStyle"]').value,
           }));
-          if (!items.length) { status.textContent = 'Panel harus memuat minimal satu role.'; return; }
-          if (!(await (window.ZentixDialog ? window.ZentixDialog.confirm(`Simpan item panel "${label}"? Pesannya di Discord ikut diubah.`) : Promise.resolve(window.confirm(`Simpan item panel "${label}"? Pesannya di Discord ikut diubah.`))))) return;
+          if (!items.length) { status.textContent = tr('Panel harus memuat minimal satu role.','The panel must contain at least one role.'); return; }
+          if (!(await (window.ZentixDialog ? window.ZentixDialog.confirm(tr(`Simpan item panel "${label}"? Pesannya di Discord ikut diubah.`,`Save items for panel "${label}"? Its Discord message will also be changed.`)) : Promise.resolve(window.confirm(tr(`Simpan item panel "${label}"? Pesannya di Discord ikut diubah.`,`Save items for panel "${label}"? Its Discord message will also be changed.`)))))) return;
           change(status, () => request('PUT', path + '/items', { confirmed: true, revision: panel.revision, items }),
-            (result) => `Item panel disimpan. ${redrawText(result.message)}`);
+            (result) => `${tr('Item panel disimpan.','Panel items saved.')} ${redrawText(result.message)}`);
         };
 
         const add = block.querySelector('form[data-add]');
@@ -421,49 +422,49 @@
           add.onsubmit = async (event) => {
             event.preventDefault();
             const roleId = add.elements.roleId.value;
-            if (!roleId) { status.textContent = 'Pilih role terlebih dahulu.'; return; }
+            if (!roleId) { status.textContent = tr('Pilih role terlebih dahulu.','Choose a role first.'); return; }
             const role = data.roles.find((entry) => entry.id === roleId);
-            if (!(await (window.ZentixDialog ? window.ZentixDialog.confirm(`Tambahkan role "${role?.name ?? roleId}" ke panel "${label}"? Semua anggota yang melihat panel dapat mengambil role itu sendiri.`) : Promise.resolve(window.confirm(`Tambahkan role "${role?.name ?? roleId}" ke panel "${label}"? Semua anggota yang melihat panel dapat mengambil role itu sendiri.`))))) return;
+            if (!(await (window.ZentixDialog ? window.ZentixDialog.confirm(tr(`Tambahkan role "${role?.name ?? roleId}" ke panel "${label}"? Semua anggota yang melihat panel dapat mengambil role itu sendiri.`,`Add role "${role?.name ?? roleId}" to panel "${label}"? All members who see the panel can assign themselves that role.`)) : Promise.resolve(window.confirm(tr(`Tambahkan role "${role?.name ?? roleId}" ke panel "${label}"? Semua anggota yang melihat panel dapat mengambil role itu sendiri.`,`Add role "${role?.name ?? roleId}" to panel "${label}"? All members who see the panel can assign themselves that role.`)))))) return;
             change(status, () => request('POST', path + '/roles', { confirmed: true, revision: panel.revision, roleId }),
-              (result) => `Role ditambahkan. ${redrawText(result.message)}`);
+              (result) => `${tr('Role ditambahkan.','Role added.')} ${redrawText(result.message)}`);
           };
         }
 
         block.querySelectorAll('[data-remove]').forEach((button) => {
           button.onclick = async () => {
             const role = panel.roles.find((entry) => entry.id === button.dataset.remove);
-            if (!(await (window.ZentixDialog ? window.ZentixDialog.confirm(`Lepas role "${roleName(role)}" dari panel "${label}"? Anggota yang sudah memilikinya tetap memilikinya.`) : Promise.resolve(window.confirm(`Lepas role "${roleName(role)}" dari panel "${label}"? Anggota yang sudah memilikinya tetap memilikinya.`))))) return;
+            if (!(await (window.ZentixDialog ? window.ZentixDialog.confirm(tr(`Lepas role "${roleName(role)}" dari panel "${label}"? Anggota yang sudah memilikinya tetap memilikinya.`,`Remove role "${roleName(role)}" from panel "${label}"? Members who already have it will keep it.`)) : Promise.resolve(window.confirm(tr(`Lepas role "${roleName(role)}" dari panel "${label}"? Anggota yang sudah memilikinya tetap memilikinya.`,`Remove role "${roleName(role)}" from panel "${label}"? Members who already have it will keep it.`)))))) return;
             change(status, () => request('DELETE', path + '/roles/' + encodeURIComponent(role.id), { confirmed: true, revision: panel.revision }),
-              (result) => `Role dilepas dari panel. ${redrawText(result.message)}`);
+              (result) => `${tr('Role dilepas dari panel.','Role removed from panel.')} ${redrawText(result.message)}`);
           };
         });
 
         const repost = block.querySelector('[data-repost]');
         if (repost) {
           repost.onclick = async () => {
-            if (!(await (window.ZentixDialog ? window.ZentixDialog.confirm(`Pasang ulang panel "${label}"? Pesan baru dikirim ke ${panel.channelName === null ? 'channel panel' : '#' + panel.channelName}.`) : Promise.resolve(window.confirm(`Pasang ulang panel "${label}"? Pesan baru dikirim ke ${panel.channelName === null ? 'channel panel' : '#' + panel.channelName}.`))))) return;
+            if (!(await (window.ZentixDialog ? window.ZentixDialog.confirm(tr(`Pasang ulang panel "${label}"? Pesan baru dikirim ke ${panel.channelName === null ? 'channel panel' : '#' + panel.channelName}.`,`Repost panel "${label}"? A new message will be sent to ${panel.channelName === null ? 'the panel channel' : '#' + panel.channelName}.`)) : Promise.resolve(window.confirm(tr(`Pasang ulang panel "${label}"? Pesan baru dikirim ke ${panel.channelName === null ? 'channel panel' : '#' + panel.channelName}.`,`Repost panel "${label}"? A new message will be sent to ${panel.channelName === null ? 'the panel channel' : '#' + panel.channelName}.`)))))) return;
             change(status, () => request('POST', path + '/repost', { confirmed: true }),
               (result) => (result.bannerLost
-                ? 'Panel dipasang ulang, tetapi banner unggahan lama hilang. Unggah ulang banner di pengaturan panel.'
+                ? tr('Panel dipasang ulang, tetapi banner unggahan lama hilang. Unggah ulang banner di pengaturan panel.','Panel reposted, but the old uploaded banner was lost. Upload it again in panel settings.')
                 : result.reactionFailures?.length
-                  ? 'Panel dipasang ulang, tetapi sebagian emoji reaksi gagal ditempel.'
-                  : 'Panel dipasang ulang sebagai pesan baru.'));
+                  ? tr('Panel dipasang ulang, tetapi sebagian emoji reaksi gagal ditempel.','Panel reposted, but some reactions could not be added.')
+                  : tr('Panel dipasang ulang sebagai pesan baru.','Panel reposted as a new message.')));
           };
         }
         const refresh = block.querySelector('[data-refresh]');
         if (refresh) {
           refresh.onclick = async () => {
-            if (!(await (window.ZentixDialog ? window.ZentixDialog.confirm(`Gambar ulang pesan panel "${label}" di Discord dari data tersimpan?`) : Promise.resolve(window.confirm(`Gambar ulang pesan panel "${label}" di Discord dari data tersimpan?`))))) return;
+            if (!(await (window.ZentixDialog ? window.ZentixDialog.confirm(tr(`Gambar ulang pesan panel "${label}" di Discord dari data tersimpan?`,`Refresh panel "${label}" in Discord from saved data?`)) : Promise.resolve(window.confirm(tr(`Gambar ulang pesan panel "${label}" di Discord dari data tersimpan?`,`Refresh panel "${label}" in Discord from saved data?`)))))) return;
             change(status, () => request('POST', path + '/refresh', { confirmed: true }),
-              (result) => (result.message === 'updated' ? 'Pesan panel digambar ulang.' : redrawText(result.message)));
+              (result) => (result.message === 'updated' ? tr('Pesan panel digambar ulang.','Panel message refreshed.') : redrawText(result.message)));
           };
         }
         block.querySelector('[data-delete]').onclick = async () => {
-          const target = panel.status === 'ok' ? 'Pesannya DIHAPUS dari Discord dan tidak dapat dikembalikan.'
-            : 'Pesannya tidak ditemukan; hanya catatan panel yang dihapus bila pesan memang sudah tidak ada.';
-          if (!(await (window.ZentixDialog ? window.ZentixDialog.confirm(`Hapus panel "${label}"? ${target} Role yang sudah dimiliki anggota tidak dicabut.`) : Promise.resolve(window.confirm(`Hapus panel "${label}"? ${target} Role yang sudah dimiliki anggota tidak dicabut.`))))) return;
+          const target = panel.status === 'ok' ? tr('Pesannya DIHAPUS dari Discord dan tidak dapat dikembalikan.','Its message will be DELETED from Discord and cannot be restored.')
+            : tr('Pesannya tidak ditemukan; hanya catatan panel yang dihapus bila pesan memang sudah tidak ada.','The message was not found; only the panel record is deleted if the message no longer exists.');
+          if (!(await (window.ZentixDialog ? window.ZentixDialog.confirm(tr(`Hapus panel "${label}"? ${target} Role yang sudah dimiliki anggota tidak dicabut.`,`Delete panel "${label}"? ${target} Roles already held by members will not be removed.`)) : Promise.resolve(window.confirm(tr(`Hapus panel "${label}"? ${target} Role yang sudah dimiliki anggota tidak dicabut.`,`Delete panel "${label}"? ${target} Roles already held by members will not be removed.`)))))) return;
           change(status, () => request('DELETE', path, { confirmed: true, revision: panel.revision }),
-            (result) => (result.messageDeleted ? 'Panel dan pesannya dihapus.' : 'Panel dihapus. Pesannya sudah tidak ada.'));
+            (result) => (result.messageDeleted ? tr('Panel dan pesannya dihapus.','Panel and message deleted.') : tr('Panel dihapus. Pesannya sudah tidak ada.','Panel deleted. Its message no longer existed.')));
         };
       });
 
@@ -510,20 +511,20 @@
             roleIds: checked,
             items,
           };
-          if (!body.channelId) { createStatus.textContent = 'Pilih channel terlebih dahulu.'; return; }
-          if (!body.title || !body.description) { createStatus.textContent = 'Judul dan deskripsi wajib diisi.'; return; }
-          if (!body.roleIds.length) { createStatus.textContent = 'Pilih minimal satu role.'; return; }
+          if (!body.channelId) { createStatus.textContent = tr('Pilih channel terlebih dahulu.','Choose a channel first.'); return; }
+          if (!body.title || !body.description) { createStatus.textContent = tr('Judul dan deskripsi wajib diisi.','Title and description are required.'); return; }
+          if (!body.roleIds.length) { createStatus.textContent = tr('Pilih minimal satu role.','Choose at least one role.'); return; }
           if (interactionType === 'reaction') {
             const missing = items.filter((item) => !item.emoji).map((item) => data.roles.find((entry) => entry.id === item.roleId)?.name ?? item.roleId);
-            if (missing.length) { createStatus.textContent = `Mode Reaction memerlukan emoji untuk setiap role. Belum ada: ${missing.join(', ')}`; return; }
+            if (missing.length) { createStatus.textContent = tr(`Mode Reaction memerlukan emoji untuk setiap role. Belum ada: ${missing.join(', ')}`,`Reaction mode requires an emoji for every role. Missing: ${missing.join(', ')}`); return; }
           }
           const channel = data.channels.find((entry) => entry.id === body.channelId);
           const namesList = body.roleIds.map((id) => data.roles.find((entry) => entry.id === id)?.name ?? id).join(', ');
-          if (!(await (window.ZentixDialog ? window.ZentixDialog.confirm(`Kirim panel "${body.title}" ke #${channel?.name ?? body.channelId}? Semua anggota yang melihatnya dapat mengambil sendiri role: ${namesList}.`) : Promise.resolve(window.confirm(`Kirim panel "${body.title}" ke #${channel?.name ?? body.channelId}? Semua anggota yang melihatnya dapat mengambil sendiri role: ${namesList}.`))))) return;
+          if (!(await (window.ZentixDialog ? window.ZentixDialog.confirm(tr(`Kirim panel "${body.title}" ke #${channel?.name ?? body.channelId}? Semua anggota yang melihatnya dapat mengambil sendiri role: ${namesList}.`,`Send panel "${body.title}" to #${channel?.name ?? body.channelId}? All members who see it can assign themselves these roles: ${namesList}.`)) : Promise.resolve(window.confirm(tr(`Kirim panel "${body.title}" ke #${channel?.name ?? body.channelId}? Semua anggota yang melihatnya dapat mengambil sendiri role: ${namesList}.`,`Send panel "${body.title}" to #${channel?.name ?? body.channelId}? All members who see it can assign themselves these roles: ${namesList}.`)))))) return;
           change(createStatus, () => request('POST', '/panels', body),
             (result) => (result.reactionFailures?.length
-              ? 'Panel dibuat, tetapi sebagian emoji reaksi gagal ditempel. Tambahkan reaksi secara manual atau buat ulang panel.'
-              : 'Panel dibuat dan dikirim ke Discord.'));
+              ? tr('Panel dibuat, tetapi sebagian emoji reaksi gagal ditempel. Tambahkan reaksi secara manual atau buat ulang panel.','Panel created, but some reactions could not be added. Add them manually or recreate the panel.')
+              : tr('Panel dibuat dan dikirim ke Discord.','Panel created and sent to Discord.')));
         };
       }
     }

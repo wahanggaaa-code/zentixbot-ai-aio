@@ -11,6 +11,7 @@
 <link rel="stylesheet" href="ai-studio.css">
 <link rel="stylesheet" href="message-studio.css">
 <link rel="stylesheet" href="refinements.css">
+<script defer src="i18n.js"></script>
 <script defer src="dialog.js"></script>
 <script defer src="select-dialog.js"></script>
 <script defer src="time-dialog.js"></script>
@@ -50,26 +51,27 @@
 </div>
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
 <div class="nav-wrap">
-  <div class="mobile-menu" id="mobileMenu" aria-label="Menu navigasi" hidden>
+  <div class="mobile-menu" id="mobileMenu" aria-label="Menu navigasi" data-i18n-label="menu" hidden>
     <div class="mobile-menu-top"><span>MENU / NAVIGASI</span><span>✳</span></div>
     <button data-page="overview"><span>01</span><strong>Overview</strong><b>↗</b></button>
-    <button data-page="features"><span>02</span><strong>Fitur bot</strong><b>↗</b></button>
+    <button data-page="features"><span>02</span><strong data-i18n="features">Fitur bot</strong><b>↗</b></button>
     <button data-page="ai"><span>03</span><strong>AI studio</strong><b>↗</b></button>
-    <button data-page="settings"><span>04</span><strong>Pengaturan</strong><b>↗</b></button>
+    <button data-page="settings"><span>04</span><strong data-i18n="settings">Pengaturan</strong><b>↗</b></button>
     <div class="mobile-menu-bottom">ZENTIXBOT <span>CONTROL ROOM / 01</span></div>
   </div>
   <nav class="dock" aria-label="Navigasi utama">
+    <select id="dashboardLanguage" class="dock-language" aria-label="Bahasa dashboard"><option value="id">ID</option><option value="en">EN (partial)</option></select>
     <div class="dock-brand" aria-hidden="true"><img src="zentix-dock-logo.svg" alt="" width="30" height="33"></div>
     <div class="dock-divider"></div>
     <div class="dock-links">
       <button data-page="overview" class="dock-item active"><span class="nav-icon">▦</span><span>Overview</span></button>
-      <button data-page="features" class="dock-item"><span class="nav-icon">▧</span><span>Fitur bot</span></button>
+      <button data-page="features" class="dock-item"><span class="nav-icon">▧</span><span data-i18n="features">Fitur bot</span></button>
       <button data-page="ai" class="dock-item"><span class="nav-icon">✳</span><span>AI studio</span></button>
-      <button data-page="settings" class="dock-item"><span class="nav-icon">☷</span><span>Pengaturan</span></button>
+      <button data-page="settings" class="dock-item"><span class="nav-icon">☷</span><span data-i18n="settings">Pengaturan</span></button>
     </div>
     <div class="dock-divider desktop-only"></div><span class="dock-end desktop-only">CONTROL<br>YOUR SPACE<span>↗</span></span>
-    <button class="dock-account" type="button" id="profileButton" aria-label="Keluar dari akun" title="Keluar dari akun">KELUAR</button>
-    <button class="mobile-trigger" id="mobileTrigger" aria-expanded="false" aria-controls="mobileMenu" aria-label="Buka menu navigasi"><span></span><span></span></button>
+    <button class="dock-account" type="button" id="profileButton" aria-label="Keluar dari akun" title="Keluar dari akun" data-i18n-label="logoutTitle" data-i18n="logout">KELUAR</button>
+    <button class="mobile-trigger" id="mobileTrigger" aria-expanded="false" aria-controls="mobileMenu" aria-label="Buka menu navigasi" data-i18n-label="openMenu"><span></span><span></span></button>
   </nav>
 </div>
 </body></html>

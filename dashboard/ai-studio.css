@@ -189,3 +189,11 @@ main :is(.discord-demo,.main-card,.ai-index-intro,.ai-quiz,.music-player) :is(p,
 .faq-import .f-inline{display:flex;flex-wrap:wrap;gap:8px;padding-top:12px}
 .faq-import .f-primary:disabled{opacity:.5;cursor:not-allowed}
 .faq-import code,.faq-import .s-item{overflow-wrap:anywhere;word-break:break-word}
+
+/* Discord image channel and role choices: one readable, tappable row per item. */
+.image-discord-picker{min-width:0;max-height:220px;overscroll-behavior:contain}
+.image-discord-picker label{display:flex;align-items:flex-start;gap:9px;min-height:36px;padding:8px 2px;line-height:1.45}
+.image-discord-picker label+label{border-top:1px solid var(--softline)}
+.image-discord-picker input{flex:none;margin:2px 0 0;accent-color:#536f12}
+.image-discord-picker label span{min-width:0;overflow-wrap:anywhere}
+.image-discord-picker p{margin:0;font:11px/1.5 var(--mono)}
