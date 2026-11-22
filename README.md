@@ -13,6 +13,8 @@
 
 > **Status:** proyek ini masih dalam persiapan beta. Beberapa alur sudah diuji pemilik di Discord, tetapi tidak semua kombinasi fitur, provider, dan hosting telah diverifikasi. Gunakan server uji dan cadangkan data sebelum mengandalkannya.
 
+**Bahasa Indonesia** · [English](README.en.md)
+
 **[Fitur](#fitur) · [Persiapan](#persiapan) · [Mulai](#mulai) · [Dashboard & AI](#dashboard--ai) · [Data & backup](#data--backup) · [Dokumentasi](#dokumentasi)**
 
 ## Fitur
@@ -56,7 +58,9 @@ Isi setidaknya `DISCORD_TOKEN`, `CLIENT_ID` dan `GUILD_ID`. Untuk login dashboar
 
 Buka `https://alamat-dashboard/dashboard/` dan masuk memakai token dashboard, atau gunakan login Discord yang sudah dikonfigurasi. Siapa pun yang mengetahui token dashboard dapat menggunakannya; jangan bagikan tautan login bertoken. HTTP publik tidak mengenkripsi token atau sesi.
 
-AI diatur melalui **AI Studio**. Konten yang diproses dikirim ke provider eksternal dan dapat memakai kuota atau biaya. Beri tahu anggota sebelum mengaktifkan fitur yang membaca channel. Memori jangka panjang DM hanya aktif atas persetujuan dan dikelola anggota; jangan simpan data sensitif. Ringkasan link tidak menjalankan JavaScript, dan PDF scan atau video tidak selalu dapat dibaca.
+AI diatur melalui **AI Studio**. Untuk mengizinkan anggota membuat gambar, konfigurasi provider gambar dan fondasi AI, lalu aktifkan **Image Studio → Discord**, pilih channel dan role bila diperlukan, serta atur cooldown. Anggota memakai `/gambar` dengan persetujuan. Fitur ini nonaktif secara bawaan; filter konten bergantung provider dan tidak menjamin hasil aman.
+
+Konten yang diproses dikirim ke provider eksternal dan dapat memakai kuota atau biaya. Beri tahu anggota sebelum mengaktifkan fitur yang membaca channel. Memori jangka panjang DM hanya aktif atas persetujuan dan dikelola anggota; jangan simpan data sensitif. Ringkasan link tidak menjalankan JavaScript, dan PDF scan atau video tidak selalu dapat dibaca.
 
 ## Data & backup
 

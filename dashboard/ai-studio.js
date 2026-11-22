@@ -8,7 +8,7 @@
   {id:'agent',no:'03',icon:'bot-message-square',name:'Agent & chat',desc:'Asisten komunitas untuk DM dan channel, termasuk AI yang ikut mengobrol.',tabs:[['channel','Agent channel'],['dm','Chat DM'],['persona','Persona & memori'],['digest','Koran & fakta']],liveTabs:[['channel','Channel, DM & persona'],['interactive','AI interaktif'],['digest','Koran & fakta']]},
   {id:'knowledge',no:'04',icon:'book-open',name:'Pengetahuan',desc:'Kelola jawaban FAQ dan cache AI interaktif.',tabs:[['faq','FAQ & cache']]},
   {id:'tools',no:'05',icon:'wrench',name:'AI tools',desc:'Kelola menu pesan Discord.',tabs:[['menu','Menu pesan']]},
-  {id:'image',no:'06',icon:'image',name:'Image studio',desc:'Rancang gambar baru atau edit gambar.',tabs:[['create','Buat gambar'],['edit','Edit gambar']]},
+  {id:'image',no:'06',icon:'image',name:'Image studio',desc:'Rancang gambar baru atau edit gambar.',tabs:[['create','Buat gambar'],['edit','Edit gambar'],['discord','Discord']]},
   {id:'builder',no:'07',icon:'blocks',name:'Server builder',desc:'Rancang struktur server dengan bantuan AI.',tabs:[['design','Rancang'],['review','Preview struktur']],liveTabs:[['design','Rancang'],['history','Riwayat & bongkar'],['manual','Ubah objek']]},
   {id:'providers',no:'08',icon:'network',name:'Provider & fallback',desc:'Model, batas penggunaan, dan jalur cadangan.',tabs:[['providers','Provider'],['limits','Batas penggunaan'],['fallback','Simulasi fallback']]},
   {id:'translate',no:'09',icon:'languages',name:'Terjemahan otomatis',desc:'Terjemahkan pesan di channel pilihan.',tabs:[['translate','Terjemahan otomatis']]},

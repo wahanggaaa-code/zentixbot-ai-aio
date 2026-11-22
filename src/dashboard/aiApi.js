@@ -10,6 +10,7 @@ import { sendDMPublicPanel } from '../services/ai/dmPanel.js';
 import { createChatStore, validateChatSettings } from '../services/ai/chat.js';
 import { createInteractive, validateInteractive, cleanReply } from '../services/ai/interactive.js';
 import { createImageService } from '../services/ai/images.js';
+import { createDiscordImageStore } from '../services/ai/discordImages.js';
 import { createBuilder, PLAN_LIMITS, CHANNEL_TYPES } from '../services/ai/builder.js';
 import { listThemes } from '../services/ai/builderThemes.js';
 import { createManualBuilder, MANUAL_ROLE_PERMISSIONS } from '../services/ai/builderManual.js';
@@ -111,6 +112,16 @@ export function createAIApi(client,{auth,csrf,env=process.env,foundation=client.
  router.post('/chat/panel',auth,owner,csrf,async(req,res)=>{try{if(!req.body||Object.keys(req.body).length!==1||req.body.confirmed!==true)throw Object.assign(Error('Konfirmasi diperlukan.'),{status:400});const settings=await chatStore.read(req.guild.id);res.json({ok:true,...await sendDMPublicPanel({client,guild:req.guild,settings,confirmed:true})})}catch(e){fail(res,e)}});
  // Retired document endpoints never access stored documents or invoke a provider.
  router.use('/knowledge',auth,owner,(req,res,next)=>['GET','HEAD'].includes(req.method)?next():csrf(req,res,next),(req,res)=>res.status(410).json({error:'Pengetahuan dokumen sudah dihentikan. FAQ & cache ada di halaman Pengetahuan.'}));
+ // Discord image generation is separately opt-in, owner-controlled, and never exposes provider keys.
+ router.get('/image/discord',auth,owner,async(req,res)=>{try{
+  const settings=await createDiscordImageStore(client).read(req.guild.id);
+  const channels=[...req.guild.channels.cache.values()].filter(c=>c.type===ChannelType.GuildText).map(({id,name})=>({id,name}));
+  const roles=[...req.guild.roles.cache.values()].filter(r=>r.id!==req.guild.id).map(({id,name})=>({id,name}));
+  res.json({settings,channels,roles});
+ }catch(e){fail(res,e)}});
+ router.patch('/image/discord',auth,owner,csrf,async(req,res)=>{try{
+  const settings=await createDiscordImageStore(client).save(req.guild.id,req.body,req.guild);res.json({ok:true,settings});
+ }catch(e){fail(res,e)}});
  router.post('/image',auth,owner,csrf,express.json({limit:'3mb'}),async(req,res)=>{try{const b=req.body;if(!b||!['confirmed,imageBase64,mode,prompt','confirmed,imageBase64,mode,prompt,size,style'].includes(Object.keys(b).sort().join(','))||b.confirmed!==true)throw Object.assign(Error('Konfirmasi diperlukan.'),{status:400});res.json({ok:true,...await imageService.generate({guildId:req.guild.id,userId:req.session.user.id,prompt:b.prompt,mode:b.mode,imageBase64:b.imageBase64,consent:true,...(Object.hasOwn(b,'size')?{size:b.size,style:b.style}:{})})})}catch(e){fail(res,e)}});
  router.get('/builder/manual/permissions',auth,owner,(req,res)=>res.json({permissions:MANUAL_ROLE_PERMISSIONS}));
  router.post('/builder/manual/prepare',auth,owner,csrf,async(req,res)=>{try{const b=req.body;if(!b||Object.keys(b).sort().join(',')!=='action,kind,targetId,value')throw Object.assign(Error('Input tidak valid.'),{status:400});res.json({ok:true,...await manualBuilder.prepare({guild:req.guild,userId:req.session.user.id,...b})})}catch(e){fail(res,e)}});
