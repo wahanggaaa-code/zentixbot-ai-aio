@@ -58,6 +58,24 @@
   return esc(days?`${days} ${tr('hari','days')} ${hours} ${tr('jam','hours')}`:hours?`${hours} ${tr('jam','hours')} ${minutes%60} ${tr('menit','minutes')}`:`${minutes} ${tr('menit','minutes')}`);
  }
 
+ // Translate only known built-in API descriptions; preserve unexpected server-provided text.
+ const permissionText={
+  ViewChannel:[['Melihat channel','View channels'],['semua fitur','all features']],
+  SendMessages:[['Mengirim pesan','Send messages'],['welcome, goodbye, birthday, giveaway, tiket','welcome, goodbye, birthday, giveaway, tickets']],
+  EmbedLinks:[['Menyematkan tautan','Embed links'],['hampir semua pesan bot','most bot messages']],
+  AttachFiles:[['Melampirkan file','Attach files'],['tiket','tickets']],
+  ReadMessageHistory:[['Membaca riwayat pesan','Read message history'],['tiket','tickets']],
+  ManageMessages:[['Mengelola pesan','Manage messages'],['moderation','moderation']],
+  ManageRoles:[['Mengelola peran','Manage roles'],['autorole, reaction role','autorole, reaction role']],
+  ManageChannels:[['Mengelola channel','Manage channels'],['tiket, Join to Create, server stats','tickets, Join to Create, server stats']],
+  MoveMembers:[['Memindahkan anggota','Move members'],['Join to Create','Join to Create']],
+  KickMembers:[['Mengeluarkan anggota','Kick members'],['moderation','moderation']],
+  BanMembers:[['Memblokir anggota','Ban members'],['moderation','moderation']],
+  ModerateMembers:[['Timeout anggota','Timeout members'],['moderation','moderation']],
+  Connect:[['Terhubung ke voice','Connect to voice'],['music, Join to Create','music, Join to Create']],
+  Speak:[['Berbicara di voice','Speak in voice'],['music','music']],
+ };
+ function permissionDescription(item,index){const raw=index===0?item.label:item.usedBy,pair=permissionText[item.key]?.[index];return pair&&raw===pair[0]?tr(pair[0],pair[1]):raw;}
  function discordHtml({guild,bot}){
   const rows=[
    line(tr('Nama server','Server name'),`<b>${esc(guild.name)}</b>`),
@@ -81,7 +99,7 @@
     :tr('Semua izin yang diperiksa dimiliki bot di tingkat server.','The bot has all checked permissions at server level.');
    permissions=`<p id="settingsPermissionSummary" class="f-muted" role="status">${esc(summary)}</p>`
     +`<div class="f-table-wrap"><table class="f-table f-table-fit"><thead><tr><th>${tr('IZIN BOT','BOT PERMISSION')}</th><th>${tr('CONTOH PEMAKAI','EXAMPLE USE')}</th><th>STATUS</th></tr></thead><tbody>`
-    +bot.permissions.items.map(item=>`<tr><td>${esc(item.label)}</td><td>${esc(item.usedBy)}</td>`
+    +bot.permissions.items.map(item=>`<tr><td>${esc(permissionDescription(item,0))}</td><td>${esc(permissionDescription(item,1))}</td>`
      +`<td data-permission="${esc(item.key)}">${item.granted?tr('ADA','GRANTED'):tr('<b>TIDAK ADA</b>','<b>MISSING</b>')}</td></tr>`).join('')
     +`</tbody></table></div><p class="f-muted">${tr('Ini izin tingkat server. Pengaturan per channel dan urutan peran dapat tetap menghalangi bot di tempat tertentu.','These are server-level permissions. Per-channel settings and role order may still restrict the bot in specific places.')}</p>`;
   }

@@ -59,8 +59,13 @@
     <button data-page="settings"><span>04</span><strong data-i18n="settings">Pengaturan</strong><b>↗</b></button>
     <div class="mobile-menu-bottom">ZENTIXBOT <span>CONTROL ROOM / 01</span></div>
   </div>
+  <div class="language-menu" id="languageMenu" hidden role="group" aria-label="Bahasa dashboard">
+    <div class="language-menu-top" data-i18n="language">Bahasa dashboard</div>
+    <button type="button" data-language="id" aria-pressed="true"><span>ID</span><strong>Indonesia</strong></button>
+    <button type="button" data-language="en" aria-pressed="false"><span>ENG</span><strong>English <small>(partial)</small></strong></button>
+  </div>
   <nav class="dock" aria-label="Navigasi utama">
-    <select id="dashboardLanguage" class="dock-language" aria-label="Bahasa dashboard"><option value="id">ID</option><option value="en">EN (partial)</option></select>
+    <button type="button" id="dashboardLanguage" class="dock-language" aria-label="Bahasa dashboard" aria-expanded="false" aria-controls="languageMenu">ID</button>
     <div class="dock-brand" aria-hidden="true"><img src="zentix-dock-logo.svg" alt="" width="30" height="33"></div>
     <div class="dock-divider"></div>
     <div class="dock-links">

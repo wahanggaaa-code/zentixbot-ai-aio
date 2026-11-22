@@ -11,7 +11,7 @@
   async function request(path,opts={}) {
     const session=await window.ZentixSession;
     const res=await fetch('/dashboard/api/bot/'+path,{cache:'no-store',...opts,headers:{...(opts.body?{'Content-Type':'application/json','x-csrf-token':session.csrf}:{}),...opts.headers}});
-    const data=await res.json(); if(!res.ok)throw Object.assign(Error(data.error || 'Permintaan gagal.'),{status:res.status}); return data;
+    const data=await res.json(); if(!res.ok)throw Object.assign(Error(data.error || tr('Permintaan gagal.','Request failed.')),{status:res.status}); return data;
   }
 
   // ---- Overview, "02 / PEMAKAIAN SISTEM": CPU, memory, network and disk of the bot's host, asked every 3 seconds.

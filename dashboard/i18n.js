@@ -8,6 +8,31 @@
  const t=id=>strings[lang][id] ?? strings.id[id] ?? id;
  window.ZentixI18n={t, get language(){return lang}};
  document.documentElement.lang=lang;
- const apply=()=>{document.querySelectorAll('[data-i18n]').forEach(el=>{el.textContent=t(el.dataset.i18n)});document.querySelectorAll('[data-i18n-label]').forEach(el=>el.setAttribute('aria-label',t(el.dataset.i18nLabel)));const logout=document.querySelector('#profileButton');if(logout)logout.title=t('logoutTitle');const selector=document.querySelector('#dashboardLanguage');if(selector){selector.value=lang;selector.setAttribute('aria-label',t('language'));selector.addEventListener('change',()=>{const next=selector.value;if(next===lang)return;if(!window.confirm(t('confirm'))){selector.value=lang;return}try{localStorage.setItem(key,next)}catch{}window.location.reload()})}};
+ const apply=()=>{
+  document.querySelectorAll('[data-i18n]').forEach(el=>{el.textContent=t(el.dataset.i18n)});
+  document.querySelectorAll('[data-i18n-label]').forEach(el=>el.setAttribute('aria-label',t(el.dataset.i18nLabel)));
+  const logout=document.querySelector('#profileButton');if(logout)logout.title=t('logoutTitle');
+  const trigger=document.querySelector('#dashboardLanguage'),menu=document.querySelector('#languageMenu');
+  if(!trigger||!menu)return;
+  trigger.textContent=lang==='en'?'ENG':'ID';trigger.setAttribute('aria-label',t('language'));menu.setAttribute('aria-label',t('language'));
+  const close=()=>{menu.hidden=true;trigger.setAttribute('aria-expanded','false')};
+  const choices=[...menu.querySelectorAll('[data-language]')];
+  choices.forEach(button=>{
+   button.setAttribute('aria-pressed',String(button.dataset.language===lang));
+   button.addEventListener('click',()=>{
+    const next=button.dataset.language;close();if(next===lang){trigger.focus();return}
+    if(!window.confirm(t('confirm'))){trigger.focus();return}
+    try{localStorage.setItem(key,next)}catch{}window.location.reload();
+   });
+  });
+  trigger.addEventListener('click',()=>{
+   if(!menu.hidden){close();return}
+   const navigation=document.querySelector('#mobileTrigger');if(navigation?.getAttribute('aria-expanded')==='true')navigation.click();
+   menu.hidden=false;trigger.setAttribute('aria-expanded','true');
+  });
+  document.querySelector('#mobileTrigger')?.addEventListener('click',close);
+  document.addEventListener('click',event=>{if(!menu.hidden&&!menu.contains(event.target)&&!trigger.contains(event.target))close()});
+  document.addEventListener('keydown',event=>{if(event.key==='Escape'&&!menu.hidden){close();trigger.focus()}});
+ };
  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',apply,{once:true});else apply();
 })();

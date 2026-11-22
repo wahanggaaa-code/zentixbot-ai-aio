@@ -1,6 +1,7 @@
 /* Social Alerts on the logged-in dashboard. The page acts on Discord: the Test button sends a
    real message to the configured channel (mentions suppressed). Everything else is stored data. */
 (() => {
+  const tr=(id,en)=>window.ZentixI18n?.language==='en'?en:id;
   const API = '/dashboard/api/bot/social-alerts';
   const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const notify = (text) => { const t = document.getElementById('toast'); t.textContent = text; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 4000); };
@@ -18,70 +19,70 @@
       ...(body ? { body: JSON.stringify(body) } : {}),
     });
     const data = await response.json();
-    if (!response.ok) throw Error(data.error || 'Permintaan gagal.');
+    if (!response.ok) throw Error(data.error || tr('Permintaan gagal.','Request failed.'));
     return data;
   }
-  const clock = (iso) => (iso ? new Date(iso).toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'belum pernah');
+  const clock = (iso) => (iso ? new Date(iso).toLocaleString(tr('id-ID','en-GB'), { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : tr('belum pernah','never'));
   const kindList = (alert) => (alert.notifyTypes || []).map((kind) => KIND_LABEL[kind] || kind).join(', ');
 
   function render() {
     return `<div id="socialAlertsLive">
   <section class="f-panel"><div class="f-panel-head"><div><h2>Social Alerts</h2>
-    <p>Kirim pengumuman YouTube dan live Twitch ke Discord.</p></div><span>⊚</span></div>
-    <div class="f-field" style="border-bottom:0;padding-bottom:4px"><span><b>Aktifkan Social Alerts</b><small>Saat nonaktif, pengumuman berhenti dan feed tetap tersimpan.</small></span>
+    <p>${tr('Kirim pengumuman YouTube dan live Twitch ke Discord.','Send YouTube announcements and Twitch live alerts to Discord.')}</p></div><span>⊚</span></div>
+    <div class="f-field" style="border-bottom:0;padding-bottom:4px"><span><b>${tr('Aktifkan Social Alerts','Enable Social Alerts')}</b><small>${tr('Saat nonaktif, pengumuman berhenti dan feed tetap tersimpan.','When disabled, announcements stop and feeds remain saved.')}</small></span>
       <span class="f-check"><input type="checkbox" id="saMasterToggle"><span class="fake-switch"></span></span></div>
-    <p class="f-muted" id="saMasterState">Memuat…</p>
+    <p class="f-muted" id="saMasterState">${tr('Memuat…','Loading…')}</p>
   </section>
   <div id="saKeysWarn"></div>
-  <section class="f-panel" style="margin-top:18px"><div class="f-panel-head"><div><h2>Feed terhubung</h2>
-    <p>Satu feed per akun dan channel.</p></div><span>⊚</span></div>
-    <div id="saList" aria-live="polite">Memuat…</div>
+  <section class="f-panel" style="margin-top:18px"><div class="f-panel-head"><div><h2>${tr('Feed terhubung','Connected feeds')}</h2>
+    <p>${tr('Satu feed per akun dan channel.','One feed per account and channel.')}</p></div><span>⊚</span></div>
+    <div id="saList" aria-live="polite">${tr('Memuat…','Loading…')}</div>
   </section>
   <div class="f-layout">
-    <section class="f-panel"><div class="f-panel-head"><div><h2 id="saFormTitle">Tambah feed</h2>
-      <p>YouTube: @handle, URL, atau ID. Twitch: login atau URL. Akun diverifikasi saat disimpan.</p></div><span>⊚</span></div>
+    <section class="f-panel"><div class="f-panel-head"><div><h2 id="saFormTitle">${tr('Tambah feed','Add feed')}</h2>
+      <p>${tr('YouTube: @handle, URL, atau ID. Twitch: login atau URL. Akun diverifikasi saat disimpan.','YouTube: @handle, URL or ID. Twitch: login or URL. Accounts are verified on save.')}</p></div><span>⊚</span></div>
       <form class="f-form" id="saForm">
-        <label class="f-field" id="saPlatformRow"><span><b>Platform</b><small>Tidak dapat diubah setelah feed dibuat.</small></span>
+        <label class="f-field" id="saPlatformRow"><span><b>Platform</b><small>${tr('Tidak dapat diubah setelah feed dibuat.','Cannot be changed after the feed is created.')}</small></span>
           <select name="platform" id="saPlatform"><option value="youtube">YouTube</option><option value="twitch">Twitch</option></select></label>
-        <label class="f-field" id="saInputRow"><span><b id="saInputLabel">Channel / akun</b><small id="saInputHint">@handle, URL https://www.youtube.com/@handle, atau ID UC…</small></span>
-          <input name="input" id="saInput" maxlength="200" autocomplete="off" spellcheck="false" placeholder="@namaakun"></label>
-        <label class="f-field" id="saLabelRow"><span><b>Label (opsional)</b><small>Nama tampilan di pesan. Default: nama dari akun.</small></span>
-          <input name="label" id="saLabel" maxlength="100" autocomplete="off" spellcheck="false" placeholder="Kanal Uji"></label>
-        <label class="f-field"><span><b>Kirim ke channel</b><small>Hanya channel teks & pengumuman yang dapat ditulis bot.</small></span><select name="targetChannelId" id="saTarget" required></select></label>
-        <fieldset class="f-field"><span><b>Tipe konten</b><small id="saNtHint">Kirim hanya untuk jenis konten yang dicentang.</small></span>
+        <label class="f-field" id="saInputRow"><span><b id="saInputLabel">${tr('Channel / akun','Channel / account')}</b><small id="saInputHint">${tr('@handle, URL https://www.youtube.com/@handle, atau ID UC…','@handle, URL https://www.youtube.com/@handle, or UC ID…')}</small></span>
+          <input name="input" id="saInput" maxlength="200" autocomplete="off" spellcheck="false" placeholder="${tr('@namaakun','@accountname')}"></label>
+        <label class="f-field" id="saLabelRow"><span><b>${tr('Label (opsional)','Label (optional)')}</b><small>${tr('Nama tampilan di pesan. Default: nama dari akun.','Display name in messages. Defaults to the account name.')}</small></span>
+          <input name="label" id="saLabel" maxlength="100" autocomplete="off" spellcheck="false" placeholder="${tr('Kanal Uji','Sample Channel')}"></label>
+        <label class="f-field"><span><b>${tr('Kirim ke channel','Send to channel')}</b><small>${tr('Hanya channel teks & pengumuman yang dapat ditulis bot.','Only text and announcement channels the bot can write to.')}</small></span><select name="targetChannelId" id="saTarget" required></select></label>
+        <fieldset class="f-field"><span><b>${tr('Tipe konten','Content type')}</b><small id="saNtHint">${tr('Kirim hanya untuk jenis konten yang dicentang.','Send only for selected content types.')}</small></span>
           <div class="f-picker" id="saNotifyTypes">
             <label><input type="checkbox" name="notifyTypes" value="video" checked> Video</label>
             <label><input type="checkbox" name="notifyTypes" value="live" checked> Live</label>
             <label id="saNtShortsLabel"><input type="checkbox" name="notifyTypes" value="shorts"> Shorts</label>
           </div></fieldset>
-        <label class="f-field"><span><b>Mention</b><small>Butuh izin bot untuk mention role; @everyone butuh izin khusus server.</small></span><select name="mentionRoleId" id="saMention"></select></label>
-        <div class="f-field"><span><b>Warna container</b><small>Pilih warna, masukkan kode Hex atau RGB, atau gunakan preset.</small></span>${window.ZentixGreetingColor?.render('#5865f2','#5865f2',{name:'accentColor',optional:true}) || '<input name="accentColor" id="saColor" type="color" value="#5865F2">'}</div>
-        <div class="f-field" style="grid-template-columns:1fr"><span><b>Pesan kustom</b><small>Baris di atas kartu. Kosong = "📢 <i>{creator}</i> mengunggah …". Klik variabel untuk menyisipkan.</small></span><textarea name="customMessage" id="saCustom" rows="3" maxlength="500" spellcheck="false" placeholder="{role} {creator} baru: {title} {url}"></textarea></div>
+        <label class="f-field"><span><b>Mention</b><small>${tr('Butuh izin bot untuk mention role; @everyone butuh izin khusus server.','The bot needs permission to mention roles; @everyone requires a special server permission.')}</small></span><select name="mentionRoleId" id="saMention"></select></label>
+        <div class="f-field"><span><b>${tr('Warna container','Container color')}</b><small>${tr('Pilih warna, masukkan kode Hex atau RGB, atau gunakan preset.','Choose a color, enter a Hex or RGB code, or use a preset.')}</small></span>${window.ZentixGreetingColor?.render('#5865f2','#5865f2',{name:'accentColor',optional:true}) || '<input name="accentColor" id="saColor" type="color" value="#5865F2">'}</div>
+        <div class="f-field" style="grid-template-columns:1fr"><span><b>${tr('Pesan kustom','Custom message')}</b><small>${tr('Baris di atas kartu. Kosong = "📢 <i>{creator}</i> mengunggah …". Klik variabel untuk menyisipkan.','Line above the card. Empty uses the default Indonesian announcement. Click a variable to insert it.')}</small></span><textarea name="customMessage" id="saCustom" rows="3" maxlength="500" spellcheck="false" placeholder="${tr('{role} {creator} baru: {title} {url}','{role} new from {creator}: {title} {url}')}"></textarea></div>
         <div class="sa-vars" id="saVars">${VARIABLES.map((v) => `<button type="button" class="f-outline" data-var="${v}">${v}</button>`).join('')}</div>
-        <fieldset class="f-field"><span><b>Ringkasan AI</b><small>Ringkasan opsional 1–2 kalimat untuk video dan Shorts baru, menggunakan AI bot.</small></span>
+        <fieldset class="f-field"><span><b>${tr('Ringkasan AI','AI summary')}</b><small>${tr('Ringkasan opsional 1–2 kalimat untuk video dan Shorts baru, menggunakan AI bot.','Optional 1–2 sentence summary for new videos and Shorts, using the bot’s AI.')}</small></span>
           <span class="f-check"><input type="checkbox" name="aiSummaryEnabled" id="saAi"><span class="fake-switch"></span></span></fieldset>
-        <div class="f-form-actions"><span id="saFormState">✳ SIMPAN UNTUK MENERAPKAN</span>
-          <div><button type="button" class="f-outline" id="saCancelEdit" hidden>BATAL UBAH</button>
-          <button class="f-primary" type="submit" id="saSave">SIMPAN FEED ↗</button></div></div>
+        <div class="f-form-actions"><span id="saFormState">${tr('✳ SIMPAN UNTUK MENERAPKAN','✳ SAVE TO APPLY')}</span>
+          <div><button type="button" class="f-outline" id="saCancelEdit" hidden>${tr('BATAL UBAH','CANCEL EDIT')}</button>
+          <button class="f-primary" type="submit" id="saSave">${tr('SIMPAN FEED ↗','SAVE FEED ↗')}</button></div></div>
       </form>
     </section>
-    <aside><section class="f-panel"><div class="f-panel-head"><div><h2>Live preview</h2><p>Perkiraan tampilan pesan di Discord.</p></div><span>⊚</span></div>
+    <aside><section class="f-panel"><div class="f-panel-head"><div><h2>Live preview</h2><p>${tr('Perkiraan tampilan pesan di Discord.','Approximate appearance of the Discord message. Default bot message text remains Indonesian.')}</p></div><span>⊚</span></div>
       <div class="discord-demo"><div class="discord-avatar">⊚</div><div class="discord-copy"><div><strong>ZentixBot</strong> <span class="discord-bot">BOT</span></div>
         <div class="discord-embed" id="saPreviewCard" style="border-left-color:#5865F2">
           <b id="saPreviewTop">📢 <span id="saPreviewCreatorTop">Nama Akun</span> mengunggah video baru</b>
           <div id="saPreviewTitle" style="margin-top:8px"><a id="saPreviewTitleLink" href="#" onclick="return false" style="color:#00a8fc;text-decoration:none">Judul video baru minggu ini</a></div>
           <p id="saPreviewMeta" style="margin:2px 0 0;color:#a6a7af;font-size:11px">YouTube • Nama Akun</p>
-          <p id="saPreviewSummary" hidden><small>✨ <b>Ringkasan AI</b><br>Ringkasan singkat isi video akan tampil di sini saat bot mengirim.</small></p>
+          <p id="saPreviewSummary" hidden><small>✨ <b>${tr('Ringkasan AI','AI summary')}</b><br>${tr('Ringkasan singkat isi video akan tampil di sini saat bot mengirim.','A short summary of the video will appear here when the bot sends it.')}</small></p>
           <div id="saPreviewThumb" style="margin-top:10px;background:#1d1e23;color:#7f8087;font:700 10px var(--mono);padding:26px 12px;text-align:center">THUMBNAIL</div>
-          <div style="border-top:1px solid #3f4047;margin-top:10px;padding-top:10px"><button type="button" class="discord-button" tabindex="-1">Tonton Sekarang</button></div>
+          <div style="border-top:1px solid #3f4047;margin-top:10px;padding-top:10px"><button type="button" class="discord-button" tabindex="-1">${tr('Tonton Sekarang','Watch Now')}</button></div>
           <small id="saPreviewFooter" style="color:#a6a7af;font-size:9px">-# Zentix Social Alerts</small>
         </div>
       </div></div>
-      <div class="f-preview-action"><button type="button" id="saTestPreview" class="f-outline">KIRIM TES ↗</button></div>
-      <p class="f-muted">Tes mengirim <b>pesan sungguhan</b> ke channel target dengan pengaturan yang tersimpan — tanpa mention (tes tidak pernah nge-ping, termasuk @everyone).</p>
+      <div class="f-preview-action"><button type="button" id="saTestPreview" class="f-outline">${tr('KIRIM TES ↗','SEND TEST ↗')}</button></div>
+      <p class="f-muted">${tr('Tes mengirim <b>pesan sungguhan</b> ke channel target dengan pengaturan yang tersimpan — tanpa mention (tes tidak pernah nge-ping, termasuk @everyone).','The test sends a <b>real message</b> to the target channel using saved settings — without mentions (tests never ping, including @everyone).')}</p>
     </aside>
   </div>
-  <div class="f-callout" id="saCallout">ⓘ &nbsp; Deteksi live & Shorts memakai YouTube Data API v3 (gratis, ±2 unit per feed per pemeriksaan) — perlu <code>YOUTUBE_API_KEY</code> di .env. Deteksi tidak 100% untuk Shorts; thumbnail live Twitch bisa placeholder. Belum didukung: TikTok & X (segera).</div>
+  <div class="f-callout" id="saCallout">ⓘ &nbsp; ${tr('Deteksi live & Shorts memakai YouTube Data API v3 (gratis, ±2 unit per feed per pemeriksaan) — perlu <code>YOUTUBE_API_KEY</code> di .env. Deteksi tidak 100% untuk Shorts; thumbnail live Twitch bisa placeholder. Belum didukung: TikTok & X (segera).','Live & Shorts detection uses YouTube Data API v3 (free, about 2 units per feed per check) — requires <code>YOUTUBE_API_KEY</code> in .env. Shorts detection is not guaranteed; Twitch live thumbnails may be placeholders. TikTok & X are not supported.')}</div>
 </div>`;
   }
 
@@ -122,25 +123,25 @@
     // ---------- Feed list ----------
     function feedCard(alert) {
       const badge = alert.platform === 'youtube' ? '<span class="f-tag" style="background:#f03;color:#fff;border-color:#f03">YT</span>' : '<span class="f-tag" style="background:#9146ff;color:#fff;border-color:#9146ff">TW</span>';
-      const target = alert.channelName === null ? 'Channel tidak terlihat oleh bot' : `→ #${esc(alert.channelName)}`;
-      const mention = alert.mentionRoleId === 'everyone' ? ' · ping @everyone' : alert.mentionRoleId ? ' · ping role' : '';
+      const target = alert.channelName === null ? tr('Channel tidak terlihat oleh bot','Channel not visible to the bot') : `→ #${esc(alert.channelName)}`;
+      const mention = alert.mentionRoleId === 'everyone' ? ' · ping @everyone' : alert.mentionRoleId ? tr(' · ping role',' · role ping') : '';
       const ai = alert.aiSummaryEnabled ? ' · AI' : '';
       const err = alert.lastError ? `<div class="sa-error">⚠ ${esc(alert.lastError)}</div>` : '';
-      const status = `${alert.enabled ? 'Aktif' : 'Nonaktif'} · ${kindList(alert)}${mention}${ai} · dicek ${esc(clock(alert.lastCheckedAt))}`;
+      const status = `${alert.enabled ? tr('Aktif','Active') : tr('Nonaktif','Disabled')} · ${kindList(alert)}${mention}${ai} · ${tr('dicek','checked')} ${esc(clock(alert.lastCheckedAt))}`;
       return `<div class="sa-feed" data-feed="${esc(alert.id)}"><div class="sa-feed-head">${badge}<div><strong>${esc(alert.label)}</strong><div class="f-muted" style="margin-top:2px">${target}${alert.isLive ? ' · <b>LIVE</b>' : ''}</div></div>
-        <div class="sa-feed-actions"><button type="button" class="f-outline" data-action="toggle">${alert.enabled ? 'JEDA' : 'AKTIFKAN'}</button>
-        <button type="button" class="f-outline" data-action="test">TES</button>
+        <div class="sa-feed-actions"><button type="button" class="f-outline" data-action="toggle">${alert.enabled ? tr('JEDA','PAUSE') : tr('AKTIFKAN','ENABLE')}</button>
+        <button type="button" class="f-outline" data-action="test">${tr('TES','TEST')}</button>
         <button type="button" class="f-outline" data-action="edit">EDIT</button>
-        <button type="button" class="f-outline" data-action="delete">HAPUS</button></div></div>
+        <button type="button" class="f-outline" data-action="delete">${tr('HAPUS','DELETE')}</button></div></div>
         <div class="f-muted" style="margin-top:6px">${esc(status)}</div>${err}</div>`;
     }
 
     function paintList(data) {
       const list = $('#saList');
-      const note = data.rejected > 0 ? `<p class="f-muted" style="color:#8a2f2f">⚠ ${data.rejected} baris tersimpan tidak terbaca; dibiarkan apa adanya.</p>` : '';
+      const note = data.rejected > 0 ? `<p class="f-muted" style="color:#8a2f2f">⚠ ${data.rejected} ${tr('baris tersimpan tidak terbaca; dibiarkan apa adanya.','saved rows could not be read; they were left unchanged.')}</p>` : '';
       list.innerHTML = note + (data.alerts.length
         ? data.alerts.map(feedCard).join('')
-        : '<p class="f-muted">Belum ada feed. Tambahkan yang pertama di formulir di bawah.</p>');
+        : `<p class="f-muted">${tr('Belum ada feed. Tambahkan yang pertama di formulir di bawah.','No feeds yet. Add the first one using the form below.')}</p>`);
     }
 
     function paintKeys(data) {
@@ -148,7 +149,7 @@
       if (!data.keys.youtube) missing.push('<code>YOUTUBE_API_KEY</code>');
       if (!data.keys.twitch) missing.push('<code>TWITCH_CLIENT_ID</code> &amp; <code>TWITCH_CLIENT_SECRET</code>');
       $('#saKeysWarn').innerHTML = missing.length
-        ? `<div class="f-callout" style="border-color:#8a2f2f">⚠ &nbsp; Belum diisi di .env: ${missing.join(' dan ')}. Feed platform itu tersimpan tapi tidak akan dicek sampai kuncinya ada. Kunci diisi owner di .env, bukan di halaman ini.</div>`
+        ? `<div class="f-callout" style="border-color:#8a2f2f">⚠ &nbsp; ${tr('Belum diisi di .env:','Missing from .env:')} ${missing.join(tr(' dan ',' and '))}. ${tr('Feed platform itu tersimpan tapi tidak akan dicek sampai kuncinya ada. Kunci diisi owner di .env, bukan di halaman ini.','Feeds for those platforms are saved but will not be checked until keys are available. The owner adds keys in .env, not on this page.')}</div>`
         : '';
     }
 
@@ -156,19 +157,19 @@
       const data = await request('GET');
       state.data = data;
       $('#saMasterToggle').checked = data.settings.enabled;
-      $('#saMasterState').textContent = data.settings.enabled ? '● Aktif — poller memeriksa feed tiap 10 menit.' : '○ Nonaktif — poller tidak mengirim apa pun.';
+      $('#saMasterState').textContent = data.settings.enabled ? tr('● Aktif — poller memeriksa feed tiap 10 menit.','● Enabled — poller checks feeds every 10 minutes.') : tr('○ Nonaktif — poller tidak mengirim apa pun.','○ Disabled — poller sends nothing.');
       paintKeys(data);
       paintList(data);
       const target = $('#saTarget');
       const selected = target.value;
-      target.innerHTML = data.channels.map((channel) => `<option value="${esc(channel.id)}" ${channel.usable ? '' : 'data-usable="0"'}># ${esc(channel.name)}${channel.usable ? '' : ' (bot tidak bisa kirim)'}</option>`).join('');
+      target.innerHTML = data.channels.map((channel) => `<option value="${esc(channel.id)}" ${channel.usable ? '' : 'data-usable="0"'}># ${esc(channel.name)}${channel.usable ? '' : tr(' (bot tidak bisa kirim)',' (bot cannot send)')}</option>`).join('');
       if ([...target.options].some((option) => option.value === selected)) target.value = selected;
       const mention = $('#saMention');
       const mentionSelected = mention.value;
       mention.innerHTML = [
-        '<option value="">Tidak ada ping</option>',
-        '<option value="everyone">@everyone (butuh izin khusus)</option>',
-        ...data.roles.map((role) => `<option value="${esc(role.id)}">@ ${esc(role.name)}${role.usable ? '' : ' (tidak dapat di-ping)'}</option>`),
+        `<option value="">${tr('Tidak ada ping','No ping')}</option>`,
+        `<option value="everyone">@everyone (${tr('butuh izin khusus','requires special permission')})</option>`,
+        ...data.roles.map((role) => `<option value="${esc(role.id)}">@ ${esc(role.name)}${role.usable ? '' : tr(' (tidak dapat di-ping)',' (cannot be pinged)')}</option>`),
       ].join('');
       if ([...mention.options].some((option) => option.value === mentionSelected)) mention.value = mentionSelected;
       paintPreview();
@@ -177,12 +178,12 @@
     function resetForm() {
       state.editingId = null;
       state.editingPlatform = null;
-      $('#saFormTitle').textContent = 'Tambah feed';
+      $('#saFormTitle').textContent = tr('Tambah feed','Add feed');
       $('#saPlatformRow').hidden = false;
       $('#saInputRow').hidden = false;
       $('#saLabelRow').hidden = false;
       $('#saCancelEdit').hidden = true;
-      $('#saSave').textContent = 'SIMPAN FEED ↗';
+      $('#saSave').textContent = tr('SIMPAN FEED ↗','SAVE FEED ↗');
       form.reset();
       window.ZentixGreetingColor?.set(form,'#5865f2');
       syncNotifyFieldsets();
@@ -194,8 +195,8 @@
       const boxes = [...form.querySelectorAll('input[name=notifyTypes]')];
       const shorts = form.querySelector('input[name=notifyTypes][value=shorts]');
       $('#saNtShortsLabel').hidden = twitch;
-      $('#saNtHint').textContent = twitch ? 'Twitch hanya mendukung tipe Live.' : 'Kirim hanya untuk jenis konten yang dicentang.';
-      $('#saInputHint').textContent = twitch ? 'Login Twitch, mis. shroud — atau URL https://twitch.tv/shroud' : '@handle, URL https://www.youtube.com/@handle, atau ID UC…';
+      $('#saNtHint').textContent = twitch ? tr('Twitch hanya mendukung tipe Live.','Twitch only supports the Live type.') : tr('Kirim hanya untuk jenis konten yang dicentang.','Send only for selected content types.');
+      $('#saInputHint').textContent = twitch ? tr('Login Twitch, mis. shroud — atau URL https://twitch.tv/shroud','Twitch login, e.g. shroud — or URL https://twitch.tv/shroud') : tr('@handle, URL https://www.youtube.com/@handle, atau ID UC…','@handle, URL https://www.youtube.com/@handle, or UC ID…');
       $('#saInputLabel').textContent = twitch ? 'Channel Twitch' : 'Channel YouTube';
       $('#saPlatform').disabled = Boolean(state.editingId);
       if (twitch) {
@@ -215,7 +216,7 @@
       $('#saInputRow').hidden = true;
       $('#saLabelRow').hidden = true;
       $('#saCancelEdit').hidden = false;
-      $('#saSave').textContent = 'SIMPAN PERUBAHAN ↗';
+      $('#saSave').textContent = tr('SIMPAN PERUBAHAN ↗','SAVE CHANGES ↗');
       const color = /^#[0-9a-f]{6}$/i.test(alert.accentColor || '') ? alert.accentColor : '';
       if (window.ZentixGreetingColor) window.ZentixGreetingColor.set(form,color); else form.elements.accentColor.value=color;
       form.elements.customMessage.value = alert.customMessage || '';
@@ -243,7 +244,7 @@
       event.target.disabled = true;
       try {
         await request('POST', '/settings', { confirmed: true, enabled });
-        notify(enabled ? 'Social Alerts dinyalakan.' : 'Social Alerts dimatikan.');
+        notify(enabled ? tr('Social Alerts dinyalakan.','Social Alerts enabled.') : tr('Social Alerts dimatikan.','Social Alerts disabled.'));
         await reload();
       } catch (error) {
         notify(error.message);
@@ -265,14 +266,14 @@
         if (action === 'edit') { fillForEdit(alert); return; }
         if (action === 'toggle') {
           await request('PATCH', `/${encodeURIComponent(alert.id)}`, { confirmed: true, enabled: !alert.enabled });
-          notify(alert.enabled ? 'Feed dijeda.' : 'Feed diaktifkan.');
+          notify(alert.enabled ? tr('Feed dijeda.','Feed paused.') : tr('Feed diaktifkan.','Feed enabled.'));
         } else if (action === 'test') {
-          const answer = await act(`/${encodeURIComponent(alert.id)}/test`, {}, `Kirim pesan TES ke #${alert.channelName ?? alert.targetChannelId}? Pesan sungguhan (tanpa mention) akan tampil di channel itu.`);
-          if (answer) notify('Pesan tes terkirim.');
+          const answer = await act(`/${encodeURIComponent(alert.id)}/test`, {}, tr(`Kirim pesan TES ke #${alert.channelName ?? alert.targetChannelId}? Pesan sungguhan (tanpa mention) akan tampil di channel itu.`,`Send a TEST message to #${alert.channelName ?? alert.targetChannelId}? A real message without mentions will appear there.`));
+          if (answer) notify(tr('Pesan tes terkirim.','Test message sent.'));
         } else if (action === 'delete') {
-          if ((await (window.ZentixDialog ? window.ZentixDialog.confirm(`Hapus feed "${alert.label}"? Feed berhenti mengirim; pesan lama di Discord tidak dihapus.`) : Promise.resolve(window.confirm(`Hapus feed "${alert.label}"? Feed berhenti mengirim; pesan lama di Discord tidak dihapus.`))))) {
+          if ((await (window.ZentixDialog ? window.ZentixDialog.confirm(tr(`Hapus feed "${alert.label}"? Feed berhenti mengirim; pesan lama di Discord tidak dihapus.`,`Delete feed "${alert.label}"? It will stop sending; old Discord messages will not be deleted.`)) : Promise.resolve(window.confirm(tr(`Hapus feed "${alert.label}"? Feed berhenti mengirim; pesan lama di Discord tidak dihapus.`,`Delete feed "${alert.label}"? It will stop sending; old Discord messages will not be deleted.`)))))) {
             await request('DELETE', `/${encodeURIComponent(alert.id)}`, { confirmed: true });
-            notify('Feed dihapus.');
+            notify(tr('Feed dihapus.','Feed deleted.'));
           }
         }
         await reload();
@@ -303,7 +304,7 @@
       const button = $('#saSave');
       const x = form.elements;
       const notifyTypes = [...form.querySelectorAll('input[name=notifyTypes]:checked')].map((box) => box.value);
-      if (!notifyTypes.length) { notify('Pilih minimal satu tipe konten.'); return; }
+      if (!notifyTypes.length) { notify(tr('Pilih minimal satu tipe konten.','Select at least one content type.')); return; }
       button.disabled = true;
       try {
         if (state.editingId) {
@@ -316,7 +317,7 @@
             accentColor: x.accentColor.value || null,
             aiSummaryEnabled: x.aiSummaryEnabled.checked,
           });
-          notify('Perubahan tersimpan.');
+          notify(tr('Perubahan tersimpan.','Changes saved.'));
           resetForm();
         } else {
           await request('POST', '', {
@@ -331,7 +332,7 @@
             mentionRoleId: x.mentionRoleId.value || null,
             aiSummaryEnabled: x.aiSummaryEnabled.checked,
           });
-          notify('Feed ditambahkan.');
+          notify(tr('Feed ditambahkan.','Feed added.'));
           resetForm();
         }
         await reload();
@@ -347,9 +348,9 @@
       button.disabled = true;
       try {
         const alert = state.editingId ? findFeed(state.editingId) : (state.data?.alerts || [])[0];
-        if (!alert) { notify('Simpan atau pilih feed dulu — tes mengirim dengan pengaturan yang tersimpan.'); return; }
-        const answer = await act(`/${encodeURIComponent(alert.id)}/test`, {}, `Kirim pesan TES ke channel target "${alert.label}"? Pesan sungguhan (tanpa mention) akan tampil di Discord.`);
-        if (answer) notify('Pesan tes terkirim.');
+        if (!alert) { notify(tr('Simpan atau pilih feed dulu — tes mengirim dengan pengaturan yang tersimpan.','Save or select a feed first — the test uses saved settings.')); return; }
+        const answer = await act(`/${encodeURIComponent(alert.id)}/test`, {}, tr(`Kirim pesan TES ke channel target "${alert.label}"? Pesan sungguhan (tanpa mention) akan tampil di Discord.`,`Send a TEST message to the target channel for "${alert.label}"? A real message without mentions will appear in Discord.`));
+        if (answer) notify(tr('Pesan tes terkirim.','Test message sent.'));
       } catch (error) {
         notify(error.message);
       } finally {
