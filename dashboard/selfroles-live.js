@@ -125,6 +125,68 @@
   });
   const BANNER_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
 
+  // Match only known API text. Unknown role/server details must remain unchanged.
+  const API_ERRORS = new Map([
+    ["Judul harus 1 sampai 256 karakter.", "The title must be 1 to 256 characters long."],
+    ["Deskripsi harus 1 sampai 2048 karakter.", "The description must be 1 to 2048 characters long."],
+    ["Pilih channel teks atau pengumuman dari server ini.", "Please select a text or announcement channel of this server."],
+    ["Bot membutuhkan izin View Channel, Send Messages, dan Embed Links di channel itu. Tidak ada yang diubah.", "The bot needs View Channel, Send Messages and Embed Links in that channel. Nothing was changed."],
+    ["Pilih minimal satu role.", "Choose at least one role."],
+    ["Satu panel paling banyak memuat 25 role.", "A panel can hold at most 25 roles."],
+    ["Role itu tidak dapat ditawarkan di panel.", "That role cannot be offered on a panel."],
+    ["Role itu sudah ada di panel ini.", "That role is already on this panel."],
+    ["Role itu tidak ada di panel ini.", "That role is not on this panel."],
+    ["Itu role terakhir di panel ini. Hapus panelnya jika memang tidak diperlukan lagi.", "That is the last role on this panel. Delete the panel instead if it is no longer needed."],
+    ["Server ini sudah memiliki 5 panel self-role (batas maksimum). Hapus satu panel untuk membuat yang baru.", "This server already has the maximum of 5 self-role panels. Delete a panel to create a new one."],
+    ["Panel itu sudah tidak ada. Muat ulang halaman.", "That panel no longer exists. Reload the page."],
+    ["Panel berubah sejak halaman dimuat. Muat ulang, periksa, lalu ulangi.", "The panel changed in the meantime. Check it and try again."],
+    ["Pesan panel masih ada, jadi tidak perlu dipasang ulang.", "The panel message still exists, so there is nothing to repost."],
+    ["Tidak ada lagi role panel ini yang masih ada di server, jadi panel tidak dapat dipasang ulang. Hapus panel ini.", "None of the roles on this panel exist any more, so it cannot be posted again. Delete the panel."],
+    ["Channel panel ini sudah tidak ada. Hapus panel ini lalu buat panel baru di channel lain.", "The channel of this panel no longer exists. Delete the panel and create a new one in another channel."],
+    ["Pesan panel tidak dapat diperiksa di Discord saat ini. Tidak ada yang diubah. Coba lagi nanti.", "The bot could not check the panel message at Discord right now. Nothing was changed. Please try again."],
+    ["Data panel tersimpan perlu diperiksa sebelum dapat diubah.", "The stored panel data needs to be checked before it can be changed."],
+    ["Database tidak tersedia. Tidak ada yang diubah.", "The database is not available right now. Nothing was changed."],
+    ["Discord menolak permintaan. Tidak ada yang diubah.", "Discord refused the request. Nothing was changed."],
+    ["Panel gagal disimpan dan pesan barunya tidak dapat dihapus lagi. Hapus pesan itu secara manual; menunya tidak berfungsi.", "The panel could not be saved and its new message could not be removed again. Please delete that message by hand; its menu does not work."],
+    ["Pesan panel sudah dihapus, tetapi catatannya gagal dihapus. Hapus panel sekali lagi untuk menyelesaikan.", "The panel message was deleted, but its stored record could not be removed. Delete the panel again to finish."],
+    ["Banner harus berupa gambar PNG, JPEG, WebP atau GIF paling banyak 5 MB. Tidak ada yang diubah.", "The banner must be a PNG, JPEG, WebP or GIF image of at most 5 MB. Nothing was changed."],
+    ["Panel reaksi memerlukan satu emoji yang valid dan berbeda per item, dan emoji itu harus ada di server ini. Tidak ada yang diubah.", "Reaction panels need one valid, distinct emoji per item, and the emoji must exist in this server. Nothing was changed."],
+    ["Item panel perlu diperiksa sebelum dapat disimpan. Tidak ada yang diubah.", "The panel items need to be checked before they can be saved. Nothing was changed."],
+    ["Perubahan tidak dapat diselesaikan saat ini. Muat ulang untuk melihat keadaan terbaru sebelum mencoba lagi.", "The change cannot be completed right now. Reload to see the latest state before trying again."],
+    ["Panel tidak dapat dibaca dari database.", "Panels could not be read from the database."],
+    ["Permintaan tidak valid.", "Invalid request."],
+    ["Konfirmasi diperlukan.", "Confirmation is required."],
+    ["Parameter tidak valid.", "Invalid parameter."],
+    ["Akses ditolak.", "Access denied."],
+    ["Role itu tidak ada di server ini.", "That role does not exist on this server."],
+    ["Role tidak dapat diperiksa di Discord saat ini. Tidak ada yang diubah.", "The role cannot be checked on Discord right now. Nothing was changed."],
+  ]);
+  const ROLE_REASONS = new Map([
+    ["Role sudah tidak ada.", "It no longer exists."],
+    ["Role tidak dapat diperiksa di Discord saat ini.", "It could not be looked up at Discord right now."],
+    ["@everyone tidak dapat dipakai.", "@everyone cannot be used."],
+    ["Role dikelola oleh bot atau integrasi.", "It is managed by a bot or an integration."],
+    ["Role memberi izin pengelolaan server, moderasi, atau mention @everyone.", "It grants server management, moderation or @everyone mention permissions."],
+    ["Bot tidak memiliki izin Manage Roles.", "The bot does not have the Manage Roles permission."],
+    ["Posisinya tidak di bawah role tertinggi bot.", "It is not below the bot’s highest role."],
+    ["Posisinya tidak di bawah role tertinggi Anda.", "It is not below your own highest role."],
+    ["Anda memerlukan role tertentu untuk memakai panel ini.", "You need a specific role to use this panel."],
+    ["Role itu tidak ada di panel ini.", "That role is not on this panel."],
+  ]);
+  const roleReason = reason => window.ZentixI18n?.language === 'en' ? (ROLE_REASONS.get(reason) ?? reason) : reason;
+  const apiError = message => {
+    if (window.ZentixI18n?.language !== 'en') return message;
+    const exact = API_ERRORS.get(message);
+    if (exact !== undefined) return exact;
+    // The API may append one known role refusal reason. Do not translate partial or custom details.
+    const prefix = 'Role itu tidak dapat ditawarkan di panel. ';
+    if (typeof message === 'string' && message.startsWith(prefix)) {
+      const reason = message.slice(prefix.length);
+      if (ROLE_REASONS.has(reason)) return `${API_ERRORS.get(prefix.trim())} ${ROLE_REASONS.get(reason)}`;
+    }
+    return message;
+  };
+
   async function request(method = 'GET', path = '', body) {
     const session = await window.ZentixSession;
     const response = await fetch(API + path, {
@@ -134,7 +196,7 @@
       ...(body ? { body: JSON.stringify(body) } : {}),
     });
     const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw Error(data.error || tr('Permintaan gagal.','Request failed.'));
+    if (!response.ok) throw Error((window.ZentixI18n?.accessError?.(data.error,response.status) ?? apiError(data.error)) || tr('Permintaan gagal.','Request failed.'));
     return data;
   }
 
@@ -164,7 +226,7 @@
     const free = data.roles.filter((role) => role.usable && !onPanel.has(role.id));
     const place = panel.channelName === null ? tr('Channel tidak terlihat oleh bot','Channel not visible to the bot') : `#${panel.channelName}`;
     const roles = panel.roles.map((role) => `<li style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:6px 0">`
-      + `<span><b>${esc(roleName(role))}</b>${role.ok ? '' : ` <small role="note">⚠ ${tr('Tidak dapat diberikan:','Cannot be assigned:')} ${esc(role.reason)}</small>`}</span>`
+      + `<span><b>${esc(roleName(role))}</b>${role.ok ? '' : ` <small role="note">⚠ ${tr('Tidak dapat diberikan:','Cannot be assigned:')} ${esc(roleReason(role.reason))}</small>`}</span>`
       + `<button type="button" class="f-outline" data-remove="${esc(role.id)}"${panel.roles.length < 2 ? ` disabled title="${tr('Role terakhir tidak dapat dilepas; hapus panelnya.','The last role cannot be removed; delete the panel instead.')}"` : ''}>${tr('LEPAS','REMOVE')}</button></li>`).join('');
 
     const interactionType = panel.interactionType || 'buttons';
@@ -236,7 +298,7 @@
 
     const channels = data.channels.map((channel) => `<option value="${esc(channel.id)}"${channel.usable ? '' : ' disabled'}>#${esc(channel.name)}${channel.usable ? '' : tr(' (izin bot kurang)',' (bot lacks permissions)')}</option>`).join('');
     const boxes = data.roles.map((role) => `<div style="display:flex;align-items:center;gap:8px;padding:4px 0"><label style="flex:1;display:flex;align-items:center;gap:6px"><input type="checkbox" name="roleIds" value="${esc(role.id)}"${role.usable ? '' : ' disabled'}> `
-      + `${esc(role.name)}${role.usable ? '' : ` <small>— ${esc(role.reason)}</small>`}</label>`
+      + `${esc(role.name)}${role.usable ? '' : ` <small>— ${esc(roleReason(role.reason))}</small>`}</label>`
       + `<input name="emoji-${esc(role.id)}" maxlength="48" placeholder="emoji" aria-label="${tr('Emoji untuk','Emoji for')} ${esc(role.name)}" style="width:130px"${role.usable ? '' : ' disabled'}></div>`).join('');
 
     return `<form class="f-form" id="selfRolesCreateForm">`
@@ -250,7 +312,7 @@
       + `<label class="f-field"><span><b>${tr('Tipe interaksi','Interaction type')}</b></span><select name="interactionType"><option value="buttons">${tr('Tombol Grid','Button grid')}</option><option value="section_buttons">Section List</option><option value="dropdown">Dropdown</option><option value="reaction">${tr('Reaction (Klasik)','Reaction (classic)')}</option></select></label>`
       + `<label class="f-field"><span><b>${tr('Mode perilaku','Behavior mode')}</b></span><select name="behaviorMode"><option value="toggle">${tr('Toggle (klik/pilih lagi untuk lepas)','Toggle (click/select again to remove)')}</option><option value="unique">${tr('Unique (hanya 1 role)','Unique (one role only)')}</option><option value="verify">${tr('Verify (hanya tambah)','Verify (add only)')}</option></select></label>`
       + `<label class="f-field data-dropdown-only"><span><b>${tr('Maks pilihan','Maximum selections')}</b><small>${tr('Dropdown saja: 1–25.','Dropdown only: 1–25.')}</small></span><input name="maxSelect" type="number" min="1" max="25" value="1"></label>`
-      + `<label class="f-field data-dropdown-only"><span><b>${tr('Placeholder dropdown','Dropdown placeholder')}</b><small>${tr('Teks sebelum dipilih.','Text before selection.')}</small></span><input name="dropdownPlaceholder" maxlength="100" placeholder="Select your roles"></label>`
+      + `<label class="f-field data-dropdown-only"><span><b>${tr('Placeholder dropdown','Dropdown placeholder')}</b><small>${tr('Teks sebelum dipilih.','Text before selection.')}</small></span><input name="dropdownPlaceholder" maxlength="100" placeholder="${tr('Pilih role kamu','Select your roles')}"></label>`
       + `<label class="f-field"><span><b>${tr('Butuh role','Required role')}</b><small>${tr('(opsional) Hanya anggota dengan role ini yang bisa memakai panel.','(optional) Only members with this role can use the panel.')}</small></span><select name="requiredRoleId">${requiredRoleOptions('', data.roles)}</select></label>`
       + `<div class="f-field"><span><b>${tr('Role yang ditawarkan','Offered roles')}</b><small>${tr(`Pilih 1 sampai ${esc(data.limits.roles)} role. Emoji hanya wajib untuk mode Reaction.`,`Choose 1 to ${esc(data.limits.roles)} roles. Emoji are required only for Reaction mode.`)}${data.rolesTruncated ? tr(' Daftar role dipotong.',' Role list truncated.') : ''}</small></span>`
       + `<div style="max-height:260px;overflow:auto">${boxes}</div></div>`

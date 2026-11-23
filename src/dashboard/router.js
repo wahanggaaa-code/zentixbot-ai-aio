@@ -92,8 +92,9 @@ export function createDashboardRouter(client, { fetchImpl = globalThis.fetch, en
   // Pages a person reads before the dashboard opens. "same-origin" instead of the "no-referrer" used
   // everywhere else, so that the browser names this page as the origin when it posts the login form.
   const page = (res, status, html) => res.status(status).set('Referrer-Policy', 'same-origin').send(html);
-  const notice = (res, status, message, more) => page(res, status, noticePage(message, more));
-  const loginForm = (res) => (status, error) => page(res, status, loginFormPage({ error, discord: configured }));
+  const language = req => cookie(req, 'zentix_language') === 'en' ? 'en' : 'id';
+  const notice = (res, status, message, more) => page(res, status, noticePage(message, { ...more, language: language(res.req) }));
+  const loginForm = (req, res) => (status, error) => page(res, status, loginFormPage({ error, discord: configured, language: language(req), origin, ownerId: tokenLogin.ownerId }));
   const options = { httpOnly: true, secure: origin?.startsWith('https:') || false, sameSite: 'lax', path: '/dashboard' };
   const clear = (res, name) => res.clearCookie(name, options);
   const purge = () => { const now = Date.now(); for (const [k,v] of states) if (v < now) states.delete(k); for (const [k,v] of sessions) if (v.expires < now) sessions.delete(k); };
@@ -111,8 +112,8 @@ export function createDashboardRouter(client, { fetchImpl = globalThis.fetch, en
   }
   router.use((req,res,next) => { res.set({'Cache-Control': NO_CACHE, 'X-Content-Type-Options':'nosniff', 'Referrer-Policy':'no-referrer', 'X-Frame-Options':'DENY'}); next(); });
   router.get('/login', (req,res) => {
-    if (tokenLogin.enabled && req.query.via !== 'discord') return loginForm(res)(200, '');
-    if (!configured) return notice(res, 503, tokenLogin.reason === 'missing' || tokenLogin.enabled ? notConfiguredMessage(reason) : tokenOffMessage(tokenLogin.reason), tokenLogin.enabled ? undefined : { href: null });
+    if (tokenLogin.enabled && req.query.via !== 'discord') return loginForm(req, res)(200, '');
+    if (!configured) return notice(res, 503, tokenLogin.reason === 'missing' || tokenLogin.enabled ? notConfiguredMessage(reason, language(req)) : tokenOffMessage(tokenLogin.reason, language(req)), tokenLogin.enabled ? undefined : { href: null });
     purge();
     // A browser that opens the login twice (second tab, reload, prefetch) keeps its pending state.
     // A fresh state each time would overwrite the cookie and make the login begun first fail.
@@ -143,8 +144,8 @@ export function createDashboardRouter(client, { fetchImpl = globalThis.fetch, en
     res.redirect(303, '/dashboard/');
   }
   router.post('/login', express.urlencoded({ extended: false, limit: '2kb' }), async (req,res) => {
-    const form = loginForm(res);
-    if (!tokenLogin.enabled) return notice(res, 503, tokenOffMessage(tokenLogin.reason), { href: null });
+    const form = loginForm(req, res);
+    if (!tokenLogin.enabled) return notice(res, 503, tokenOffMessage(tokenLogin.reason, language(req)), { href: null });
     if (!loginPostAllowed(req)) return form(403, origin ? WRONG_ADDRESS : 'Permintaan tidak valid. Buka halaman login ini langsung dari alamat dashboard.');
     if (!tokenMatches(req.body?.token, env)) {
       logger.warn(`Dashboard: token login refused for ${req.ip} (wrong token)`);
@@ -157,10 +158,10 @@ export function createDashboardRouter(client, { fetchImpl = globalThis.fetch, en
   // answer never repeats it and the browser is sent on to /dashboard/ at once.
   router.use('/masuk', async (req, res, next) => {
     if (req.method !== 'GET') return next();
-    const form = loginForm(res);
+    const form = loginForm(req, res);
     const typed = linkToken(req.path);
     if (typed === null) return res.redirect('/dashboard/login');
-    if (!tokenLogin.enabled) return notice(res, 503, tokenOffMessage(tokenLogin.reason), { href: null });
+    if (!tokenLogin.enabled) return notice(res, 503, tokenOffMessage(tokenLogin.reason, language(req)), { href: null });
     if (origin && new URL(origin).host !== req.get('host')) return form(403, WRONG_ADDRESS);
     if (!tokenMatches(typed, env)) {
       logger.warn(`Dashboard: token login refused for ${req.ip} (wrong token in a login link)`);
@@ -169,7 +170,7 @@ export function createDashboardRouter(client, { fetchImpl = globalThis.fetch, en
     await openTokenSession(req, res, form, ' by link');
   });
   router.get('/callback', async (req,res) => {
-    if (!configured) return notice(res, 503, notConfiguredMessage(reason), tokenLogin.enabled ? undefined : { href: null });
+    if (!configured) return notice(res, 503, notConfiguredMessage(reason, language(req)), tokenLogin.enabled ? undefined : { href: null });
     purge(); const state = req.query.state, sent = cookie(req, 'zx_state');
     const known = typeof state === 'string' && states.has(state);
     // Only the browser that began a login spends it, and does so whether or not it then succeeds.
@@ -179,7 +180,7 @@ export function createDashboardRouter(client, { fetchImpl = globalThis.fetch, en
     if (problem) {
       // Reloading the callback after a finished login, or finishing it in a second tab.
       if (sessions.has(cookie(req, 'zx_session'))) return res.redirect('/dashboard/');
-      return page(res, 400, loginProblemPage(problem, origin));
+      return page(res, 400, loginProblemPage(problem, origin, language(req)));
     }
     try {
       const tokenResponse = await fetchImpl('https://discord.com/api/v10/oauth2/token', { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:new URLSearchParams({client_id:env.CLIENT_ID,client_secret:env.DISCORD_CLIENT_SECRET,grant_type:'authorization_code',code:req.query.code,redirect_uri:origin+'/dashboard/callback'}), signal:AbortSignal.timeout(10000) });
@@ -248,7 +249,7 @@ export function createDashboardRouter(client, { fetchImpl = globalThis.fetch, en
     sessions.delete(cookie(req,'zx_session')); clear(res,'zx_session'); res.json({ok:true});
   });
   router.get(['/', '/index.html'], (req,res,next) => {
-    if (!configured && !tokenLogin.enabled) return notice(res, 503, tokenLogin.reason === 'missing' ? notConfiguredMessage(reason) : tokenOffMessage(tokenLogin.reason), { href: null });
+    if (!configured && !tokenLogin.enabled) return notice(res, 503, tokenLogin.reason === 'missing' ? notConfiguredMessage(reason, language(req)) : tokenOffMessage(tokenLogin.reason, language(req)), { href: null });
     purge(); if (!sessions.has(cookie(req,'zx_session'))) return res.redirect('/dashboard/login');
     auth(req,res,() => res.sendFile(path.join(preview,'index.html')));
   });

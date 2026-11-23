@@ -40,7 +40,12 @@ export function dashboardLoginStatus(env, homeGuildId) {
 }
 
 /** What to tell someone who opens a dashboard whose login cannot work yet. */
-export function notConfiguredMessage(reason) {
+export function notConfiguredMessage(reason, language = 'id') {
+    if (language === 'en') {
+        if (reason === 'http_not_allowed') return 'Login is not configured: DASHBOARD_URL uses http:// on a public address. Use https://, or set DASHBOARD_ALLOW_HTTP=true if the hosting only provides HTTP (login sessions will not be encrypted).';
+        if (reason === 'malformed') return 'Login is not configured: DASHBOARD_URL must be an address only, such as https://bot.example.com or http://203.0.113.5:16954, without a path, query or username.';
+        return 'Login is not configured. The easiest way: set DASHBOARD_TOKEN (at least 12 characters) and OWNER_IDS, then restart the bot. Discord login is also available. Set CLIENT_ID, DISCORD_CLIENT_SECRET, DASHBOARD_URL and GUILD_ID.';
+    }
     if (reason === 'http_not_allowed') {
         return 'Login belum dikonfigurasi: DASHBOARD_URL memakai http:// pada alamat publik. Pakai alamat https://, atau atur DASHBOARD_ALLOW_HTTP=true bila hosting hanya menyediakan HTTP (sesi login lalu tidak terenkripsi).';
     }

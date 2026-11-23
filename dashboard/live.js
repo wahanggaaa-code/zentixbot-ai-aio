@@ -8,10 +8,15 @@
   }
   const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const notify=text=>{const t=document.getElementById('toast');t.textContent=text;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),4000)};
+  // Translate only messages defined by the system usage API.
+  const usageErrors=new Map([
+    ['Pemakaian sistem hanya untuk owner bot.','System usage is only available to the bot owner.'],
+    ['Pemakaian sistem tidak dapat dibaca.','System usage cannot be read.'],
+  ]);
   async function request(path,opts={}) {
     const session=await window.ZentixSession;
     const res=await fetch('/dashboard/api/bot/'+path,{cache:'no-store',...opts,headers:{...(opts.body?{'Content-Type':'application/json','x-csrf-token':session.csrf}:{}),...opts.headers}});
-    const data=await res.json(); if(!res.ok)throw Object.assign(Error(data.error || tr('Permintaan gagal.','Request failed.')),{status:res.status}); return data;
+    const data=await res.json(); const greeting=path==='welcome'||path.startsWith('welcome/')||path.startsWith('greeting-banner/'); const error=greeting ? (window.ZentixI18n?.greetingError?.(data.error) ?? data.error) : path==='system-usage' && window.ZentixI18n?.language==='en' ? (usageErrors.get(data.error) ?? data.error) : data.error; if(!res.ok)throw Object.assign(Error((window.ZentixI18n?.accessError?.(data.error,res.status) ?? error) || tr('Permintaan gagal.','Request failed.')),{status:res.status}); return data;
   }
 
   // ---- Overview, "02 / PEMAKAIAN SISTEM": CPU, memory, network and disk of the bot's host, asked every 3 seconds.
@@ -96,7 +101,7 @@
     stored();
     input.addEventListener('change',async()=>{generation++;const file=input.files?.[0];if(!file){await stored();return}if(!valid(file)){status.textContent=tr('Pilih PNG, JPEG, WebP atau GIF, maksimal 5 MB.','Choose PNG, JPEG, WebP or GIF, maximum 5 MB.');return}try{const data=await read(file);if(input.files?.[0]!==file)return;show(`data:${mimeOf(file)};base64,${data.split(',')[1]}`);status.textContent=tr('Preview file baru — tekan Unggah Banner untuk menyimpan.','New file preview — press Upload Banner to save.')}catch(e){status.textContent=e.message}});
     save.onclick=async()=>{const file=input.files?.[0];if(!valid(file)){status.textContent=tr('Pilih PNG, JPEG, WebP atau GIF, maksimal 5 MB.','Choose PNG, JPEG, WebP or GIF, maximum 5 MB.');return}save.disabled=remove.disabled=true;try{const data=await read(file);await request(path,{method:'PUT',body:JSON.stringify({mime:mimeOf(file),base64:data.split(',')[1]})});input.value='';await stored();notify(tr('Banner berhasil disimpan.','Banner saved.'))}catch(e){status.textContent=e.message}finally{save.disabled=remove.disabled=false}};
-    remove.onclick=async()=>{if(!(await (window.ZentixDialog ? window.ZentixDialog.confirm(tr('Hapus banner upload? URL gambar lama akan digunakan bila ada.','Delete the uploaded banner? The previous image URL will be used if available.')) : Promise.resolve(window.confirm(tr('Hapus banner upload? URL gambar lama akan digunakan bila ada.','Delete the uploaded banner? The previous image URL will be used if available.'))))))return;save.disabled=remove.disabled=true;try{const session=await window.ZentixSession;const r=await fetch('/dashboard/api/bot/'+path,{method:'DELETE',headers:{'x-csrf-token':session.csrf}});const data=await r.json();if(!r.ok)throw Error(data.error||tr('Gagal menghapus banner.','Could not delete banner.'));input.value='';await stored();notify(tr('Banner upload dihapus.','Uploaded banner deleted.'))}catch(e){status.textContent=e.message}finally{save.disabled=remove.disabled=false}};
+    remove.onclick=async()=>{if(!(await (window.ZentixDialog ? window.ZentixDialog.confirm(tr('Hapus banner upload? URL gambar lama akan digunakan bila ada.','Delete the uploaded banner? The previous image URL will be used if available.')) : Promise.resolve(window.confirm(tr('Hapus banner upload? URL gambar lama akan digunakan bila ada.','Delete the uploaded banner? The previous image URL will be used if available.'))))))return;save.disabled=remove.disabled=true;try{const session=await window.ZentixSession;const r=await fetch('/dashboard/api/bot/'+path,{method:'DELETE',headers:{'x-csrf-token':session.csrf}});const data=await r.json();if(!r.ok)throw Error((window.ZentixI18n?.accessError?.(data.error,r.status) ?? window.ZentixI18n?.greetingError?.(data.error) ?? data.error)||tr('Gagal menghapus banner.','Could not delete banner.'));input.value='';await stored();notify(tr('Banner upload dihapus.','Uploaded banner deleted.'))}catch(e){status.textContent=e.message}finally{save.disabled=remove.disabled=false}};
   }
   function afterRender(root,page) {
     if(!enabled || page!=='overview')return;
@@ -107,7 +112,7 @@
     request('overview').then(data=>{
       if(!root.querySelector('.metrics'))return;
       const values=root.querySelectorAll('.metric strong');
-      const duration=ms=>{let n=Math.floor(ms/60000);return `${Math.floor(n/60)}j ${n%60}m`};
+      const duration=ms=>{let n=Math.floor(ms/60000);return `${Math.floor(n/60)}${tr('j','h')} ${n%60}m`};
       [data.online?'ONLINE':'OFFLINE', data.guild.memberCount??'—',data.ping===null?'—':data.ping,data.uptime===null?'—':duration(data.uptime)].forEach((v,i)=>{if(values[i])values[i].textContent=v});
       if(label)label.textContent=tr('✳ DATA BOT','✳ BOT DATA');if(lamp)lamp.textContent=data.online?'● ONLINE':'○ OFFLINE';
       if(status)status.textContent=` / ${data.online?'ONLINE':'OFFLINE'} · DB ${data.database==='connected'?tr('TERHUBUNG','CONNECTED'):tr('TIDAK TERSEDIA','UNAVAILABLE')}`;

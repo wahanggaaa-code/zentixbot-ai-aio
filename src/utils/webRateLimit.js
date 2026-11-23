@@ -90,6 +90,16 @@ export function createWebRateLimit({ general, login, dashboard, now = Date.now }
             ? `Terlalu banyak percobaan login dari alamat ini. Coba lagi dalam ${waitText(verdict.retryAfterSeconds)}.`
             : `Terlalu banyak permintaan ke dashboard dari alamat ini. Coba lagi dalam ${waitText(verdict.retryAfterSeconds)}.`;
         if (req.path.toLowerCase().startsWith('/dashboard/api/')) return res.status(429).json({ error: message });
-        return res.status(429).set('Referrer-Policy', 'same-origin').send(noticePage(message, { title: bucket === 'login' ? 'Terlalu banyak percobaan' : 'Terlalu banyak permintaan', label: 'TUNGGU', href: null }));
+        // HTML can follow the same non-sensitive preference as the script-free login pages.
+        // API responses stay unchanged for existing clients.
+        const language = (req.headers?.cookie || '').split(';').map(part => part.trim().split('=')).find(part => part[0] === 'zentix_language')?.[1] === 'en' ? 'en' : 'id';
+        const wait = verdict.retryAfterSeconds < 60
+            ? `${verdict.retryAfterSeconds} ${verdict.retryAfterSeconds === 1 ? 'second' : 'seconds'}`
+            : `${Math.ceil(verdict.retryAfterSeconds / 60)} ${Math.ceil(verdict.retryAfterSeconds / 60) === 1 ? 'minute' : 'minutes'}`;
+        const pageMessage = language === 'en'
+            ? `Too many ${bucket === 'login' ? 'login attempts' : 'dashboard requests'} from this address. Try again in ${wait}.`
+            : message;
+        const title = language === 'en' ? (bucket === 'login' ? 'Too many attempts' : 'Too many requests') : (bucket === 'login' ? 'Terlalu banyak percobaan' : 'Terlalu banyak permintaan');
+        return res.status(429).set('Referrer-Policy', 'same-origin').send(noticePage(pageMessage, { title, label: language === 'en' ? 'WAIT' : 'TUNGGU', href: null, language }));
     };
 }

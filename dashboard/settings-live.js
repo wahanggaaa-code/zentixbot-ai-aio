@@ -1,6 +1,19 @@
 /* Control center: live server information and an owner-only bot presence editor. */
 (() => {
  const tr=(id,en)=>window.ZentixI18n?.language==='en'?en:id;
+ const errors=new Map([
+  ['Parameter tidak valid.','Invalid parameters.'],
+  ['Status bot hanya untuk owner bot.','Bot presence is only available to the bot owner.'],
+  ['Status bot tidak dapat dimuat atau disimpan; periksa database dan muat ulang untuk memastikan hasilnya.','Bot presence could not be loaded or saved; check the database and reload to verify the outcome.'],
+  ['Pengaturan status tidak valid.','Invalid presence settings.'],
+  ['Status online tidak valid.','Invalid online status.'],
+  ['Tulisan status harus paling banyak 128 karakter tanpa karakter kontrol.','Status text must be at most 128 characters without control characters.'],
+  ['Statistik hosting hanya untuk owner bot.','Hosting statistics are only available to the bot owner.'],
+  ['Panel hosting belum dikonfigurasi.','The hosting panel is not configured.'],
+  ['Kredensial hosting belum dikonfigurasi.','Hosting credentials are not configured.'],
+  ['Tidak dapat mengambil data hosting.','Could not retrieve hosting data.'],
+ ]);
+ const apiError=message=>window.ZentixI18n?.language==='en'?(errors.get(message)??message):message;
  const enabled=location.pathname.startsWith('/dashboard/');
  const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
@@ -8,7 +21,7 @@
   const session=await window.ZentixSession;
   const response=await fetch('/dashboard/api/bot/'+path,{cache:'no-store',...opts,headers:opts.body?{'Content-Type':'application/json','x-csrf-token':session.csrf}:{}});
   const data=await response.json();
-  if(!response.ok)throw Error(data.error||tr('Permintaan gagal.','Request failed.'));
+  if(!response.ok)throw Error((window.ZentixI18n?.accessError?.(data.error,response.status) ?? apiError(data.error))||tr('Permintaan gagal.','Request failed.'));
   return data;
  }
 

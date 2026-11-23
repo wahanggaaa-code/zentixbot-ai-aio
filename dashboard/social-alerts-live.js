@@ -10,6 +10,41 @@
   const KIND_LABEL = { video: 'Video', live: 'Live', shorts: 'Shorts' };
   const PLACEHOLDER = { creator: 'Nama Akun', title: 'Judul video baru minggu ini', url: 'https://youtube.com/watch?v=…', platform: 'YouTube', role: '@everyone' };
 
+  // Translate only exact built-in API messages, never feed labels or external details.
+  const API_ERRORS = new Map([
+    ['Permintaan tidak valid.','Invalid request.'],
+    ['Konfirmasi diperlukan.','Confirmation is required.'],
+    ['Parameter tidak valid.','Invalid parameter.'],
+    ['Bot belum siap.','The bot is not ready.'],
+    ['Social Alerts tidak dapat dibaca dari database.','Social Alerts could not be read from the database.'],
+    ['Pengaturan tidak dapat disimpan.','Settings could not be saved.'],
+    ['Platform tidak dikenal.','Unknown platform.'],
+    ['Input channel tidak valid.','Invalid channel input.'],
+    ['Channel target tidak valid.','Invalid target channel.'],
+    ['Twitch hanya mendukung tipe Live.','Twitch only supports the Live type.'],
+    ['Tipe konten tidak valid.','Invalid content type.'],
+    ['Pesan kustom terlalu panjang.','The custom message is too long.'],
+    ['Warna tidak valid.','Invalid color.'],
+    ['Role mention tidak valid atau tidak ada di server ini.','The mention role is invalid or does not exist on this server.'],
+    ['Label terlalu panjang.','The label is too long.'],
+    ['Channel target tidak ada di server ini.','The target channel does not exist on this server.'],
+    ['Feed tidak dapat disimpan.','The feed could not be saved.'],
+    ['Perubahan tidak dapat disimpan.','Changes could not be saved.'],
+    ['Feed tidak ditemukan.','Feed not found.'],
+    ['Feed tidak dapat dihapus.','The feed could not be deleted.'],
+    ['Pesan tes gagal dikirim. Periksa izin bot dan channel target.','The test message could not be sent. Check the bot permissions and target channel.'],
+    ['URL atau handle YouTube tidak valid.','Invalid YouTube URL or handle.'],
+    ['YOUTUBE_API_KEY belum diisi di .env.','YOUTUBE_API_KEY is missing from .env.'],
+    ['Channel tidak ditemukan.','Channel not found.'],
+    ['Channel tidak ditemukan atau tidak dapat dibaca.','Channel not found or cannot be read.'],
+    ['Login Twitch tidak valid (4-25 karakter a-z 0-9 _).','Invalid Twitch login (4–25 characters a-z, 0-9, _).'],
+    ['Data alert tidak valid.','Invalid alert data.'],
+    ['Alert untuk akun dan channel ini sudah ada.','An alert for this account and channel already exists.'],
+    ['Data ubah tidak valid.','Invalid update data.'],
+    ['Alert tidak ditemukan.','Alert not found.'],
+  ]);
+  const apiError = message => window.ZentixI18n?.language === 'en' ? (API_ERRORS.get(message) ?? message) : message;
+
   async function request(method = 'GET', path = '', body) {
     const session = await window.ZentixSession;
     const response = await fetch(API + path, {
@@ -19,7 +54,7 @@
       ...(body ? { body: JSON.stringify(body) } : {}),
     });
     const data = await response.json();
-    if (!response.ok) throw Error(data.error || tr('Permintaan gagal.','Request failed.'));
+    if (!response.ok) throw Error((window.ZentixI18n?.accessError?.(data.error,response.status) ?? apiError(data.error)) || tr('Permintaan gagal.','Request failed.'));
     return data;
   }
   const clock = (iso) => (iso ? new Date(iso).toLocaleString(tr('id-ID','en-GB'), { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : tr('belum pernah','never'));
@@ -30,7 +65,7 @@
   <section class="f-panel"><div class="f-panel-head"><div><h2>Social Alerts</h2>
     <p>${tr('Kirim pengumuman YouTube dan live Twitch ke Discord.','Send YouTube announcements and Twitch live alerts to Discord.')}</p></div><span>⊚</span></div>
     <div class="f-field" style="border-bottom:0;padding-bottom:4px"><span><b>${tr('Aktifkan Social Alerts','Enable Social Alerts')}</b><small>${tr('Saat nonaktif, pengumuman berhenti dan feed tetap tersimpan.','When disabled, announcements stop and feeds remain saved.')}</small></span>
-      <span class="f-check"><input type="checkbox" id="saMasterToggle"><span class="fake-switch"></span></span></div>
+      <span class="f-check"><input type="checkbox" id="saMasterToggle" aria-label="${tr('Aktifkan Social Alerts','Enable Social Alerts')}"><span class="fake-switch"></span></span></div>
     <p class="f-muted" id="saMasterState">${tr('Memuat…','Loading…')}</p>
   </section>
   <div id="saKeysWarn"></div>
@@ -49,7 +84,7 @@
         <label class="f-field" id="saLabelRow"><span><b>${tr('Label (opsional)','Label (optional)')}</b><small>${tr('Nama tampilan di pesan. Default: nama dari akun.','Display name in messages. Defaults to the account name.')}</small></span>
           <input name="label" id="saLabel" maxlength="100" autocomplete="off" spellcheck="false" placeholder="${tr('Kanal Uji','Sample Channel')}"></label>
         <label class="f-field"><span><b>${tr('Kirim ke channel','Send to channel')}</b><small>${tr('Hanya channel teks & pengumuman yang dapat ditulis bot.','Only text and announcement channels the bot can write to.')}</small></span><select name="targetChannelId" id="saTarget" required></select></label>
-        <fieldset class="f-field"><span><b>${tr('Tipe konten','Content type')}</b><small id="saNtHint">${tr('Kirim hanya untuk jenis konten yang dicentang.','Send only for selected content types.')}</small></span>
+        <fieldset class="f-field" aria-label="${tr('Tipe konten','Content type')}"><span><b>${tr('Tipe konten','Content type')}</b><small id="saNtHint">${tr('Kirim hanya untuk jenis konten yang dicentang.','Send only for selected content types.')}</small></span>
           <div class="f-picker" id="saNotifyTypes">
             <label><input type="checkbox" name="notifyTypes" value="video" checked> Video</label>
             <label><input type="checkbox" name="notifyTypes" value="live" checked> Live</label>
@@ -57,10 +92,10 @@
           </div></fieldset>
         <label class="f-field"><span><b>Mention</b><small>${tr('Butuh izin bot untuk mention role; @everyone butuh izin khusus server.','The bot needs permission to mention roles; @everyone requires a special server permission.')}</small></span><select name="mentionRoleId" id="saMention"></select></label>
         <div class="f-field"><span><b>${tr('Warna container','Container color')}</b><small>${tr('Pilih warna, masukkan kode Hex atau RGB, atau gunakan preset.','Choose a color, enter a Hex or RGB code, or use a preset.')}</small></span>${window.ZentixGreetingColor?.render('#5865f2','#5865f2',{name:'accentColor',optional:true}) || '<input name="accentColor" id="saColor" type="color" value="#5865F2">'}</div>
-        <div class="f-field" style="grid-template-columns:1fr"><span><b>${tr('Pesan kustom','Custom message')}</b><small>${tr('Baris di atas kartu. Kosong = "📢 <i>{creator}</i> mengunggah …". Klik variabel untuk menyisipkan.','Line above the card. Empty uses the default Indonesian announcement. Click a variable to insert it.')}</small></span><textarea name="customMessage" id="saCustom" rows="3" maxlength="500" spellcheck="false" placeholder="${tr('{role} {creator} baru: {title} {url}','{role} new from {creator}: {title} {url}')}"></textarea></div>
-        <div class="sa-vars" id="saVars">${VARIABLES.map((v) => `<button type="button" class="f-outline" data-var="${v}">${v}</button>`).join('')}</div>
+        <div class="f-field" style="grid-template-columns:1fr"><span><b>${tr('Pesan kustom','Custom message')}</b><small>${tr('Baris di atas kartu. Kosong = "📢 <i>{creator}</i> mengunggah …". Klik variabel untuk menyisipkan.','Line above the card. Empty uses the default Indonesian announcement. Click a variable to insert it.')}</small></span><textarea name="customMessage" id="saCustom" aria-label="${tr('Pesan kustom','Custom message')}" rows="3" maxlength="500" spellcheck="false" placeholder="${tr('{role} {creator} baru: {title} {url}','{role} new from {creator}: {title} {url}')}"></textarea></div>
+        <div class="sa-vars" id="saVars">${VARIABLES.map((v) => `<button type="button" class="f-outline" data-var="${v}" aria-label="${esc(tr(`Sisipkan ${v}`,`Insert ${v}`))}">${v}</button>`).join('')}</div>
         <fieldset class="f-field"><span><b>${tr('Ringkasan AI','AI summary')}</b><small>${tr('Ringkasan opsional 1–2 kalimat untuk video dan Shorts baru, menggunakan AI bot.','Optional 1–2 sentence summary for new videos and Shorts, using the bot’s AI.')}</small></span>
-          <span class="f-check"><input type="checkbox" name="aiSummaryEnabled" id="saAi"><span class="fake-switch"></span></span></fieldset>
+          <span class="f-check"><input type="checkbox" name="aiSummaryEnabled" id="saAi" aria-label="${tr('Ringkasan AI','AI summary')}"><span class="fake-switch"></span></span></fieldset>
         <div class="f-form-actions"><span id="saFormState">${tr('✳ SIMPAN UNTUK MENERAPKAN','✳ SAVE TO APPLY')}</span>
           <div><button type="button" class="f-outline" id="saCancelEdit" hidden>${tr('BATAL UBAH','CANCEL EDIT')}</button>
           <button class="f-primary" type="submit" id="saSave">${tr('SIMPAN FEED ↗','SAVE FEED ↗')}</button></div></div>
@@ -129,10 +164,10 @@
       const err = alert.lastError ? `<div class="sa-error">⚠ ${esc(alert.lastError)}</div>` : '';
       const status = `${alert.enabled ? tr('Aktif','Active') : tr('Nonaktif','Disabled')} · ${kindList(alert)}${mention}${ai} · ${tr('dicek','checked')} ${esc(clock(alert.lastCheckedAt))}`;
       return `<div class="sa-feed" data-feed="${esc(alert.id)}"><div class="sa-feed-head">${badge}<div><strong>${esc(alert.label)}</strong><div class="f-muted" style="margin-top:2px">${target}${alert.isLive ? ' · <b>LIVE</b>' : ''}</div></div>
-        <div class="sa-feed-actions"><button type="button" class="f-outline" data-action="toggle">${alert.enabled ? tr('JEDA','PAUSE') : tr('AKTIFKAN','ENABLE')}</button>
-        <button type="button" class="f-outline" data-action="test">${tr('TES','TEST')}</button>
-        <button type="button" class="f-outline" data-action="edit">EDIT</button>
-        <button type="button" class="f-outline" data-action="delete">${tr('HAPUS','DELETE')}</button></div></div>
+        <div class="sa-feed-actions"><button type="button" class="f-outline" data-action="toggle" aria-label="${esc(alert.enabled ? tr(`Jeda feed ${alert.label}`,`Pause feed ${alert.label}`) : tr(`Aktifkan feed ${alert.label}`,`Enable feed ${alert.label}`))}">${alert.enabled ? tr('JEDA','PAUSE') : tr('AKTIFKAN','ENABLE')}</button>
+        <button type="button" class="f-outline" data-action="test" aria-label="${esc(tr(`Tes feed ${alert.label}`,`Test feed ${alert.label}`))}">${tr('TES','TEST')}</button>
+        <button type="button" class="f-outline" data-action="edit" aria-label="${esc(tr(`Ubah feed ${alert.label}`,`Edit feed ${alert.label}`))}">EDIT</button>
+        <button type="button" class="f-outline" data-action="delete" aria-label="${esc(tr(`Hapus feed ${alert.label}`,`Delete feed ${alert.label}`))}">${tr('HAPUS','DELETE')}</button></div></div>
         <div class="f-muted" style="margin-top:6px">${esc(status)}</div>${err}</div>`;
     }
 

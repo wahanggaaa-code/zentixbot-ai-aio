@@ -27,6 +27,39 @@
   const typeName = (type) => TYPE_NAMES[type] || tr(`Jenis tidak dikenal (${type})`,`Unknown type (${type})`);
   const clock = (ms) => new Date(ms).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
 
+  // Dashboard API currently sends Indonesian messages without codes. Translate only exact built-in text.
+  const API_ERRORS = new Map([
+    ['Jenis counter tidak dikenal.','Unknown counter type.'],
+    ['Pilih channel suara atau channel teks.','Choose a voice or text channel.'],
+    ['Pilih kategori dari server ini.','Choose a category from this server.'],
+    ['Bot membutuhkan izin View Channel dan Manage Channels di sana. Tidak ada yang diubah.','The bot needs View Channel and Manage Channels permissions there. Nothing was changed.'],
+    ['Counter dengan jenis itu sudah ada di server ini.','A counter of that type already exists on this server.'],
+    ['Server ini sudah memiliki jumlah counter maksimum.','This server already has the maximum number of counters.'],
+    ['Counter itu sudah tidak ada. Muat ulang halaman.','That counter no longer exists. Reload the page.'],
+    ['Daftar counter berubah sejak halaman dimuat. Muat ulang, periksa, lalu ulangi.','The counter list changed since the page was loaded. Reload, check, and try again.'],
+    ['Data counter tersimpan perlu diperiksa sebelum dapat diubah.','Saved counter data needs review before it can be changed.'],
+    ['Database tidak tersedia. Tidak ada yang diubah.','The database is unavailable. Nothing was changed.'],
+    ['Discord menolak perubahan channel. Tidak ada yang diubah.','Discord rejected the channel change. Nothing was changed.'],
+    ['Counter gagal disimpan dan channel baru tidak dapat dihapus lagi. Hapus channel itu secara manual.','The counter could not be saved and the new channel could not be removed. Delete that channel manually.'],
+    ['Format angka tidak dikenal.','Unknown number format.'],
+    ['Pilih role untuk counter jenis Role tertentu.','Choose a role for a specific-role counter.'],
+    ['Role itu sudah tidak ada di server ini.','That role no longer exists on this server.'],
+    ['Pilih stat yang dilacak oleh goal.','Choose the stat tracked by the goal.'],
+    ['Target goal harus bilangan bulat antara 1 dan 2000000000.','The goal target must be a whole number between 1 and 2000000000.'],
+    ['Counter game membutuhkan game yang dikenal dan label singkat.','A game counter needs a supported game and a short label.'],
+    ['Counter sosial membutuhkan platform yang dikenal dan label singkat.','A social counter needs a supported platform and a short label.'],
+    ['Perubahan tidak dapat diselesaikan saat ini. Muat ulang untuk melihat keadaan terbaru sebelum mencoba lagi.','The change cannot be completed right now. Reload to see the latest state before trying again.'],
+    ['Counter tidak dapat dibaca dari database.','Counters could not be read from the database.'],
+    ['Setup standar tidak dapat diselesaikan saat ini.','Standard setup cannot be completed right now.'],
+    ['Diagnostik tidak dapat diselesaikan saat ini.','Diagnostics cannot be completed right now.'],
+    ['Format angka tidak dapat disimpan saat ini.','Number format cannot be saved right now.'],
+    ['Permintaan tidak valid.','Invalid request.'],
+    ['Konfirmasi diperlukan.','Confirmation is required.'],
+    ['Parameter tidak valid.','Invalid parameter.'],
+    ['Bot belum siap.','The bot is not ready.'],
+  ]);
+  const apiError = message => window.ZentixI18n?.language === 'en' ? (API_ERRORS.get(message) ?? message) : message;
+
   async function request(method = 'GET', path = '', body) {
     const session = await window.ZentixSession;
     const response = await fetch(API + path, {
@@ -36,7 +69,7 @@
       ...(body ? { body: JSON.stringify(body) } : {}),
     });
     const data = await response.json();
-    if (!response.ok) throw Error(data.error || tr('Permintaan gagal.','Request failed.'));
+    if (!response.ok) throw Error((window.ZentixI18n?.accessError?.(data.error,response.status) ?? apiError(data.error)) || tr('Permintaan gagal.','Request failed.'));
     return data;
   }
 
@@ -173,7 +206,7 @@
       + `<p class="f-muted">${tr('Steam butuh AppID game (mis. 730 = CS2); Minecraft/FiveM butuh alamat server yang DAPAT DIAKSES PUBLIK (maks. 10 counter game).','Steam needs the game AppID (e.g. 730 = CS2); Minecraft/FiveM needs a PUBLICLY ACCESSIBLE server address (maximum 10 game counters).')}</p>`
       + `<label class="f-field"><span><b>Provider</b></span><select name="provider">${Object.entries(GAME_PROVIDER_LABELS).map(([id, label]) => `<option value="${id}">${esc(label)}</option>`).join('')}</select></label>`
       + `<label class="f-field" data-game="steam"><span><b>AppID Steam</b><small>${tr('Angka dari halaman game di store.steampowered.com.','Number from the game page on store.steampowered.com.')}</small></span><input type="number" name="appId" min="1" step="1" inputmode="numeric" placeholder="730"></label>`
-      + `<label class="f-field" data-game="host" hidden><span><b>${tr('Alamat server','Server address')}</b><small>${tr('Domain publik atau IP publik, tanpa http:// — mis. mc.contoh.com. Tidak boleh alamat lokal/privat.','Public domain or IP, without http:// — e.g. mc.example.com. Local/private addresses are not allowed.')}</small></span><input type="text" name="host" maxlength="253" autocomplete="off" placeholder="mc.contoh.com"></label>`
+      + `<label class="f-field" data-game="host" hidden><span><b>${tr('Alamat server','Server address')}</b><small>${tr('Domain publik atau IP publik, tanpa http:// — mis. mc.contoh.com. Tidak boleh alamat lokal/privat.','Public domain or IP, without http:// — e.g. mc.example.com. Local/private addresses are not allowed.')}</small></span><input type="text" name="host" maxlength="253" autocomplete="off" placeholder="${tr('mc.contoh.com','mc.example.com')}"></label>`
       + `<label class="f-field" data-game="host" hidden><span><b>Port</b><small>${tr('Kosong = default (Minecraft 25565, FiveM 30120).','Leave blank for default (Minecraft 25565, FiveM 30120).')}</small></span><input type="number" name="port" min="1" max="65535" step="1" inputmode="numeric" placeholder="25565"></label>`
       + `<label class="f-field"><span><b>Label</b><small>${tr('Nama pendek pada channel counter, mis. "CS2" atau "Server MC" (maks. 30 karakter).','Short name on the counter channel, e.g. "CS2" or "MC Server" (maximum 30 characters).')}</small></span><input type="text" name="label" maxlength="30" required placeholder="CS2"></label>`
       + `<label class="f-field"><span><b>${tr('Jenis channel','Channel type')}</b></span><select name="channelType"><option value="voice">${KIND_NAMES.voice}</option><option value="text">${KIND_NAMES.text}</option></select></label>`
@@ -184,8 +217,8 @@
       + `<label class="f-field"><span><b>Platform</b></span><select name="platform">${Object.entries(SOCIAL_PLATFORM_LABELS).map(([id, label]) => `<option value="${id}">${esc(label)}</option>`).join('')}</select></label>`
       + `<p class="f-muted" id="serverStatsSocialKeyNote">${missingNote('youtube')}</p>`
       + `<label class="f-field" data-social="youtube"><span><b>Channel ID YouTube</b><small>${tr('UC… (Channel → Tentang → ID).','UC… (Channel → About → ID).')}</small></span><input type="text" name="channelId" maxlength="24" autocomplete="off" placeholder="UCxxxxxxxxxxxxxxxxxxxxxx"></label>`
-      + `<label class="f-field" data-social="twitch" hidden><span><b>Login Twitch</b><small>${tr('Nama login channel, huruf kecil.','Channel login name, lowercase.')}</small></span><input type="text" name="login" maxlength="25" autocomplete="off" placeholder="namaakun"></label>`
-      + `<label class="f-field" data-social="x" hidden><span><b>Username X</b><small>${tr('Tanpa @.','Without @.')}</small></span><input type="text" name="username" maxlength="15" autocomplete="off" placeholder="akun"></label>`
+      + `<label class="f-field" data-social="twitch" hidden><span><b>Login Twitch</b><small>${tr('Nama login channel, huruf kecil.','Channel login name, lowercase.')}</small></span><input type="text" name="login" maxlength="25" autocomplete="off" placeholder="${tr('namaakun','accountname')}"></label>`
+      + `<label class="f-field" data-social="x" hidden><span><b>Username X</b><small>${tr('Tanpa @.','Without @.')}</small></span><input type="text" name="username" maxlength="15" autocomplete="off" placeholder="${tr('akun','account')}"></label>`
       + `<label class="f-field" data-social="instagram" hidden><span><b>${tr('ID akun bisnis Instagram','Instagram business account ID')}</b><small>${tr('ID ANGKA akun bisnis/kreator (bukan username). Token owner di .env harus boleh membaca akun ini.','NUMERIC ID of the business/creator account (not username). The owner token in .env must be allowed to read this account.')}</small></span><input type="text" name="userId" maxlength="25" autocomplete="off" inputmode="numeric" placeholder="17841400000000000"></label>`
       + `<label class="f-field"><span><b>Label</b><small>${tr('Nama pendek pada channel counter (maks. 30 karakter).','Short name on the counter channel (maximum 30 characters).')}</small></span><input type="text" name="label" maxlength="30" required placeholder="YouTube"></label>`
       + `<label class="f-field"><span><b>${tr('Jenis channel','Channel type')}</b></span><select name="channelType"><option value="voice">${KIND_NAMES.voice}</option><option value="text">${KIND_NAMES.text}</option></select></label>`

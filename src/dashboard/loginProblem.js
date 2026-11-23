@@ -29,7 +29,16 @@ const MESSAGES = {
     denied: () => 'Login dibatalkan di halaman Discord.',
 };
 
+const EN_MESSAGES = {
+    incomplete: () => 'This address is incomplete. Discord opens this page after you press Authorize.',
+    spent: () => 'This login is no longer valid. The page may have been reloaded, the login left for more than 10 minutes, or the bot restarted during login.',
+    no_cookie: (origin) => `This browser did not send the login cookie. Login may have started in another browser or a private tab, the dashboard may have been opened at an address other than ${origin}, or the browser may block cookies for this address.`,
+    other_login: () => 'A newer login was started in this browser, so this login is no longer used.',
+    denied: () => 'Login was cancelled on the Discord page.',
+};
+
 /** A page that names the problem and links back to the login. */
-export function loginProblemPage(problem, origin) {
-    return noticePage(MESSAGES[problem](origin), { title: 'Login dashboard gagal', label: 'LOGIN GAGAL', action: 'Mulai login lagi' });
+export function loginProblemPage(problem, origin, language = 'id') {
+    const messages = language === 'en' ? EN_MESSAGES : MESSAGES;
+    return noticePage(messages[problem](origin), { title: 'Login dashboard gagal', label: 'LOGIN GAGAL', action: 'Mulai login lagi', language });
 }

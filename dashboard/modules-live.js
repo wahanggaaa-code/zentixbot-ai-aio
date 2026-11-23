@@ -9,14 +9,24 @@
  const num=(name,label,value,min,max)=>field(label,'',`<input name="${name}" type="number" min="${min}" max="${max}" value="${esc(value)}" required>`);
  const select=(name,label,items,value,prefix='')=>field(label,'',`<select name="${name}"><option value="">${tr('Belum dipilih','Not selected')}</option>${items.map(x=>`<option value="${esc(x.id)}" ${x.id===value?'selected':''}>${esc(prefix+x.name)}</option>`).join('')}${value&&!items.some(x=>x.id===value)?`<option value="${esc(value)}" selected>${tr('ID tersimpan (tidak tersedia)','Saved ID (unavailable)')}</option>`:''}</select>`);
  const notice=message=>{const el=document.getElementById('toast');el.textContent=message;el.classList.add('show');setTimeout(()=>el.classList.remove('show'),4000)};
- async function req(path,opts={}){const s=await window.ZentixSession;const r=await fetch('/dashboard/api/bot/'+path,{cache:'no-store',...opts,headers:opts.body?{'Content-Type':'application/json','x-csrf-token':s.csrf}:{}});const b=await r.json();if(!r.ok)throw Error(b.error||tr('Permintaan gagal','Request failed'));return b;}
+ async function req(path,opts={}){const s=await window.ZentixSession;const r=await fetch('/dashboard/api/bot/'+path,{cache:'no-store',...opts,headers:opts.body?{'Content-Type':'application/json','x-csrf-token':s.csrf}:{}});const b=await r.json();if(!r.ok)throw Error((window.ZentixI18n?.accessError?.(b.error,r.status) ?? window.ZentixI18n?.moduleError?.(b.error) ?? b.error)||tr('Permintaan gagal','Request failed'));return b;}
  // ---- reward roles (leveling) ----------------------------------------------
  // The list shows what the bot can give right now; the button starts a sync
  // that only adds missing roles to members who already reached the level.
+ const REWARD_REASONS=new Map([
+  ['ROLE_MISSING',['Role sudah tidak ada di server.','The role no longer exists on the server.']],
+  ['ROLE_EVERYONE',['@everyone tidak dapat dijadikan hadiah.','@everyone cannot be a reward.']],
+  ['ROLE_MANAGED',['Role dikelola integrasi dan tidak dapat diberikan bot.','The role is managed by an integration and cannot be assigned by the bot.']],
+  ['ROLE_DANGEROUS',['Role memiliki izin pengelolaan atau moderasi server.','The role has server management or moderation permissions.']],
+  ['BOT_MEMBER_UNKNOWN',['Data bot di server belum tersedia.','The bot’s server member data is not available yet.']],
+  ['BOT_NO_MANAGE_ROLES',['Bot tidak memiliki izin Manage Roles.','The bot lacks Manage Roles permission.']],
+  ['ROLE_TOO_HIGH',['Posisi role tidak di bawah role tertinggi bot.','The role is not below the bot’s highest role.']],
+ ]);
+ const rewardReason=item=>{const match=REWARD_REASONS.get(item.code);return window.ZentixI18n?.language==='en'&&match&&item.reason===match[0]?match[1]:item.reason;};
  function rewardList(rewardRoles) {
   const rows = (rewardRoles || []).map(item => {
    const label = item.name ? '@ ' + item.name : 'ID ' + item.roleId;
-   const state = item.ok ? tr('Dapat diberikan','Can be assigned') : tr('Tidak diberikan: ','Not assigned: ') + (item.reason || tr('tidak tersedia','unavailable'));
+   const state = item.ok ? tr('Dapat diberikan','Can be assigned') : tr('Tidak diberikan: ','Not assigned: ') + (rewardReason(item) || tr('tidak tersedia','unavailable'));
    return `<li data-ok="${item.ok ? '1' : '0'}"><b>Level ${esc(item.level)}</b> · ${esc(label)} — ${esc(state)}</li>`;
   }).join('');
   return rows

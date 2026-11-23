@@ -50,6 +50,7 @@ input:focus{outline:2px solid #536f12;outline-offset:1px}
 .help code{font:700 10px var(--mono);background:var(--panel);border:1px solid var(--softline);padding:1px 4px}
 .error{background:#1b1c18;color:#e7e9da;border-left:6px solid var(--lime);margin:0 0 16px;padding:13px 14px;font:700 11px/1.6 var(--mono);letter-spacing:.01em;overflow-wrap:anywhere}
 .error::before{content:'GAGAL — ';color:var(--lime);letter-spacing:.08em}
+:lang(en) .error::before{content:'ERROR — '}
 .alt{margin:16px 0 0}
 .alt span{display:block;font:700 9px var(--mono);letter-spacing:.11em;margin-bottom:9px}
 .note{font:13px/1.7 var(--mono);margin:0 0 18px;color:#1d1e19;overflow-wrap:anywhere}
@@ -79,14 +80,14 @@ h1{font-size:clamp(46px,14vw,92px);margin:24px 0 18px}
  * @param {string} [page.lead]    one sentence under the heading, as plain text
  * @param {string} page.body      the right-hand column, as HTML
  */
-export function pageShell({ title, label, heading, lead = '', body }) {
-    return '<!doctype html><html lang="id"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
+export function pageShell({ title, label, heading, lead = '', body, language = 'id' }) {
+    return `<!doctype html><html lang="${language === 'en' ? 'en' : 'id'}"><head>` + '<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
         // "same-origin", not "no-referrer": under "no-referrer" a browser posts the login form with
         // "Origin: null", and the server could not tell its own page from somebody else's.
         + '<meta name="referrer" content="same-origin"><meta name="color-scheme" content="light"><meta name="theme-color" content="#a9a9a9"><meta name="robots" content="noindex">'
         + `<title>${escapeHtml(title)}</title><style>${CSS}</style></head><body><div class="shell">`
         + `<div class="strip"><span class="dot"></span> ZENTIX <span class="sep">/</span> CONTROL ROOM · ${escapeHtml(label)}</div>`
-        + '<header class="head"><a class="wordmark" href="/dashboard/" aria-label="Zentix, ke dashboard"><span class="mark">✳</span><span class="name">ZENTIX<span class="reg">®</span><small>DISCORD CONTROL SYSTEM</small></span></a>'
+        + `<header class="head"><a class="wordmark" href="/dashboard/" aria-label="${language === 'en' ? 'Zentix, go to dashboard' : 'Zentix, ke dashboard'}"><span class="mark">✳</span><span class="name">ZENTIX<span class="reg">®</span><small>DISCORD CONTROL SYSTEM</small></span></a>`
         + '<span class="head-note">COMMUNITY<br><b>CONTROL ROOM</b></span></header>'
         + `<main class="stage"><div class="lead"><div class="kicker"><i></i><span class="pill">01</span> ${escapeHtml(label)}</div><h1>${heading}</h1>`
         + (lead ? `<p class="copy">${escapeHtml(lead)}</p>` : '')
@@ -105,11 +106,30 @@ export function pageShell({ title, label, heading, lead = '', body }) {
  * @param {string | null} [options.href]  where the button leads; null for no button
  * @param {string} [options.action]   the button's text
  */
-export function noticePage(message, { title = 'Belum bisa masuk', label = 'MASUK', href = '/dashboard/login', action = 'Buka halaman login' } = {}) {
+export function noticePage(message, { title = 'Belum bisa masuk', label = 'MASUK', href = '/dashboard/login', action = 'Buka halaman login', language = 'id' } = {}) {
+    if (language === 'en') {
+        // Only built-in labels and static server errors are translated; custom text is untouched.
+        const labels = new Map([
+            ['Belum bisa masuk', 'Unable to log in'], ['MASUK', 'LOG IN'], ['Buka halaman login', 'Open login page'],
+            ['Login dashboard gagal', 'Dashboard login failed'], ['LOGIN GAGAL', 'LOGIN FAILED'], ['Mulai login lagi', 'Start login again'],
+        ]);
+        const errors = new Map([
+            ['Terlalu banyak login yang menunggu.', 'Too many logins are pending.'],
+            ['Terlalu banyak sesi aktif.', 'Too many active sessions.'],
+            ['Login Discord gagal. Coba lagi.', 'Discord login failed. Try again.'],
+            ['Bot belum siap memverifikasi server.', 'The bot is not ready to verify the server.'],
+            ['Bot belum tersedia di server yang dikonfigurasi.', 'The bot is not available in the configured server.'],
+            ['Akses hanya untuk owner atau administrator server.', 'Access is restricted to the server owner or administrators.'],
+            ['Keanggotaan atau izin server tidak dapat diverifikasi.', 'Server membership or permissions could not be verified.'],
+        ]);
+        title = labels.get(title) ?? title; label = labels.get(label) ?? label; action = labels.get(action) ?? action;
+        message = errors.get(message) ?? message;
+    }
     const words = escapeHtml(title).split(' ');
     // Like the dashboard's own headings: the first line heavy, the last word lighter on its own line.
     const heading = words.length > 1 ? `${words.slice(0, -1).join(' ')}<br><em>${words.at(-1)}</em><span>.</span>` : `${words[0]}<span>.</span>`;
     return pageShell({
+        language,
         title: `${title} — Zentix`,
         label,
         heading,

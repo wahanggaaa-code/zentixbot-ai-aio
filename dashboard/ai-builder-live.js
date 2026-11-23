@@ -6,18 +6,159 @@
 // (textContent), never as markup.
 (() => {
  const tr=(id,en)=>window.ZentixI18n?.language==='en'?en:id;
+ // Exact bot-generated safety copy only. Discord names, unknown notes and confirmation
+ // phrases are server data and must remain unchanged.
+ const BUILDER_COPY = new Map([
+  ['PENGHAPUSAN PERMANEN: channel dihapus beserta seluruh pesannya dan role dilepas dari semua anggota. Bot tidak dapat memulihkannya.','PERMANENT DELETION: channels are deleted with all their messages and roles are removed from all members. The bot cannot restore them.'],
+  ['PENGHAPUSAN PERMANEN: pesan, pengaturan atau keanggotaan role dapat hilang dan tidak bisa dipulihkan oleh bot.','PERMANENT DELETION: messages, settings or role memberships may be lost and cannot be restored by the bot.'],
+  ['Perubahan berlaku di Discord; permission overwrite channel dapat mengubah izin efektif.','Changes take effect in Discord; channel permission overwrites can change effective permissions.'],
+  ['sudah tidak ada','already gone'],
+  ['tidak dapat dihapus bot: role berada di atas role bot atau dikelola integrasi','the bot cannot delete it: the role is above the bot role or managed by an integration'],
+  ['izinnya sudah diubah','permissions have changed'],
+  ['tidak dihapus: dipakai sebagai channel sistem server','not deleted: used as a server system channel'],
+  ['sudah berisi pesan','already contains messages'],
+ ]);
+ const builderCopy=value=>{
+  if(window.ZentixI18n?.language!=='en'||typeof value!=='string')return value;
+  const known=BUILDER_COPY.get(value);if(known!==undefined)return known;
+  // Only the surrounding fixed copy changes. Names and counts from Discord stay byte-for-byte.
+  let m=/^sekarang bernama "([\s\S]*)"$/.exec(value);
+  if(m)return `now named "${m[1]}"`;
+  m=/^tidak dihapus: masih berisi ([1-9][0-9]*) channel yang bukan bagian bangunan ini$/.exec(value);
+  if(m)return `not deleted: still contains ${m[1]} ${m[1]==='1'?'channel':'channels'} outside this build`;
+  m=/^([1-9][0-9]*) orang sedang di dalam$/.exec(value);
+  if(m)return `${m[1]} ${m[1]==='1'?'person is':'people are'} currently inside`;
+  return value;
+ };
+ // Status + exact message are required; dynamic names and external diagnostics stay untouched.
+ const BUILDER_ERRORS=new Map([
+  ['400\0Input tidak valid.','Invalid input.'],
+  ['400\0Konfirmasi diperlukan.','Confirmation is required.'],
+  ['400\0Konfirmasi penerapan diperlukan.','Apply confirmation is required.'],
+  ['400\0Rancangan tidak valid.','Invalid plan.'],
+  ['400\0Tema tidak valid.','Invalid theme.'],
+  ['400\0Nama tidak valid.','Invalid name.'],
+  ['400\0Nama channel harus berupa huruf kecil ASCII, angka, - atau _.','Channel names must use lowercase ASCII letters, numbers, - or _.'],
+  ['400\0Pilihan izin role tidak valid.','Invalid role permission selection.'],
+  ['400\0Tindakan tidak valid.','Invalid action.'],
+  ['400\0Tidak ada perubahan.','There are no changes.'],
+  ['400\0Konfirmasi target tidak cocok.','Target confirmation does not match.'],
+  ['400\0Konfirmasi tidak cocok.','Confirmation does not match.'],
+  ['400\0Deskripsi harus 1–1000 karakter.','The description must be 1–1000 characters.'],
+  ['400\0Jawaban AI tidak berisi JSON.','The AI response does not contain JSON.'],
+  ['400\0AI tidak boleh memilih role yang sudah ada.','AI cannot select existing roles.'],
+  ['403\0Target tidak valid.','Invalid target.'],
+  ['403\0Izin bot tidak mencukupi.','The bot does not have sufficient permissions.'],
+  ['403\0Role tidak tersedia atau tidak aman diubah.','The role is unavailable or cannot be safely changed.'],
+  ['403\0Role berizin tinggi atau di luar daftar aman tidak dapat dikelola di sini.','Roles with elevated permissions or outside the safe list cannot be managed here.'],
+  ['403\0Channel tidak tersedia atau tidak aman diubah.','The channel is unavailable or cannot be safely changed.'],
+  ['403\0Channel sistem tidak dapat dikelola di sini.','System channels cannot be managed here.'],
+  ['403\0Bot memerlukan Manage Channels dan Manage Roles sesuai rencana.','The bot needs Manage Channels and Manage Roles as required by the plan.'],
+  ['403\0Izin channel memerlukan Manage Roles dan identitas bot.','Channel permissions require Manage Roles and the bot identity.'],
+  ['403\0Bot harus memiliki izin dasar yang akan diatur pada channel sebelum menerapkan.','The bot must have the base permissions to be configured on the channel before applying.'],
+  ['403\0Server atau persetujuan tidak valid.','Invalid server or consent.'],
+  ['403\0Server atau pengguna tidak valid.','Invalid server or user.'],
+  ['403\0Server tidak valid.','Invalid server.'],
+  ['403\0Bot memerlukan Manage Channels dan Manage Roles untuk membongkar.','The bot needs Manage Channels and Manage Roles to tear down the build.'],
+  ['404\0Tinjauan tidak ditemukan atau kedaluwarsa.','The review was not found or expired.'],
+  ['404\0Rancangan tidak ditemukan atau kedaluwarsa.','The plan was not found or expired.'],
+  ['404\0Tema tidak dikenal.','Unknown theme.'],
+  ['404\0Belum ada draft tersimpan.','There is no saved draft.'],
+  ['404\0Belum ada bangunan yang tercatat.','There is no recorded build.'],
+  ['409\0Kategori berisi channel; pindahkan dahulu secara manual.','The category contains channels; move them manually first.'],
+  ['409\0Tindakan lain sedang berjalan.','Another action is in progress.'],
+  ['409\0Target berubah setelah ditinjau; buat tinjauan baru.','The target changed after review; create a new review.'],
+  ['409\0Discord gagal atau timeout; hasil mungkin berubah. Periksa Discord sebelum mencoba ulang.','Discord failed or timed out; the outcome may have changed. Check Discord before retrying.'],
+  ['409\0Target berubah setelah tindakan; rollback dibatalkan.','The target changed after the action; rollback was cancelled.'],
+  ['409\0Rollback gagal atau timeout; periksa Discord sebelum tindakan lain.','Rollback failed or timed out; check Discord before taking another action.'],
+  ['409\0Rancangan berubah. Tinjau lagi.','The plan changed. Review it again.'],
+  ['409\0Rancangan berubah saat diperiksa. Tinjau lagi.','The plan changed during the check. Review it again.'],
+  ['409\0Rencana melewati batas server.','The plan exceeds server limits.'],
+  ['409\0Role yang dipilih tidak tersedia, adalah @everyone atau dikelola integrasi. Pilih ulang.','The selected role is unavailable, is @everyone, or is managed by an integration. Choose again.'],
+  ['409\0Penerapan atau pembongkaran lain masih berjalan.','Another apply or teardown is still in progress.'],
+  ['409\0Riwayat berubah setelah ditinjau; tinjau lagi.','History changed after review; review again.'],
+  ['409\0Keadaan server berubah setelah ditinjau; tinjau lagi.','Server state changed after review; review again.'],
+  ['409\0Catatan itu bukan bangunan terakhir; muat ulang riwayat.','That record is not the latest build; reload history.'],
+  ['409\0Penerapan gagal sebelum ada yang dibuat. Periksa izin bot lalu buat rancangan baru.','Apply failed before anything was created. Check the bot permissions, then create a new plan.'],
+  ['409\0Penerapan berhenti di tengah jalan. Yang sudah dibuat tercatat di riwayat dan dapat dibongkar dari sana.','Apply stopped partway through. Created objects were recorded in history and can be torn down there.'],
+  ['409\0Penerapan berhenti di tengah jalan dan riwayat tidak dapat disimpan. Periksa Discord dan hapus objek di daftar hasil secara manual.','Apply stopped partway through and history could not be saved. Check Discord and manually delete the objects in the results list.'],
+  ['429\0Terlalu banyak tindakan menunggu.','Too many actions are pending.'],
+  ['429\0Terlalu banyak rancangan menunggu.','Too many plans are pending.'],
+  ['429\0Terlalu banyak tinjauan menunggu.','Too many reviews are pending.'],
+  ['503\0Keadaan server tidak dapat dibaca dari Discord. Coba lagi.','Server state could not be read from Discord. Try again.'],
+  ['503\0Daftar role Discord tidak dapat dibaca.','The Discord role list could not be read.'],
+  ['503\0Daftar role Discord tidak dapat dibaca. Coba lagi.','The Discord role list could not be read. Try again.'],
+  ['503\0Riwayat pembangunan tidak dapat dibaca, jadi penerapan dibatalkan. Coba lagi nanti.','Build history could not be read, so apply was cancelled. Try again later.'],
+ ]);
+ // Plan validation reports locations by number; keep JSON field keys and user names unchanged.
+ const VALIDATION_DETAILS=new Map([
+  ['harus berisi "name" dan "channels" saja.','must contain only "name" and "channels".'],
+  ['nama tidak valid.','invalid name.'],
+  ['nama kategori dipakai dua kali.','category name is used twice.'],
+  ['paling banyak 15 channel per kategori.','at most 15 channels per category.'],
+  ['harus berisi "name" dan "type", boleh ditambah "topic".','must contain "name" and "type", optionally "topic".'],
+  ['"type" harus salah satu dari text, voice, forum, news, stage.','"type" must be one of text, voice, forum, news, stage.'],
+  ['nama channel dipakai dua kali.','channel name is used twice.'],
+  ['"topic" harus berupa teks.','"topic" must be text.'],
+  ['"topic" hanya untuk channel text, forum atau news.','"topic" is only for text, forum or news channels.'],
+  ['"topic" paling banyak 200 karakter, satu baris, tanpa @, <, >, ` atau tautan.','"topic" must be at most 200 characters, on one line, without @, <, >, ` or links.'],
+  ['access harus berisi mode dan daftar role.','access must contain a mode and a role list.'],
+  ['daftar role akses tidak valid atau berulang.','the access role list is invalid or contains duplicates.'],
+  ['harus berisi "name", boleh ditambah "color".','must contain "name", optionally "color".'],
+  ['nama role dipakai dua kali.','role name is used twice.'],
+  ['"color" harus berbentuk #RRGGBB.','"color" must be in #RRGGBB format.'],
+ ]);
+ const VALIDATION_GLOBAL=new Map([
+  ['Rancangan harus berupa objek berisi "categories" dan "roles" saja.','The plan must be an object containing only "categories" and "roles".'],
+  ['Rancangan harus memiliki 1–8 kategori.','The plan must contain 1–8 categories.'],
+  ['Rancangan paling banyak memiliki 12 role.','The plan may contain at most 12 roles.'],
+  ['Rancangan harus memiliki 1–40 channel.','The plan must contain 1–40 channels.'],
+ ]);
+ function validationError(message){
+  const global=VALIDATION_GLOBAL.get(message);if(global!==undefined)return global;
+  let m=/^Kategori ke-([1-9][0-9]*): ([\s\S]+)$/.exec(message),place;
+  if(m)place=`Category ${m[1]}`;
+  else if((m=/^Channel ke-([1-9][0-9]*) di kategori ke-([1-9][0-9]*): ([\s\S]+)$/.exec(message)))place=`Channel ${m[1]} in category ${m[2]}`;
+  else if((m=/^Role ke-([1-9][0-9]*): ([\s\S]+)$/.exec(message)))place=`Role ${m[1]}`;
+  if(m){
+   const detail=m[m.length-1],known=VALIDATION_DETAILS.get(detail);
+   if(known!==undefined)return `${place}: ${known}`;
+   const slug=/^nama channel (text|forum|news) harus huruf kecil tanpa spasi \(pakai -\)\.$/.exec(detail);
+   if(slug)return `${place}: ${slug[1]} channel names must be lowercase without spaces (use -).`;
+   return message;
+  }
+  m=/^Kategori ([\s\S]+) privat: channel baca saja harus memakai private-read-only agar tidak membuka akses lihat\.$/.exec(message);
+  if(m)return `Private category ${m[1]}: read-only channels must use private-read-only to avoid granting view access.`;
+  m=/^Role akses ([\s\S]+) tidak ada di rancangan\.$/.exec(message);
+  if(m)return `Access role ${m[1]} is not in the plan.`;
+  return message;
+ }
+ const builderError=(message,status,code)=>{
+  if(window.ZentixI18n?.language!=='en'||typeof message!=='string')return message;
+  const known=BUILDER_ERRORS.get(`${status}\0${message}`);if(known!==undefined)return known;
+  if(status===400 && code==='UNAVAILABLE')return validationError(message);
+  if(status===409 && code==='PLAN_NAME_CONFLICT'){
+   const m=/^Nama sudah ada di server: ([\s\S]+)\. Sunting nama lalu validasi lagi\.$/.exec(message);
+   if(m)return `Names already exist on the server: ${m[1]}. Edit the names and validate again.`;
+  }
+  if(status===409 && code==='UNAVAILABLE'){
+   const m=/^Channel bertipe forum, news dan stage memerlukan fitur Komunitas Discord, yang belum aktif di server ini\. Ubah tipe ([1-9][0-9]*) channel itu menjadi text atau voice, atau aktifkan Komunitas di Pengaturan Server\.$/.exec(message);
+   if(m)return `Forum, news and stage channels require Discord Community, which is not enabled on this server. Change those ${m[1]} ${m[1]==='1'?'channel':'channels'} to text or voice, or enable Community in Server Settings.`;
+  }
+  return message;
+ };
  const API = '/dashboard/api/ai/builder/';
  async function req(path, body) {
   const s = await window.ZentixSession;
   const r = await fetch(API + path, { method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json', 'x-csrf-token': s.csrf }, body: JSON.stringify(body) });
   const b = await r.json();
-  if (!r.ok) { const e = Error(b.error || tr('Permintaan gagal','Request failed')); e.created = b.created; e.recorded = b.recorded; e.code = b.code; throw e; }
+  if (!r.ok) { const e = Error((window.ZentixI18n?.accessError?.(b.error,r.status) ?? builderError(window.ZentixI18n?.aiError?.(b.error) ?? b.error,r.status,b.code)) || tr('Permintaan gagal','Request failed')); e.created = b.created; e.recorded = b.recorded; e.code = b.code; throw e; }
   return b;
  }
  async function read(path) {
   const r = await fetch(API + path, { cache: 'no-store' });
   const b = await r.json();
-  if (!r.ok) throw Error(b.error || tr('Data tidak dapat dimuat','Could not load data'));
+  if (!r.ok) throw Error((window.ZentixI18n?.accessError?.(b.error,r.status) ?? builderError(window.ZentixI18n?.aiError?.(b.error) ?? b.error,r.status,b.code)) || tr('Data tidak dapat dimuat','Could not load data'));
   return b;
  }
  /** Builds an element: el('li', {className:'x'}, 'text', childNode, …). Strings become text nodes. */
@@ -475,8 +616,8 @@
       el('ul', null, ...list(r.items).map((item) => el('li', { className: `b-state-${item.state}` },
        el('span', { className: 'b-tag' }, marks[item.state] || tr('OBJEK','OBJECT')),
        el('span', { className: 'b-name' }, `${TYPE_LABELS[item.type] || ''} ${String(item.name ?? '')}`.trim()),
-       list(item.notes).length ? el('small', null, list(item.notes).join('; ')) : null)))),
-     el('p', { className: 'f-callout' }, `⚠ ${r.warning}`));
+       list(item.notes).length ? el('small', null, list(item.notes).map(builderCopy).join('; ')) : null)))),
+     el('p', { className: 'f-callout' }, `⚠ ${builderCopy(r.warning)}`));
     hint.textContent = tr(`Ketik persis: ${r.confirmation}`,`Type exactly: ${r.confirmation}`);
     input.value = ''; apply.disabled = false;
     status.textContent = tr('Tinjau daftar di atas. Berlaku 5 menit.','Review the list above. Valid for 5 minutes.');
@@ -525,7 +666,7 @@
     const r = await req('manual/prepare', { kind, action, targetId: x.targetId.value, value });
     if (current !== version) { manualStatus.textContent = tr('Input berubah; tinjau ulang.','Input changed; review again.'); return; }
     ticket = { id: r.id, action, targetId: r.before.id };
-    preview.textContent = JSON.stringify({ tindakan: r.action, sebelum: r.before, sesudah: r.after, izinSebelum: r.permissionsBefore, izinSesudah: r.permissionsAfter, peringatan: r.warning }, null, 2);
+    preview.textContent = JSON.stringify({ tindakan: r.action, sebelum: r.before, sesudah: r.after, izinSebelum: r.permissionsBefore, izinSesudah: r.permissionsAfter, peringatan: builderCopy(r.warning) }, null, 2);
     confirmInput.value = ''; manualApply.disabled = false; manualStatus.textContent = tr('Tinjau detail. Berlaku 5 menit.','Review details. Valid for 5 minutes.');
    } catch (err) { manualStatus.textContent = err.message; }
    finally { button.disabled = false; }

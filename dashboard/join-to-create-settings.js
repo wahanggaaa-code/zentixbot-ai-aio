@@ -14,7 +14,7 @@
       ...(body ? { body: JSON.stringify(body) } : {}),
     });
     const data = await response.json();
-    if (!response.ok) throw Error(data.error || tr('Permintaan gagal.','Request failed.'));
+    if (!response.ok) throw Error((window.ZentixI18n?.accessError?.(data.error,response.status) ?? window.ZentixI18n?.jtcError?.(data.error) ?? data.error) || tr('Permintaan gagal.','Request failed.'));
     return data;
   }
 

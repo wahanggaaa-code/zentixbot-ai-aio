@@ -5,6 +5,33 @@
  const tr=(id,en)=>window.ZentixI18n?.language==='en'?en:id;
  const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
+ // Match both the API code and its exact message: changed or external details stay visible as sent.
+ const API_ERRORS=new Map([
+  ['GIVEAWAY_STALE',['Data Giveaway berubah sejak dimuat. Muat ulang dan periksa. Tidak ada yang diubah.','Giveaway data changed since loading. Reload and check. Nothing was changed.']],
+  ['GIVEAWAY_MISSING',['Giveaway tidak ditemukan; mungkin sudah dihapus. Muat ulang daftar.','Giveaway not found; it may have been deleted. Reload the list.']],
+  ['GIVEAWAY_INVALID',['Data Giveaway perlu diperiksa. Tidak ada yang diubah.','Giveaway data needs review. Nothing was changed.']],
+  ['GIVEAWAY_LEGACY',['Ada data Giveaway lama yang ambigu. Tidak ada yang diubah.','Ambiguous legacy giveaway data exists. Nothing was changed.']],
+  ['GIVEAWAY_STATE',['Status Giveaway tidak mengizinkan aksi ini. Muat ulang dan periksa.','The giveaway status does not allow this action. Reload and check.']],
+  ['GIVEAWAY_DELETING',['Giveaway ini sedang dalam penghapusan yang belum selesai. Lanjutkan penghapusannya.','This giveaway has an unfinished deletion. Continue deleting it.']],
+  ['GIVEAWAY_IN_PROGRESS',['Pengiriman mungkin masih berjalan. Tunggu sekitar dua menit, muat ulang, lalu periksa Discord. Tidak ada yang diubah.','Delivery may still be in progress. Wait about two minutes, reload, and check Discord. Nothing was changed.']],
+  ['GIVEAWAY_BUSY',['Giveaway lain sedang dibuat. Tunggu sampai selesai, lalu periksa daftar.','Another giveaway is being created. Wait until it finishes, then check the list.']],
+  ['GIVEAWAY_CHANNEL',['Channel tidak tersedia atau bot tidak punya izin melihat, mengirim pesan dan menyematkan tautan di sana. Tidak ada yang dikirim.','The channel is unavailable or the bot lacks permission to view it, send messages and embed links there. Nothing was sent.']],
+  ['GIVEAWAY_DISCORD_UNVERIFIED',['Pesan Giveaway di Discord tidak dapat diperiksa atau dihapus oleh bot. Tidak ada yang diubah.','The bot could not check or delete the giveaway message on Discord. Nothing was changed.']],
+  ['GIVEAWAY_CREATE_FAILED',['Giveaway tidak dibuat. Tidak ada pesan atau catatan yang tertinggal.','The giveaway was not created. No message or record was left behind.']],
+  ['GIVEAWAY_SEND_UNKNOWN',['Pesan Giveaway mungkin terkirim atau tidak, dan catatannya tidak disimpan. Periksa channel; hapus pesannya jika ada.','The giveaway message may or may not have been sent, and its record was not saved. Check the channel; delete the message if present.']],
+  ['GIVEAWAY_CREATE_ORPHAN',['Pesan Giveaway terkirim, tetapi catatannya tidak dapat dipastikan tersimpan. Periksa daftar; jika tidak ada, hapus pesannya di Discord.','The giveaway message was sent, but whether its record was saved is unknown. Check the list; if absent, delete the message on Discord.']],
+  ['GIVEAWAY_DELETE_UNFINISHED',['Penghapusan belum selesai: catatan ditandai dan masih ada. Muat ulang, periksa Discord, lalu lanjutkan penghapusan.','Deletion is incomplete: the record is marked and still exists. Reload, check Discord, then continue deletion.']],
+  ['GIVEAWAY_DELIVERY_UNKNOWN',['Pengiriman ulang dimulai tetapi hasilnya tidak dapat dipastikan. Periksa Discord sebelum mencoba lagi.','Resending started but its outcome is unknown. Check Discord before trying again.']],
+  ['GIVEAWAY_UNAVAILABLE',['Database tidak tersedia. Tidak ada yang diubah.','The database is unavailable. Nothing was changed.']],
+  ['GIVEAWAY_SCOPE',['Giveaway di luar server ini.','The giveaway is outside this server.']],
+ ]);
+ function apiError(data){
+  const known=API_ERRORS.get(data.code);
+  if(window.ZentixI18n?.language==='en'&&known&&data.error===known[0])return known[1];
+  if(data.error==='Hasil tidak dapat dipastikan. Periksa Discord dan database sebelum mengulang.')return tr(data.error,'The outcome cannot be determined. Check Discord and the database before retrying.');
+  return data.error;
+ }
+
  async function request(path,method='GET',body){
   const session=await window.ZentixSession;
   const response=await fetch('/dashboard/api/bot/giveaway/'+path,{
@@ -14,7 +41,7 @@
    ...(body?{body:JSON.stringify(body)}:{}),
   });
   const data=await response.json();
-  if(!response.ok)throw Object.assign(Error(data.error||tr('Permintaan gagal.','Request failed.')),{code:data.code});
+  if(!response.ok)throw Object.assign(Error((window.ZentixI18n?.accessError?.(data.error,response.status) ?? apiError(data))||tr('Permintaan gagal.','Request failed.')),{code:data.code});
   return data;
  }
 
