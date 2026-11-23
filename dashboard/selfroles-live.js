@@ -227,7 +227,7 @@
     const place = panel.channelName === null ? tr('Channel tidak terlihat oleh bot','Channel not visible to the bot') : `#${panel.channelName}`;
     const roles = panel.roles.map((role) => `<li style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:6px 0">`
       + `<span><b>${esc(roleName(role))}</b>${role.ok ? '' : ` <small role="note">⚠ ${tr('Tidak dapat diberikan:','Cannot be assigned:')} ${esc(roleReason(role.reason))}</small>`}</span>`
-      + `<button type="button" class="f-outline" data-remove="${esc(role.id)}"${panel.roles.length < 2 ? ` disabled title="${tr('Role terakhir tidak dapat dilepas; hapus panelnya.','The last role cannot be removed; delete the panel instead.')}"` : ''}>${tr('LEPAS','REMOVE')}</button></li>`).join('');
+      + `<button type="button" class="f-outline" data-remove="${esc(role.id)}" aria-label="${esc(tr(`Lepas role ${roleName(role)} (ID ${role.id})`,`Remove role ${roleName(role)} (ID ${role.id})`))}"${panel.roles.length < 2 ? ` disabled title="${tr('Role terakhir tidak dapat dilepas; hapus panelnya.','The last role cannot be removed; delete the panel instead.')}"` : ''}>${tr('LEPAS','REMOVE')}</button></li>`).join('');
 
     const interactionType = panel.interactionType || 'buttons';
     const behaviorMode = panel.behaviorMode || 'toggle';
@@ -249,11 +249,11 @@
     const itemRows = panel.roles.map((role) => {
       const item = role.item || {};
       return `<li data-item="${esc(role.id)}" style="display:grid;grid-template-columns:auto 2fr 2fr 1.6fr 110px;gap:6px;align-items:center;padding:6px 0;border-bottom:1px dashed var(--softline)">`
-        + `<span style="white-space:nowrap"><button type="button" class="f-outline" data-move="up" aria-label="${tr('Naikkan','Move up')}">↑</button> <button type="button" class="f-outline" data-move="down" aria-label="${tr('Turunkan','Move down')}">↓</button></span>`
-        + `<input aria-label="Label ${esc(roleName(role))}" name="label" maxlength="80" placeholder="${esc(roleName(role))}" value="${esc(item.label ?? '')}">`
-        + `<input aria-label="${tr('Deskripsi','Description')} ${esc(roleName(role))}" name="description" maxlength="100" placeholder="${tr('deskripsi','description')}" value="${esc(item.description ?? '')}">`
-        + `<input aria-label="Emoji ${esc(roleName(role))}" name="emoji" maxlength="48" placeholder="${tr('🎭 atau &lt;:nama:id&gt;','🎭 or &lt;:name:id&gt;')}" value="${esc(item.emoji ?? '')}">`
-        + `<select aria-label="${tr('Gaya tombol','Button style')} ${esc(roleName(role))}" name="buttonStyle">${STYLE_OPTIONS.map((style) => `<option value="${style}"${style === (item.buttonStyle || 'Primary') ? ' selected' : ''}>${style}</option>`).join('')}</select>`
+        + `<span style="white-space:nowrap"><button type="button" class="f-outline" data-move="up" aria-label="${esc(tr(`Naikkan role ${roleName(role)} (ID ${role.id})`,`Move role ${roleName(role)} up (ID ${role.id})`))}">↑</button> <button type="button" class="f-outline" data-move="down" aria-label="${esc(tr(`Turunkan role ${roleName(role)} (ID ${role.id})`,`Move role ${roleName(role)} down (ID ${role.id})`))}">↓</button></span>`
+        + `<input aria-label="${esc(tr(`Label role ${roleName(role)} (ID ${role.id})`,`Label for role ${roleName(role)} (ID ${role.id})`))}" name="label" maxlength="80" placeholder="${esc(roleName(role))}" value="${esc(item.label ?? '')}">`
+        + `<input aria-label="${esc(tr(`Deskripsi role ${roleName(role)} (ID ${role.id})`,`Description for role ${roleName(role)} (ID ${role.id})`))}" name="description" maxlength="100" placeholder="${tr('deskripsi','description')}" value="${esc(item.description ?? '')}">`
+        + `<input aria-label="${esc(tr(`Emoji role ${roleName(role)} (ID ${role.id})`,`Emoji for role ${roleName(role)} (ID ${role.id})`))}" name="emoji" maxlength="48" placeholder="${tr('🎭 atau &lt;:nama:id&gt;','🎭 or &lt;:name:id&gt;')}" value="${esc(item.emoji ?? '')}">`
+        + `<select aria-label="${esc(tr(`Gaya tombol role ${roleName(role)} (ID ${role.id})`,`Button style for role ${roleName(role)} (ID ${role.id})`))}" name="buttonStyle">${STYLE_OPTIONS.map((style) => `<option value="${style}"${style === (item.buttonStyle || 'Primary') ? ' selected' : ''}>${style}</option>`).join('')}</select>`
         + `</li>`;
     }).join('');
     const itemsForm = `<form class="f-form" data-items="${index}">`

@@ -49,7 +49,7 @@
    const data=await request('failure-status');if(!box.isConnected)return;
    box.textContent='';
    const line=text=>{const p=document.createElement('p');p.textContent=text;box.appendChild(p)};
-   const when=value=>{const d=new Date(value);return Number.isNaN(d.getTime())?tr('waktu tidak diketahui','unknown time'):d.toLocaleString(tr('id-ID','en-US'))};
+   const when=value=>{const d=new Date(value);return Number.isNaN(d.getTime())?tr('waktu tidak diketahui','unknown time'):d.toLocaleString(tr('id-ID','en-US'),{hour12:false})};
    if(data.lastSuccess)line(`${tr('Terakhir berhasil:','Last success:')} ${when(data.lastSuccess.at)} · ${data.lastSuccess.provider} (${data.lastSuccess.usedFallback?tr('cadangan','fallback'):tr('utama','primary')}).`);
    else line(tr('Belum ada keberhasilan yang tercatat sejak bot menyala.','No successes recorded since the bot started.'));
    if(!Array.isArray(data.failures)||!data.failures.length)line(tr('Belum ada kegagalan yang tercatat sejak bot menyala.','No failures recorded since the bot started.'));

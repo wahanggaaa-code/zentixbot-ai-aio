@@ -43,7 +43,25 @@
     ['Data ubah tidak valid.','Invalid update data.'],
     ['Alert tidak ditemukan.','Alert not found.'],
   ]);
-  const apiError = message => window.ZentixI18n?.language === 'en' ? (API_ERRORS.get(message) ?? message) : message;
+  // Some coded store errors are returned in English by the API. Match status and exact
+  // built-in text; unknown upstream and provider messages must remain unchanged.
+  const STORE_ERRORS_ID = new Map([
+    ['503\0Database unavailable for social alerts','Database Social Alerts tidak tersedia'],
+    ['409\0Alert limit reached','Batas jumlah alert telah tercapai'],
+    ['400\0Invalid guild id','ID server tidak valid'],
+    ['400\0Invalid alert mutation result','Hasil perubahan alert tidak valid'],
+    ['400\0Invalid alert id','ID alert tidak valid'],
+    ['400\0Refusing to store an invalid alert','Alert tidak valid tidak dapat disimpan'],
+    ['400\0Alert mutation must be synchronous','Perubahan alert harus dilakukan secara sinkron'],
+  ]);
+  const apiError = (message,status) => window.ZentixI18n?.language === 'en' ? (API_ERRORS.get(message) ?? message) : (STORE_ERRORS_ID.get(`${status}\0${message}`) ?? message);
+  // Poller stores short error messages from Discord and providers as well as these two
+  // built-in delivery diagnostics. Translate exact built-in text only; keep other details.
+  const DELIVERY_ERRORS = new Map([
+    ['Channel tidak tersedia atau bot tidak dapat mengaksesnya.','The channel is unavailable or the bot cannot access it.'],
+    ['Bot tidak punya izin View Channel / Send Messages di channel target.','The bot lacks View Channel / Send Messages permissions in the target channel.'],
+  ]);
+  const deliveryError = message => window.ZentixI18n?.language === 'en' ? (DELIVERY_ERRORS.get(message) ?? message) : message;
 
   async function request(method = 'GET', path = '', body) {
     const session = await window.ZentixSession;
@@ -54,10 +72,10 @@
       ...(body ? { body: JSON.stringify(body) } : {}),
     });
     const data = await response.json();
-    if (!response.ok) throw Error((window.ZentixI18n?.accessError?.(data.error,response.status) ?? apiError(data.error)) || tr('Permintaan gagal.','Request failed.'));
+    if (!response.ok) throw Error((window.ZentixI18n?.accessError?.(data.error,response.status) ?? apiError(data.error,response.status)) || tr('Permintaan gagal.','Request failed.'));
     return data;
   }
-  const clock = (iso) => (iso ? new Date(iso).toLocaleString(tr('id-ID','en-GB'), { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : tr('belum pernah','never'));
+  const clock = (iso) => (iso ? new Date(iso).toLocaleString(tr('id-ID','en-GB'), { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false }) : tr('belum pernah','never'));
   const kindList = (alert) => (alert.notifyTypes || []).map((kind) => KIND_LABEL[kind] || kind).join(', ');
 
   function render() {
@@ -101,7 +119,7 @@
           <button class="f-primary" type="submit" id="saSave">${tr('SIMPAN FEED ↗','SAVE FEED ↗')}</button></div></div>
       </form>
     </section>
-    <aside><section class="f-panel"><div class="f-panel-head"><div><h2>Live preview</h2><p>${tr('Perkiraan tampilan pesan di Discord.','Approximate appearance of the Discord message. Default bot message text remains Indonesian.')}</p></div><span>⊚</span></div>
+    <aside><section class="f-panel"><div class="f-panel-head"><div><h2>Live preview</h2><p>${tr('Perkiraan tampilan pesan di Discord; teks bawaan bot tetap berbahasa Indonesia.','Approximate appearance of the Discord message. Default bot message text remains Indonesian.')}</p></div><span>⊚</span></div>
       <div class="discord-demo"><div class="discord-avatar">⊚</div><div class="discord-copy"><div><strong>ZentixBot</strong> <span class="discord-bot">BOT</span></div>
         <div class="discord-embed" id="saPreviewCard" style="border-left-color:#5865F2">
           <b id="saPreviewTop">📢 <span id="saPreviewCreatorTop">Nama Akun</span> mengunggah video baru</b>
@@ -109,7 +127,7 @@
           <p id="saPreviewMeta" style="margin:2px 0 0;color:#a6a7af;font-size:11px">YouTube • Nama Akun</p>
           <p id="saPreviewSummary" hidden><small>✨ <b>${tr('Ringkasan AI','AI summary')}</b><br>${tr('Ringkasan singkat isi video akan tampil di sini saat bot mengirim.','A short summary of the video will appear here when the bot sends it.')}</small></p>
           <div id="saPreviewThumb" style="margin-top:10px;background:#1d1e23;color:#7f8087;font:700 10px var(--mono);padding:26px 12px;text-align:center">THUMBNAIL</div>
-          <div style="border-top:1px solid #3f4047;margin-top:10px;padding-top:10px"><button type="button" class="discord-button" tabindex="-1">${tr('Tonton Sekarang','Watch Now')}</button></div>
+          <div style="border-top:1px solid #3f4047;margin-top:10px;padding-top:10px"><button type="button" class="discord-button" id="saPreviewWatch" tabindex="-1">Tonton Sekarang</button></div>
           <small id="saPreviewFooter" style="color:#a6a7af;font-size:9px">-# Zentix Social Alerts</small>
         </div>
       </div></div>
@@ -151,23 +169,25 @@
       $('#saPreviewTop').textContent = custom ? sampleFill(custom) : (kind === 'live' ? `🔴 ${creator} sedang live` : `📢 ${creator} mengunggah ${kind === 'shorts' ? 'Shorts baru' : 'video baru'}`);
       $('#saPreviewTitleLink').textContent = PLACEHOLDER.title;
       $('#saPreviewMeta').textContent = `${PLATFORM_LABEL[platform()]} • ${creator}${kind === 'live' ? ' • 🔴 LIVE' : ''}`;
+      $('#saPreviewWatch').textContent = kind === 'live' ? 'Tonton Live' : 'Tonton Sekarang';
       $('#saPreviewSummary').hidden = !form.elements.aiSummaryEnabled.checked;
       $('#saPreviewFooter').textContent = `-# Zentix Social Alerts${form.elements.aiSummaryEnabled.checked ? ' • Ringkasan oleh Zentix AI' : ''}`;
     }
 
     // ---------- Feed list ----------
     function feedCard(alert) {
+      const accessibleFeed = `${alert.label} (ID ${alert.id})`;
       const badge = alert.platform === 'youtube' ? '<span class="f-tag" style="background:#f03;color:#fff;border-color:#f03">YT</span>' : '<span class="f-tag" style="background:#9146ff;color:#fff;border-color:#9146ff">TW</span>';
       const target = alert.channelName === null ? tr('Channel tidak terlihat oleh bot','Channel not visible to the bot') : `→ #${esc(alert.channelName)}`;
       const mention = alert.mentionRoleId === 'everyone' ? ' · ping @everyone' : alert.mentionRoleId ? tr(' · ping role',' · role ping') : '';
       const ai = alert.aiSummaryEnabled ? ' · AI' : '';
-      const err = alert.lastError ? `<div class="sa-error">⚠ ${esc(alert.lastError)}</div>` : '';
+      const err = alert.lastError ? `<div class="sa-error">⚠ ${esc(deliveryError(alert.lastError))}</div>` : '';
       const status = `${alert.enabled ? tr('Aktif','Active') : tr('Nonaktif','Disabled')} · ${kindList(alert)}${mention}${ai} · ${tr('dicek','checked')} ${esc(clock(alert.lastCheckedAt))}`;
       return `<div class="sa-feed" data-feed="${esc(alert.id)}"><div class="sa-feed-head">${badge}<div><strong>${esc(alert.label)}</strong><div class="f-muted" style="margin-top:2px">${target}${alert.isLive ? ' · <b>LIVE</b>' : ''}</div></div>
-        <div class="sa-feed-actions"><button type="button" class="f-outline" data-action="toggle" aria-label="${esc(alert.enabled ? tr(`Jeda feed ${alert.label}`,`Pause feed ${alert.label}`) : tr(`Aktifkan feed ${alert.label}`,`Enable feed ${alert.label}`))}">${alert.enabled ? tr('JEDA','PAUSE') : tr('AKTIFKAN','ENABLE')}</button>
-        <button type="button" class="f-outline" data-action="test" aria-label="${esc(tr(`Tes feed ${alert.label}`,`Test feed ${alert.label}`))}">${tr('TES','TEST')}</button>
-        <button type="button" class="f-outline" data-action="edit" aria-label="${esc(tr(`Ubah feed ${alert.label}`,`Edit feed ${alert.label}`))}">EDIT</button>
-        <button type="button" class="f-outline" data-action="delete" aria-label="${esc(tr(`Hapus feed ${alert.label}`,`Delete feed ${alert.label}`))}">${tr('HAPUS','DELETE')}</button></div></div>
+        <div class="sa-feed-actions"><button type="button" class="f-outline" data-action="toggle" aria-label="${esc(alert.enabled ? tr(`Jeda feed ${accessibleFeed}`,`Pause feed ${accessibleFeed}`) : tr(`Aktifkan feed ${accessibleFeed}`,`Enable feed ${accessibleFeed}`))}">${alert.enabled ? tr('JEDA','PAUSE') : tr('AKTIFKAN','ENABLE')}</button>
+        <button type="button" class="f-outline" data-action="test" aria-label="${esc(tr(`Tes feed ${accessibleFeed}`,`Test feed ${accessibleFeed}`))}">${tr('TES','TEST')}</button>
+        <button type="button" class="f-outline" data-action="edit" aria-label="${esc(tr(`Ubah feed ${accessibleFeed}`,`Edit feed ${accessibleFeed}`))}">EDIT</button>
+        <button type="button" class="f-outline" data-action="delete" aria-label="${esc(tr(`Hapus feed ${accessibleFeed}`,`Delete feed ${accessibleFeed}`))}">${tr('HAPUS','DELETE')}</button></div></div>
         <div class="f-muted" style="margin-top:6px">${esc(status)}</div>${err}</div>`;
     }
 

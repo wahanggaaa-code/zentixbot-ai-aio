@@ -64,7 +64,7 @@
  const table=rows=>`<div class="f-table-wrap"><table class="f-table f-table-fit"><tbody>${rows.join('')}</tbody></table></div>`;
  const unknown=`<i>${tr('tidak tersedia','unavailable')}</i>`;
  const number=value=>value===null||value===undefined?unknown:esc(new Intl.NumberFormat(tr('id-ID','en-US')).format(value));
- const time=value=>value===null||value===undefined?unknown:esc(new Date(value).toLocaleString(tr('id-ID','en-US')));
+ const time=value=>value===null||value===undefined?unknown:esc(new Date(value).toLocaleString(tr('id-ID','en-US'),{hour12:false}));
  function duration(ms){
   if(ms===null||ms===undefined)return unknown;
   const minutes=Math.floor(ms/60000),days=Math.floor(minutes/1440),hours=Math.floor(minutes%1440/60);
@@ -163,6 +163,11 @@
   const readAt=root.querySelector('#settingsReadAt'),reload=root.querySelector('#settingsReload');
   if(!slots.discord||!reload)return;
 
+  function hostingState(value){
+   const labels={running:tr('berjalan','running'),starting:tr('memulai','starting'),stopping:tr('menghentikan','stopping'),offline:tr('offline','offline'),unknown:tr('tidak diketahui','unknown')};
+   return Object.hasOwn(labels,value)?labels[value]:value;
+  }
+
   function bindHosting(hosting){
    const slot=slots.hosting;
    if(hosting.configured===null){slot.innerHTML=`<p class="f-muted">${tr('Hanya owner bot yang dapat melihat koneksi hosting.','Only the bot owner can view the hosting connection.')}</p>`;return}
@@ -175,7 +180,7 @@
     button.disabled=true;status.textContent=tr('Menghubungi panel hosting…','Contacting hosting panel…');
     try{
      const data=await request('hosting');
-     if(slot.isConnected)status.textContent=`${tr('Panel menjawab. Status server:','Panel responded. Server status:')} ${data.status}.`;
+     if(slot.isConnected)status.textContent=`${tr('Panel menjawab. Status server:','Panel responded. Server status:')} ${hostingState(data.status)}.`;
     }catch(e){if(slot.isConnected)status.textContent=e.message}
     finally{button.disabled=false}
    };
@@ -189,8 +194,8 @@
    try{data=await request('presence')}catch(e){if(slot.isConnected)slot.textContent=e.message;return;}
    if(!slot.isConnected)return;
    const {status,text}=data.settings;
-   const labels={online:'Online',idle:'Idle',dnd:'Do Not Disturb',invisible:'Invisible'};
-   slot.innerHTML=`<form id="botPresenceForm" class="f-form"><label class="f-field"><span><b>Status online</b><small>${tr('Invisible membuat bot terlihat offline.','Invisible makes the bot appear offline.')}</small></span><select name="status">${Object.entries(labels).map(([id,label])=>`<option value="${id}" ${id===status?'selected':''}>${label}</option>`).join('')}</select></label><label class="f-field"><span><b>${tr('Tulisan status','Status text')}</b><small>${tr('Maksimal 128 karakter. Kosongkan untuk menghapus tulisan.','Maximum 128 characters. Leave empty to clear the text.')}</small></span><input name="text" type="text" maxlength="128" value="${esc(text)}" placeholder="${tr('mis. Siap membantu ✨','e.g. Ready to help ✨')}"></label><div class="f-feature-note"><p><b>${tr('Preview profil bot','Bot profile preview')}</b><br><span id="presencePreviewStatus"></span><br><span id="presencePreviewText"></span></p></div><div class="f-form-actions"><span>✳ ${tr('TERSIMPAN DI DATABASE','SAVED IN DATABASE')}</span><button type="submit" class="f-primary">${tr('SIMPAN STATUS ↗','SAVE STATUS ↗')}</button></div></form><p class="f-muted" id="presenceResult" role="status"></p>`;
+   const labels={online:'Online',idle:tr('Tidak aktif','Idle'),dnd:tr('Jangan ganggu','Do Not Disturb'),invisible:tr('Tidak terlihat','Invisible')};
+   slot.innerHTML=`<form id="botPresenceForm" class="f-form"><label class="f-field"><span><b>Status online</b><small>${tr('Tidak terlihat membuat bot tampak offline.','Invisible makes the bot appear offline.')}</small></span><select name="status">${Object.entries(labels).map(([id,label])=>`<option value="${id}" ${id===status?'selected':''}>${label}</option>`).join('')}</select></label><label class="f-field"><span><b>${tr('Tulisan status','Status text')}</b><small>${tr('Maksimal 128 karakter. Kosongkan untuk menghapus tulisan.','Maximum 128 characters. Leave empty to clear the text.')}</small></span><input name="text" type="text" maxlength="128" value="${esc(text)}" placeholder="${tr('mis. Siap membantu ✨','e.g. Ready to help ✨')}"></label><div class="f-feature-note"><p><b>${tr('Preview profil bot','Bot profile preview')}</b><br><span id="presencePreviewStatus"></span><br><span id="presencePreviewText"></span></p></div><div class="f-form-actions"><span>✳ ${tr('TERSIMPAN DI DATABASE','SAVED IN DATABASE')}</span><button type="submit" class="f-primary">${tr('SIMPAN STATUS ↗','SAVE STATUS ↗')}</button></div></form><p class="f-muted" id="presenceResult" role="status"></p>`;
    const form=slot.querySelector('form'),out=slot.querySelector('#presenceResult'),button=form.querySelector('button');
    function preview(){slot.querySelector('#presencePreviewStatus').textContent=labels[form.elements.status.value]||'—';slot.querySelector('#presencePreviewText').textContent=form.elements.text.value.trim()||tr('Tanpa tulisan status','No status text');}
    form.addEventListener('input',preview);form.addEventListener('change',preview);preview();
@@ -221,7 +226,7 @@
    slots.access.querySelector('#settingsLogout').onclick=()=>document.getElementById('profileButton').click();
    bindHosting(data.hosting);
    bindPresence(data.access.isBotOwner);
-   readAt.textContent=`${tr('Dibaca','Read at')} ${new Date(data.readAt).toLocaleString(tr('id-ID','en-US'))}. ${tr('Halaman tidak memperbarui diri; muat ulang untuk kondisi terbaru.','This page does not refresh automatically; reload for the latest status.')}`;
+   readAt.textContent=`${tr('Dibaca','Read at')} ${new Date(data.readAt).toLocaleString(tr('id-ID','en-US'),{hour12:false})}. ${tr('Halaman tidak memperbarui diri; muat ulang untuk kondisi terbaru.','This page does not refresh automatically; reload for the latest status.')}`;
    reload.disabled=false;
   }
   reload.onclick=load;

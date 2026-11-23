@@ -25,7 +25,7 @@
   };
   const KIND_NAMES = { voice: tr('Channel suara','Voice channel'), text: tr('Channel teks','Text channel') };
   const typeName = (type) => TYPE_NAMES[type] || tr(`Jenis tidak dikenal (${type})`,`Unknown type (${type})`);
-  const clock = (ms) => new Date(ms).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+  const clock = (ms) => new Date(ms).toLocaleTimeString(tr('id-ID','en-GB'), { hour: '2-digit', minute: '2-digit', hour12: false });
 
   // Dashboard API currently sends Indonesian messages without codes. Translate only exact built-in text.
   const API_ERRORS = new Map([
@@ -156,9 +156,9 @@
     return `<form class="f-form" data-counter="${index}"><h3>${esc(name)}</h3>`
       + `<p class="f-muted">${esc(KIND_NAMES[counter.channelType] || tr('Jenis channel tidak diketahui','Unknown channel type'))} · ID counter ${esc(counter.id)} · ID channel ${esc(counter.channelId)}${roleLine}</p>`
       + `<p><b>${tr('Jumlah saat ini:','Current count:')}</b> ${counter.count === null ? tr('tidak diketahui','unknown') : esc(counter.count)} &nbsp;·&nbsp; <b>Status:</b> ${esc(statusText(counter))}</p>`
-      + `<label class="f-field"><span><b>${tr('Jenis hitungan','Count type')}</b><small>${tr('Jenis yang sudah dipakai counter lain tidak ditawarkan.','Types already used by another counter are not offered.')}</small></span><select name="type">${options}</select></label>`
-      + `<div class="f-form-actions"><button type="button" class="f-outline" data-delete="${index}">${tr('HAPUS COUNTER & CHANNEL','DELETE COUNTER & CHANNEL')}</button>`
-      + `<button type="submit" class="f-primary">${tr('UBAH JENIS ↗','CHANGE TYPE ↗')}</button></div></form>`;
+      + `<label class="f-field"><span><b>${tr('Jenis hitungan','Count type')}</b><small>${tr('Jenis yang sudah dipakai counter lain tidak ditawarkan.','Types already used by another counter are not offered.')}</small></span><select name="type" aria-label="${esc(tr(`Jenis hitungan ${name} (ID counter ${counter.id})`,`Count type for ${name} (counter ID ${counter.id})`))}">${options}</select></label>`
+      + `<div class="f-form-actions"><button type="button" class="f-outline" data-delete="${index}" aria-label="${esc(tr(`Hapus counter dan channel ${name} (ID counter ${counter.id})`,`Delete counter and channel ${name} (counter ID ${counter.id})`))}">${tr('HAPUS COUNTER & CHANNEL','DELETE COUNTER & CHANNEL')}</button>`
+      + `<button type="submit" class="f-primary" aria-label="${esc(tr(`Ubah jenis counter ${name} (ID counter ${counter.id})`,`Change type for counter ${name} (counter ID ${counter.id})`))}">${tr('UBAH JENIS ↗','CHANGE TYPE ↗')}</button></div></form>`;
   }
 
   function createForm(data) {
@@ -239,6 +239,25 @@
       + `<div class="f-form-actions"><span>${tr('MEMBUAT SAMPAI 6 CHANNEL','CREATES UP TO 6 CHANNELS')}</span><button type="submit" class="f-primary">${tr('SETUP STANDAR ↗','STANDARD SETUP ↗')}</button></div></form>`;
   }
 
+  // Diagnostic text is owned by the bot. Match both the issue code and the complete
+  // message so new or custom diagnostics are never silently rewritten.
+  const CHECK_TEXT = new Map([
+    ['missing\0Channel tidak terlihat oleh bot atau sudah dihapus di Discord; catatannya akan dibersihkan oleh pengecekan terjadwal.','The channel is not visible to the bot or was deleted in Discord; its record will be cleaned up by the scheduled check.'],
+    ['no_permission\0Bot tidak dapat mengganti nama channel ini (butuh izin View Channel dan Manage Channels).','The bot cannot rename this channel (requires View Channel and Manage Channels permissions).'],
+    ['member_list\0Daftar anggota tidak dapat diambil — periksa izin intent Guild Members (privileged) di Discord Developer Portal.','Could not fetch members — check the privileged Guild Members intent in the Discord Developer Portal.'],
+    ['bans\0Daftar ban tidak dapat dibaca oleh bot.','The bot cannot read the ban list.'],
+    ['emojis\0Emoji atau sticker server tidak dapat diambil.','Server emoji or stickers could not be fetched.'],
+    ['count_unknown\0Angka ini belum dapat diketahui saat ini.','This count is currently unavailable.'],
+    ['disabled\0Counter nonaktif; tidak diperbarui sampai diaktifkan lagi.','The counter is disabled and will not update until it is enabled again.'],
+    ['rename_pending\0Menunggu batas ganti nama Discord; nama channel menyusul.','Waiting for the Discord rename limit; the channel name will update later.'],
+    ['stale\0Nama channel belum mengikuti jumlah terkini; akan disesuaikan pada penyegaran berikutnya.','The channel name does not yet match the current count; it will be updated on the next refresh.'],
+    ['role_missing\0Role untuk counter ini sudah tidak ada di server; hapus counternya atau buat yang baru untuk role lain.','The role for this counter no longer exists on the server; delete the counter or create one for another role.'],
+    ['presence\0Status anggota tidak bisa dibaca. Aktifkan Presence Intent di Discord Developer Portal (Bot → Privileged Gateway Intents) lalu set ZENTIX_PRESENCE_INTENT=1 di .env dan restart bot.','Member presence cannot be read. Enable Presence Intent in the Discord Developer Portal (Bot → Privileged Gateway Intents), then set ZENTIX_PRESENCE_INTENT=1 in .env and restart the bot.'],
+    ['external_key\0Counter sosial ini butuh kunci API yang belum ada di .env. Isi kuncinya lalu mulai ulang bot; tanpa itu angkanya memang tidak bisa dibaca.','This social counter needs an API key missing from .env. Add the key and restart the bot; without it the count cannot be read.'],
+    ['external\0Angka di luar Discord belum bisa diambil sekarang (host tidak menjawab, kunci ditolak, atau jaringan bermasalah). Coba lagi nanti; pastikan konfigurasinya benar di dashboard.','The external count cannot currently be fetched (host not responding, key rejected, or network problem). Try again later and check the dashboard configuration.'],
+  ]);
+  const checkText = counter => window.ZentixI18n?.language === 'en' ? (CHECK_TEXT.get(`${counter.issue}\0${counter.text}`) ?? counter.text) : counter.text;
+
   const LEVEL_NAMES = { error: tr('MASALAH','ISSUE'), warn: tr('CATATAN','NOTE'), info: 'INFO' };
 
   /** The diagnostic report as safe HTML lines. */
@@ -249,7 +268,7 @@
     if (report.rejected > 0) lines.push(`<p>• ${esc(report.rejected)} ${tr('entri tersimpan tidak dapat dibaca dan tidak akan ditampilkan atau diubah.','saved entries could not be read and will not be displayed or modified.')}</p>`);
     for (const counter of report.counters) {
       const name = counter.type === null ? 'Server' : (TYPE_NAMES[counter.type] || counter.type);
-      lines.push(`<p>• [${LEVEL_NAMES[counter.level] || esc(counter.level)}] ${esc(name)} — ${esc(counter.text)}</p>`);
+      lines.push(`<p>• [${LEVEL_NAMES[counter.level] || esc(counter.level)}] ${esc(name)} — ${esc(checkText(counter))}</p>`);
     }
     return lines.join('');
   }

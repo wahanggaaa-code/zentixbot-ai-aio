@@ -86,17 +86,33 @@
   return [];
  }
 
+ // Inventory diagnostics originate in giveawayApi; preserve unfamiliar warnings verbatim.
+ const REVIEW_WARNINGS=new Map([
+  ['Data terlalu besar atau tidak valid; perlu diperiksa.','Data is too large or invalid; review is required.'],
+  ['Identitas tersimpan tidak cocok.','The stored identity does not match.'],
+  ['ID channel atau host tidak valid.','The channel or host ID is invalid.'],
+  ['Hadiah tidak valid.','The prize is invalid.'],
+  ['Status selesai tidak konsisten atau tidak tersedia.','The ended status is inconsistent or unavailable.'],
+  ['Waktu selesai tidak konsisten atau tidak tersedia.','The end time is inconsistent or unavailable.'],
+  ['Daftar entri tidak tersedia atau tidak valid.','The entry list is unavailable or invalid.'],
+  ['Jumlah pemenang tidak valid.','The winner count is invalid.'],
+  ['Penghapusan belum selesai; lanjutkan atau hapus catatannya.','Deletion is incomplete; continue it or delete the record.'],
+  ['Pengiriman tertunda atau hasilnya tidak diketahui; periksa Discord.','Delivery is pending or its result is unknown; check Discord.'],
+  ['Status pengiriman tidak dikenal; periksa data.','The delivery status is unknown; review the data.'],
+ ]);
+ const reviewWarning=value=>window.ZentixI18n?.language==='en'?(REVIEW_WARNINGS.get(value)??value):value;
+
  function rowHtml(g,index,legacyDetected){
   const actions=actionsFor(g,legacyDetected);
   const label=action=>g.deleting&&action==='delete'?tr('LANJUTKAN HAPUS','CONTINUE DELETION'):ACTION_LABEL[action];
   const status=g.deleting?tr('PENGHAPUSAN BELUM SELESAI','DELETION INCOMPLETE'):STATUS_TEXT[g.status]||tr('PERLU DIPERIKSA','NEEDS REVIEW');
-  const warnings=g.review&&Array.isArray(g.warnings)?`<br><small>${g.warnings.map(esc).join(' ')}</small>`:'';
-  const end=g.endAt===null||g.endAt===undefined?'—':esc(new Date(g.endAt).toLocaleString(tr('id-ID','en-US')));
+  const warnings=g.review&&Array.isArray(g.warnings)?`<br><small>${g.warnings.map(w=>esc(reviewWarning(w))).join(' ')}</small>`:'';
+  const end=g.endAt===null||g.endAt===undefined?'—':esc(new Date(g.endAt).toLocaleString(tr('id-ID','en-US'),{hour12:false}));
   return `<tr><td><b>${esc(g.prize||tr('Perlu diperiksa','Needs review'))}</b><br><small>${tr('Pesan','Message')} ${esc(g.messageId)}<br>`
    +`Channel ${esc(g.channelId||'—')} · Host ${esc(g.hostId||'—')}</small></td>`
    +`<td>${status}<br><small>${tr('Pengiriman','Delivery')}: ${DELIVERY_TEXT[g.delivery]||tr('perlu diperiksa','needs review')}</small>${warnings}</td>`
    +`<td>${end}<br><small>${tr('Entri','Entries')}: ${esc(g.entries??'—')} · ${tr('Target pemenang','Target winners')}: ${esc(g.winnerCount??'—')}</small></td>`
-   +`<td>${actions.length?actions.map(action=>`<button type="button" class="f-link" data-gw-action="${action}" data-index="${index}">${label(action)}</button>`).join('<br>'):'—'}</td></tr>`;
+   +`<td>${actions.length?actions.map(action=>`<button type="button" class="f-link" data-gw-action="${action}" data-index="${index}" aria-label="${esc(`${label(action)} ${g.prize||tr('Perlu diperiksa','Needs review')} (${tr('ID pesan','Message ID')} ${g.messageId})`)}">${label(action)}</button>`).join('<br>'):'—'}</td></tr>`;
  }
 
  /** Why the freshly loaded state forbids the action, or null. */

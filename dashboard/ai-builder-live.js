@@ -17,6 +17,10 @@
   ['izinnya sudah diubah','permissions have changed'],
   ['tidak dihapus: dipakai sebagai channel sistem server','not deleted: used as a server system channel'],
   ['sudah berisi pesan','already contains messages'],
+  ['Discord menolak atau tidak menjawab','Discord refused or did not respond'],
+  ['AI tidak menghasilkan rancangan yang valid (jawabannya terpotong atau bentuknya salah).','AI did not produce a valid plan (the response was truncated or malformed).'],
+  ['Provider AI tidak dapat dihubungi.','The AI provider could not be reached.'],
+  ['Draft tersimpan dimuat kembali. Tinjau dan periksa sebelum diterapkan.','The saved draft was loaded. Review and check it before applying.'],
  ]);
  const builderCopy=value=>{
   if(window.ZentixI18n?.language!=='en'||typeof value!=='string')return value;
@@ -26,10 +30,27 @@
   if(m)return `now named "${m[1]}"`;
   m=/^tidak dihapus: masih berisi ([1-9][0-9]*) channel yang bukan bagian bangunan ini$/.exec(value);
   if(m)return `not deleted: still contains ${m[1]} ${m[1]==='1'?'channel':'channels'} outside this build`;
+  m=/^masih berisi ([1-9][0-9]*) channel yang tidak terhapus$/.exec(value);
+  if(m)return `still contains ${m[1]} ${m[1]==='1'?'channel':'channels'} that could not be deleted`;
   m=/^([1-9][0-9]*) orang sedang di dalam$/.exec(value);
   if(m)return `${m[1]} ${m[1]==='1'?'person is':'people are'} currently inside`;
   return value;
  };
+ // The fallback suffix is verified against the returned theme metadata. Keep the
+ // theme name and any unfamiliar provider reason verbatim.
+ function draftNote(draft){
+  const note=draft.note;
+  if(window.ZentixI18n?.language!=='en'||typeof note!=='string')return note;
+  if(draft.source==='fallback'&&typeof draft.theme?.emoji==='string'&&typeof draft.theme?.label==='string'){
+   const suffix=` Sebagai gantinya dipakai tema terdekat: ${draft.theme.emoji} ${draft.theme.label}. Rancangan ini tetap bisa disunting sebelum diterapkan.`;
+   if(note.endsWith(suffix)){
+    const reason=note.slice(0,-suffix.length);
+    const translated=builderCopy(reason);
+    return `${translated===reason?(window.ZentixI18n?.aiError?.(reason)??reason):translated} The closest theme is used instead: ${draft.theme.emoji} ${draft.theme.label}. This plan can still be edited before applying.`;
+   }
+  }
+  return builderCopy(note);
+ }
  // Status + exact message are required; dynamic names and external diagnostics stay untouched.
  const BUILDER_ERRORS=new Map([
   ['400\0Input tidak valid.','Invalid input.'],
@@ -172,13 +193,13 @@
  const SOURCE_LABELS = { ai: 'AI', theme: tr('TEMA','THEME'), fallback: tr('TEMA CADANGAN','FALLBACK THEME') };
  const list = (value) => (Array.isArray(value) ? value : []);
  const countsOf = (plan) => ({ categories: list(plan?.categories).length, channels: list(plan?.categories).reduce((n, c) => n + list(c?.channels).length, 0), roles: list(plan?.roles).length });
- const countsText = (c) => tr(`${c.categories} kategori · ${c.channels} channel · ${c.roles} role`,`${c.categories} categories · ${c.channels} channels · ${c.roles} roles`);
+ const countsText = (c, separator=' · ') => [tr(`${c.categories} kategori`,`${c.categories} ${c.categories===1?'category':'categories'}`),tr(`${c.channels} channel`,`${c.channels} ${c.channels===1?'channel':'channels'}`),tr(`${c.roles} role`,`${c.roles} ${c.roles===1?'role':'roles'}`)].join(separator);
  function itemCounts(items) {
   const c = { categories: 0, channels: 0, roles: 0 };
   for (const item of list(items)) c[item.type === 'category' ? 'categories' : item.type === 'role' ? 'roles' : 'channels']++;
   return c;
  }
- const when = (at) => { try { return new Date(at).toLocaleString(tr('id-ID','en-GB'), { dateStyle: 'medium', timeStyle: 'short' }); } catch { return '-'; } };
+ const when = (at) => { try { return new Date(at).toLocaleString(tr('id-ID','en-GB'), { dateStyle: 'medium', timeStyle: 'short', hour12: false }); } catch { return '-'; } };
 
  function accessText(access, fallback, existingRoles=[]) {
   if (!access) return fallback;
@@ -265,7 +286,7 @@
       field(tr('Topik (opsional)','Topic (optional)'),textInput(channel.topic||'',tr('Topik channel (opsional)','Channel topic (optional)'),v=>onStructureEdit('channel-topic',ci,i,v,true))),
       field(tr('Pindah ke kategori','Move to category'),move)),
      accessEditor(channel?.access,ci,i),
-     el('div',{className:'b-preview-actions'},button('↑',()=>onStructureEdit('channel-up',ci,i),i===0,tr('Pindahkan channel ke atas','Move channel up')),button('↓',()=>onStructureEdit('channel-down',ci,i),i===category.channels.length-1,tr('Pindahkan channel ke bawah','Move channel down')),button(tr('Hapus channel','Delete channel'),()=>onStructureEdit('channel-delete',ci,i))));
+     el('div',{className:'b-preview-actions'},button('↑',()=>onStructureEdit('channel-up',ci,i),i===0,tr(`Pindahkan channel ${channel.name} (kategori ${ci+1}, urutan ${i+1}) ke atas`,`Move channel ${channel.name} (category ${ci+1}, position ${i+1}) up`)),button('↓',()=>onStructureEdit('channel-down',ci,i),i===category.channels.length-1,tr(`Pindahkan channel ${channel.name} (kategori ${ci+1}, urutan ${i+1}) ke bawah`,`Move channel ${channel.name} (category ${ci+1}, position ${i+1}) down`)),button(tr('Hapus channel','Delete channel'),()=>onStructureEdit('channel-delete',ci,i),false,tr(`Hapus channel ${channel.name} (kategori ${ci+1}, urutan ${i+1})`,`Delete channel ${channel.name} (category ${ci+1}, position ${i+1})`))));
     return el('li',null,expandable(`channel:${ci}:${i}`,summary,body));
    });
    const categorySummary=el('summary',{className:'b-category-edit-summary'},tr('EDIT KATEGORI & IZIN','EDIT CATEGORY & PERMISSIONS'),el('span',{className:'b-chevron','ariaHidden':'true'},'⌄'));
@@ -273,12 +294,12 @@
     el('p',{className:'b-access-explanation'},accessText(category?.access,tr('Mengikuti izin default server.','Follows server default permissions.'),existingRoles)),
     field(tr('Nama kategori','Category name'),textInput(category.name,tr('Nama kategori','Category name'),v=>onStructureEdit('category-name',ci,null,v,true))),
     accessEditor(category?.access,ci,null),
-    el('div',{className:'b-preview-actions'},button('↑',()=>onStructureEdit('category-up',ci),ci===0,tr('Pindahkan kategori ke atas','Move category up')),button('↓',()=>onStructureEdit('category-down',ci),ci===plan.categories.length-1,tr('Pindahkan kategori ke bawah','Move category down')),button(tr('Hapus kategori','Delete category'),()=>onStructureEdit('category-delete',ci)))));
+    el('div',{className:'b-preview-actions'},button('↑',()=>onStructureEdit('category-up',ci),ci===0,tr(`Pindahkan kategori ${category.name} (urutan ${ci+1}) ke atas`,`Move category ${category.name} (position ${ci+1}) up`)),button('↓',()=>onStructureEdit('category-down',ci),ci===plan.categories.length-1,tr(`Pindahkan kategori ${category.name} (urutan ${ci+1}) ke bawah`,`Move category ${category.name} (position ${ci+1}) down`)),button(tr('Hapus kategori','Delete category'),()=>onStructureEdit('category-delete',ci),false,tr(`Hapus kategori ${category.name} (urutan ${ci+1})`,`Delete category ${category.name} (position ${ci+1})`)))));
    box.append(el('section',{className:'b-preview-category'},
     el('div',{className:'b-category-heading'},el('div',null,el('span',{className:'b-category-overline'},`${tr('KATEGORI','CATEGORY')} ${String(ci+1).padStart(2,'0')}`),el('h3',null,String(category?.name ?? ''))),el('div',{className:'b-category-meta'},el('span',{className:'b-category-count'},`${rows.length} CHANNEL`),el('span',{className:'b-access-badge'},accessBadge(category?.access,null)))),
     categoryEdit,
     rows.length ? el('ul',{className:'b-channel-list'},...rows) : el('p',{className:'f-muted'},tr('Kategori kosong.','Empty category.')),
-    button(tr('+ TAMBAH CHANNEL','+ ADD CHANNEL'),()=>onStructureEdit('channel-add',ci),false)));
+    button(tr('+ TAMBAH CHANNEL','+ ADD CHANNEL'),()=>onStructureEdit('channel-add',ci),false,tr(`Tambah channel ke kategori ${category.name} (urutan ${ci+1})`,`Add channel to category ${category.name} (position ${ci+1})`))));
   }
   const addCategory=button(tr('+ TAMBAH KATEGORI','+ ADD CATEGORY'),()=>onStructureEdit('category-add'));
   addCategory.className='b-preview-add';box.append(addCategory);
@@ -289,7 +310,7 @@
    const summary=el('summary',{className:'b-role-summary'},swatch,el('span',{className:'b-name'},name),el('span',{className:'b-chevron','ariaHidden':'true'},'⌄'));
    const body=el('div',{className:'b-preview-body'},
     el('div',{className:'b-edit-grid'},field(tr('Nama role','Role name'),textInput(name,tr('Nama role baru','New role name'),v=>onStructureEdit('role-name',index,null,v,true))),field(tr('Warna (opsional)','Color (optional)'),textInput(color||'',tr('Warna role','Role color'),v=>onStructureEdit('role-color',index,null,v,true)))),
-    el('div',{className:'b-preview-actions'},button(tr('Hapus role','Delete role'),()=>onStructureEdit('role-delete',index))));
+    el('div',{className:'b-preview-actions'},button(tr('Hapus role','Delete role'),()=>onStructureEdit('role-delete',index),false,tr(`Hapus role ${name} (urutan ${index+1})`,`Delete role ${name} (position ${index+1})`))));
    return el('li',null,expandable(`role:${index}`,summary,body));
   });
   const roleSummary=el('summary',{className:'b-section-summary'},el('span',null,`${tr('ROLE BARU','NEW ROLES')} · ${roles.length}`),el('span',{className:'b-chevron','ariaHidden':'true'},'⌄'));
@@ -327,7 +348,7 @@
   const rows = list(items).map((item) => el('li', null,
    el('span', { className: 'b-tag' }, TYPE_LABELS[item.type] || tr('OBJEK','OBJECT')),
    el('span', { className: 'b-name' }, String(item.name ?? '')),
-   item.reason ? el('small', null, String(item.reason)) : null));
+   item.reason ? el('small', null, String(builderCopy(item.reason))) : null));
   if (rows.length) box.append(el('div', { className: 'b-group' }, el('div', { className: 'b-group-name' }, title), el('ul', null, ...rows)));
  }
 
@@ -485,7 +506,7 @@
    out.value = JSON.stringify(draft.plan, null, 2);
    out.disabled = false; save.disabled = false; apply.disabled = false; cancel.disabled = false; check.disabled=false; saveDraft.disabled=false; runPreflight();
    const source = SOURCE_LABELS[draft.source] ? `${tr('SUMBER','SOURCE')}: ${SOURCE_LABELS[draft.source]}${draft.theme?.label ? ' · ' + draft.theme.label : ''}` : '';
-   if (note) { const text = [source, draft.note].filter(Boolean).join(' — '); note.textContent = text; note.hidden = !text; }
+   if (note) { const text = [source, draftNote(draft)].filter(Boolean).join(' — '); note.textContent = text; note.hidden = !text; }
    result.replaceChildren();
    status.textContent = message;
   }
@@ -567,7 +588,7 @@
   read('themes').then((r) => {
    const select = themeForm?.elements.themeId;
    if (!select) return;
-   select.replaceChildren(...list(r.themes).map((t) => el('option', { value: t.id }, `${t.emoji || ''} ${t.label} · ${t.categories} kategori, ${t.channels} channel, ${t.roles} role`.trim())));
+   select.replaceChildren(...list(r.themes).map((t) => el('option', { value: t.id }, `${t.emoji || ''} ${t.label} · ${countsText(t, ', ')}`.trim())));
    if (!select.options.length) select.append(el('option', { value: '' }, tr('Tidak ada tema','No themes available')));
    const limits = root.querySelector('#aiBuilderLimits');
    if (limits && r.limits) limits.textContent = tr(`✳ MAKS. ${r.limits.categories} KATEGORI, ${r.limits.channels} CHANNEL, ${r.limits.roles} ROLE`,`✳ MAX. ${r.limits.categories} CATEGORIES, ${r.limits.channels} CHANNELS, ${r.limits.roles} ROLES`);
@@ -666,7 +687,7 @@
     const r = await req('manual/prepare', { kind, action, targetId: x.targetId.value, value });
     if (current !== version) { manualStatus.textContent = tr('Input berubah; tinjau ulang.','Input changed; review again.'); return; }
     ticket = { id: r.id, action, targetId: r.before.id };
-    preview.textContent = JSON.stringify({ tindakan: r.action, sebelum: r.before, sesudah: r.after, izinSebelum: r.permissionsBefore, izinSesudah: r.permissionsAfter, peringatan: builderCopy(r.warning) }, null, 2);
+    preview.textContent = JSON.stringify({ [tr('tindakan','action')]: r.action, [tr('sebelum','before')]: r.before, [tr('sesudah','after')]: r.after, [tr('izinSebelum','permissionsBefore')]: r.permissionsBefore, [tr('izinSesudah','permissionsAfter')]: r.permissionsAfter, [tr('peringatan','warning')]: builderCopy(r.warning) }, null, 2);
     confirmInput.value = ''; manualApply.disabled = false; manualStatus.textContent = tr('Tinjau detail. Berlaku 5 menit.','Review details. Valid for 5 minutes.');
    } catch (err) { manualStatus.textContent = err.message; }
    finally { button.disabled = false; }

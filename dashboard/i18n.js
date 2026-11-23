@@ -203,7 +203,22 @@
   ['File terlalu besar. Banner maksimal 5 MB.','File too large. Banners are limited to 5 MB.'],
  ]);
  const greetingError=message=>lang==='en'?(greetingErrors.get(message)??message):message;
- window.ZentixI18n={t,accessError,aiError,aiDraftError,activityError,jtcError,moduleError,greetingError, get language(){return lang}};
+ // Explanations for bot-owned audit event identifiers; unknown identifiers are left intact.
+ const LOG_LABELS={
+  'moderation.ban':['Ban oleh Zentix','Zentix ban'], 'moderation.kick':['Kick oleh Zentix','Zentix kick'], 'moderation.mute':['Mute oleh Zentix','Zentix mute'], 'moderation.warn':['Peringatan oleh Zentix','Zentix warning'], 'moderation.purge':['Hapus pesan oleh Zentix','Messages purged by Zentix'],
+  'moderation.timeout':['Timeout oleh Zentix','Zentix timeout'], 'moderation.untimeout':['Timeout dicabut oleh Zentix','Timeout removed by Zentix'], 'moderation.unban':['Ban dicabut oleh Zentix','Ban removed by Zentix'], 'moderation.lock':['Channel dikunci oleh Zentix','Channel locked by Zentix'], 'moderation.unlock':['Channel dibuka oleh Zentix','Channel unlocked by Zentix'], 'moderation.dm':['DM moderasi oleh Zentix','Zentix moderation DM'], 'moderation.config':['Konfigurasi moderasi diubah','Moderation configuration changed'],
+  'leveling.levelup':['Anggota naik level','Member level up'], 'leveling.milestone':['Pencapaian level','Level milestone'],
+  'message.delete':['Pesan dihapus','Message deleted'], 'message.edit':['Pesan disunting','Message edited'], 'message.bulkdelete':['Pesan dihapus massal','Messages bulk deleted'],
+  'role.create':['Role dibuat','Role created'], 'role.delete':['Role dihapus','Role deleted'], 'role.update':['Role diubah','Role updated'], 'channel.create':['Channel dibuat','Channel created'], 'channel.delete':['Channel dihapus','Channel deleted'], 'voice.move':['Pindah channel suara','Voice channel move'],
+  'discordmod.ban':['Ban dari audit Discord','Ban from Discord audit'], 'discordmod.unban':['Ban dicabut dari audit Discord','Unban from Discord audit'], 'discordmod.kick':['Kick dari audit Discord','Kick from Discord audit'], 'discordmod.timeout':['Timeout dari audit Discord','Timeout from Discord audit'],
+  'member.join':['Anggota masuk','Member joined'], 'member.leave':['Anggota keluar','Member left'], 'member.namechange':['Nama anggota berubah','Member name changed'],
+  'reactionrole.add':['Role reaksi diberikan','Reaction role added'], 'reactionrole.remove':['Role reaksi dicabut','Reaction role removed'], 'reactionrole.create':['Panel role reaksi dibuat','Reaction role panel created'], 'reactionrole.delete':['Panel role reaksi dihapus','Reaction role panel deleted'], 'reactionrole.update':['Panel role reaksi diubah','Reaction role panel updated'],
+  'selfrole.add':['Self Role diberikan','Self Role added'], 'selfrole.remove':['Self Role dicabut','Self Role removed'], 'selfrole.create':['Panel Self Role dibuat','Self Role panel created'], 'selfrole.delete':['Panel Self Role dihapus','Self Role panel deleted'], 'selfrole.update':['Panel Self Role diubah','Self Role panel updated'],
+  'giveaway.create':['Giveaway dibuat','Giveaway created'], 'giveaway.winner':['Pemenang giveaway','Giveaway winner'], 'giveaway.reroll':['Pemenang diundi ulang','Giveaway winner rerolled'], 'giveaway.delete':['Giveaway dihapus','Giveaway deleted'], 'counter.update':['Counter diperbarui','Counter updated'], 'counter.config':['Pengaturan counter diubah','Counter settings changed'], 'application.submit':['Application dikirim','Application submitted'], 'application.review':['Application ditinjau','Application reviewed'], 'report.file':['Laporan dibuat','Report filed']
+ };
+ const LOG_GROUPS={moderation:['Moderasi Zentix','Zentix moderation'],leveling:['Leveling','Leveling'],message:['Pesan','Messages'],role:['Role','Roles'],channel:['Channel','Channels'],voice:['Suara','Voice'],discordmod:['Moderasi Discord','Discord moderation'],member:['Anggota','Members'],reactionrole:['Role reaksi','Reaction roles'],selfrole:['Self Role','Self Role'],giveaway:['Giveaway','Giveaway'],counter:['Counter','Counters'],application:['Application','Applications'],report:['Laporan','Reports']};
+ const logLabel=(kind,key)=>{const map=kind==='event'?LOG_LABELS:kind==='group'?LOG_GROUPS:null;return map&&Object.hasOwn(map,key)?map[key][lang==='en'?1:0]:undefined;};
+ window.ZentixI18n={t,logLabel,accessError,aiError,aiDraftError,activityError,jtcError,moduleError,greetingError, get language(){return lang}};
  document.documentElement.lang=lang;
  const apply=()=>{
   document.querySelectorAll('[data-i18n]').forEach(el=>{el.textContent=t(el.dataset.i18n)});
