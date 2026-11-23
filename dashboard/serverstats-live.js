@@ -167,8 +167,8 @@
     if (!free.length) return `<p class="f-muted">${tr('Semua jenis counter sudah dipakai. Hapus salah satu untuk membuat yang baru.','All counter types are in use. Delete one to create a new one.')}</p>`;
     if (!data.categories.length) return `<p class="f-muted">${tr('Bot tidak melihat kategori di server ini. Buat kategori di Discord terlebih dahulu.','The bot cannot see a category on this server. Create one in Discord first.')}</p>`;
     const categories = data.categories.map((category) => `<option value="${esc(category.id)}"${category.usable ? '' : ' disabled'}>`
-      + `${esc(category.name)} · ID ${esc(category.id)}${category.usable ? '' : tr(' (izin bot kurang)',' (bot lacks permissions)')}</option>`).join('');
-    const roleOptions = (data.roles ?? []).map((role) => `<option value="${esc(role.id)}">${esc(role.name)} · ID ${esc(role.id)}${role.managed ? ' (bot)' : ''}</option>`).join('');
+      + `${esc(category.name)}${data.categories.filter(c=>c.name===category.name).length>1?` · ID ${esc(category.id)}`:''}${category.usable ? '' : tr(' (izin bot kurang)',' (bot lacks permissions)')}</option>`).join('');
+    const roleOptions = (data.roles ?? []).map((role) => `<option value="${esc(role.id)}">${esc(role.name)}${data.roles.filter(r=>r.name===role.name).length>1?` · ID ${esc(role.id)}`:''}${role.managed ? ' (bot)' : ''}</option>`).join('');
     return `<form class="f-form" id="serverStatsCreateForm">`
       + `<label class="f-field"><span><b>${tr('Jenis hitungan','Count type')}</b><small>${tr('Apa yang dihitung pada nama channel.','What the channel name counts.')}</small></span>`
       + `<select name="type">${free.map((type) => `<option value="${esc(type.id)}">${esc(typeName(type.id))}</option>`).join('')}</select></label>`
@@ -192,7 +192,7 @@
   function externalForm(data) {
     const ext = data.external ?? { gameProviders: [], socialPlatforms: [], keysPresent: {}, missing: {} };
     const categories = data.categories.map((category) => `<option value="${esc(category.id)}"${category.usable ? '' : ' disabled'}>`
-      + `${esc(category.name)} · ID ${esc(category.id)}${category.usable ? '' : tr(' (izin bot kurang)',' (bot lacks permissions)')}</option>`).join('');
+      + `${esc(category.name)}${data.categories.filter(c=>c.name===category.name).length>1?` · ID ${esc(category.id)}`:''}${category.usable ? '' : tr(' (izin bot kurang)',' (bot lacks permissions)')}</option>`).join('');
     const keysLine = Object.entries(ext.keysPresent ?? {}).map(([name, present]) =>
       `<code>${esc(name)}</code> ${present ? tr('✓ terbaca','✓ available') : tr('✗ kosong','✗ empty')}`).join(' &nbsp;·&nbsp; ');
     const missingNote = (platform) => {
@@ -229,7 +229,7 @@
   function setupForm(data) {
     if (!data.categories.length) return `<p class="f-muted">${tr('Bot tidak melihat kategori di server ini. Buat kategori di Discord terlebih dahulu.','The bot cannot see a category on this server. Create one in Discord first.')}</p>`;
     const categories = data.categories.map((category) => `<option value="${esc(category.id)}"${category.usable ? '' : ' disabled'}>`
-      + `${esc(category.name)} · ID ${esc(category.id)}${category.usable ? '' : tr(' (izin bot kurang)',' (bot lacks permissions)')}</option>`).join('');
+      + `${esc(category.name)}${data.categories.filter(c=>c.name===category.name).length>1?` · ID ${esc(category.id)}`:''}${category.usable ? '' : tr(' (izin bot kurang)',' (bot lacks permissions)')}</option>`).join('');
     return `<form class="f-form" id="serverStatsSetupForm">`
       + `<p class="f-muted">${tr('Bundle membuat counter:','Bundle creates counters:')} ${STANDARD_BUNDLE_NAMES}.</p>`
       + `<label class="f-field"><span><b>${tr('Kategori','Category')}</b><small>${tr('Ke mana channel counter dibuat.','Where counter channels are created.')}</small></span>`
@@ -402,7 +402,7 @@
           const body = { confirmed: true, categoryId: setupFormEl.elements.categoryId.value, channelType: setupFormEl.elements.channelType.value };
           if (!body.categoryId) { setupStatus.textContent = tr('Pilih kategori terlebih dahulu.','Choose a category first.'); return; }
           const category = data.categories.find((entry) => entry.id === body.categoryId);
-          if (!(await (window.ZentixDialog ? window.ZentixDialog.confirm(tr(`Buat bundle counter standar di kategori "${category?.name ?? body.categoryId} (ID ${body.categoryId})"? Jenis yang sudah ada dilewati.`,`Create the standard counter bundle in category "${category?.name ?? body.categoryId} (ID ${body.categoryId})"? Existing types are skipped.`)) : Promise.resolve(window.confirm(tr(`Buat bundle counter standar di kategori "${category?.name ?? body.categoryId} (ID ${body.categoryId})"? Jenis yang sudah ada dilewati.`,`Create the standard counter bundle in category "${category?.name ?? body.categoryId} (ID ${body.categoryId})"? Existing types are skipped.`)))))) return;
+          if (!(await (window.ZentixDialog ? window.ZentixDialog.confirm(tr(`Buat bundle counter standar di kategori "${category?.name ?? body.categoryId}${!category||data.categories.filter(c=>c.name===category.name).length>1?` (ID ${body.categoryId})`: ''}"? Jenis yang sudah ada dilewati.`,`Create the standard counter bundle in category "${category?.name ?? body.categoryId}${!category||data.categories.filter(c=>c.name===category.name).length>1?` (ID ${body.categoryId})`: ''}"? Existing types are skipped.`)) : Promise.resolve(window.confirm(tr(`Buat bundle counter standar di kategori "${category?.name ?? body.categoryId}${!category||data.categories.filter(c=>c.name===category.name).length>1?` (ID ${body.categoryId})`: ''}"? Jenis yang sudah ada dilewati.`,`Create the standard counter bundle in category "${category?.name ?? body.categoryId}${!category||data.categories.filter(c=>c.name===category.name).length>1?` (ID ${body.categoryId})`: ''}"? Existing types are skipped.`)))))) return;
           change(setupStatus, () => request('POST', '/setup', body),
             (result) => tr(`Setup selesai: ${result.created} dibuat, ${result.skipped} sudah ada, ${result.failed} gagal. Muat ulang untuk hasilnya.`,`Setup finished: ${result.created} created, ${result.skipped} already existed, ${result.failed} failed. Reload for results.`));
         };
@@ -430,7 +430,7 @@
             body.roleId = form.elements.roleId.value;
             if (!body.roleId) { createStatus.textContent = tr('Pilih role terlebih dahulu.','Choose a role first.'); return; }
             const role = (data.roles ?? []).find((entry) => entry.id === body.roleId);
-            confirmType = `${typeName('role')} "${role?.name ?? body.roleId} (ID ${body.roleId})"`;
+            confirmType = `${typeName('role')} "${role?.name ?? body.roleId}${!role||(data.roles??[]).filter(r=>r.name===role.name).length>1?` (ID ${body.roleId})`: ''}"`;
           } else if (body.type === 'goal') {
             body.goalStat = form.elements.goalStat.value;
             const target = Number(form.elements.goal.value);
@@ -442,7 +442,7 @@
             confirmType = `"${typeName(body.type)}"`;
           }
           const category = data.categories.find((entry) => entry.id === body.categoryId);
-          if (!(await (window.ZentixDialog ? window.ZentixDialog.confirm(tr(`Buat ${KIND_NAMES[body.channelType].toLowerCase()} baru di kategori "${category?.name ?? body.categoryId} (ID ${body.categoryId})" untuk counter ${confirmType}?`,`Create a new ${KIND_NAMES[body.channelType].toLowerCase()} in category "${category?.name ?? body.categoryId} (ID ${body.categoryId})" for counter ${confirmType}?`)) : Promise.resolve(window.confirm(tr(`Buat ${KIND_NAMES[body.channelType].toLowerCase()} baru di kategori "${category?.name ?? body.categoryId} (ID ${body.categoryId})" untuk counter ${confirmType}?`,`Create a new ${KIND_NAMES[body.channelType].toLowerCase()} in category "${category?.name ?? body.categoryId} (ID ${body.categoryId})" for counter ${confirmType}?`)))))) return;
+          if (!(await (window.ZentixDialog ? window.ZentixDialog.confirm(tr(`Buat ${KIND_NAMES[body.channelType].toLowerCase()} baru di kategori "${category?.name ?? body.categoryId}${!category||data.categories.filter(c=>c.name===category.name).length>1?` (ID ${body.categoryId})`: ''}" untuk counter ${confirmType}?`,`Create a new ${KIND_NAMES[body.channelType].toLowerCase()} in category "${category?.name ?? body.categoryId}${!category||data.categories.filter(c=>c.name===category.name).length>1?` (ID ${body.categoryId})`: ''}" for counter ${confirmType}?`)) : Promise.resolve(window.confirm(tr(`Buat ${KIND_NAMES[body.channelType].toLowerCase()} baru di kategori "${category?.name ?? body.categoryId}${!category||data.categories.filter(c=>c.name===category.name).length>1?` (ID ${body.categoryId})`: ''}" untuk counter ${confirmType}?`,`Create a new ${KIND_NAMES[body.channelType].toLowerCase()} in category "${category?.name ?? body.categoryId}${!category||data.categories.filter(c=>c.name===category.name).length>1?` (ID ${body.categoryId})`: ''}" for counter ${confirmType}?`)))))) return;
           change(createStatus, () => request('POST', '/counters', body),
             (result) => `${tr('Counter dibuat: channel','Counter created: channel')} "${result.channelName}".${result.count === null ? tr(' Angkanya ditambahkan setelah daftar anggota terbaca.',' The count will be added when the member list is readable.') : ''}`);
         };
@@ -476,7 +476,7 @@
             if (!body.host) { externalStatus.textContent = tr('Isi alamat server.','Enter a server address.'); return; }
           }
           const category = data.categories.find((entry) => entry.id === body.categoryId);
-          if (!(await (window.ZentixDialog ? window.ZentixDialog.confirm(tr(`Buat ${KIND_NAMES[body.channelType].toLowerCase()} untuk counter game "${body.label}" di kategori "${category?.name ?? body.categoryId} (ID ${body.categoryId})"?`,`Create a ${KIND_NAMES[body.channelType].toLowerCase()} for game counter "${body.label}" in category "${category?.name ?? body.categoryId} (ID ${body.categoryId})"?`)) : Promise.resolve(window.confirm(tr(`Buat ${KIND_NAMES[body.channelType].toLowerCase()} untuk counter game "${body.label}" di kategori "${category?.name ?? body.categoryId} (ID ${body.categoryId})"?`,`Create a ${KIND_NAMES[body.channelType].toLowerCase()} for game counter "${body.label}" in category "${category?.name ?? body.categoryId} (ID ${body.categoryId})"?`)))))) return;
+          if (!(await (window.ZentixDialog ? window.ZentixDialog.confirm(tr(`Buat ${KIND_NAMES[body.channelType].toLowerCase()} untuk counter game "${body.label}" di kategori "${category?.name ?? body.categoryId}${!category||data.categories.filter(c=>c.name===category.name).length>1?` (ID ${body.categoryId})`: ''}"?`,`Create a ${KIND_NAMES[body.channelType].toLowerCase()} for game counter "${body.label}" in category "${category?.name ?? body.categoryId}${!category||data.categories.filter(c=>c.name===category.name).length>1?` (ID ${body.categoryId})`: ''}"?`)) : Promise.resolve(window.confirm(tr(`Buat ${KIND_NAMES[body.channelType].toLowerCase()} untuk counter game "${body.label}" di kategori "${category?.name ?? body.categoryId}${!category||data.categories.filter(c=>c.name===category.name).length>1?` (ID ${body.categoryId})`: ''}"?`,`Create a ${KIND_NAMES[body.channelType].toLowerCase()} for game counter "${body.label}" in category "${category?.name ?? body.categoryId}${!category||data.categories.filter(c=>c.name===category.name).length>1?` (ID ${body.categoryId})`: ''}"?`)))))) return;
           change(externalStatus, () => request('POST', '/counters', body),
             (result) => `${tr('Counter game dibuat: channel','Game counter created: channel')} "${result.channelName}".${result.count === null ? tr(' Angkanya menyusul saat sumbernya menjawab.',' The count will follow when the source responds.') : ''}`);
         };
@@ -507,7 +507,7 @@
           body[targetField] = socialFormEl.elements[targetField].value.trim();
           if (!body[targetField]) { externalStatus.textContent = tr('Isi target akun terlebih dahulu.','Enter an account target first.'); return; }
           const category = data.categories.find((entry) => entry.id === body.categoryId);
-          if (!(await (window.ZentixDialog ? window.ZentixDialog.confirm(tr(`Buat ${KIND_NAMES[body.channelType].toLowerCase()} untuk counter sosial "${body.label}" di kategori "${category?.name ?? body.categoryId} (ID ${body.categoryId})"?`,`Create a ${KIND_NAMES[body.channelType].toLowerCase()} for social counter "${body.label}" in category "${category?.name ?? body.categoryId} (ID ${body.categoryId})"?`)) : Promise.resolve(window.confirm(tr(`Buat ${KIND_NAMES[body.channelType].toLowerCase()} untuk counter sosial "${body.label}" di kategori "${category?.name ?? body.categoryId} (ID ${body.categoryId})"?`,`Create a ${KIND_NAMES[body.channelType].toLowerCase()} for social counter "${body.label}" in category "${category?.name ?? body.categoryId} (ID ${body.categoryId})"?`)))))) return;
+          if (!(await (window.ZentixDialog ? window.ZentixDialog.confirm(tr(`Buat ${KIND_NAMES[body.channelType].toLowerCase()} untuk counter sosial "${body.label}" di kategori "${category?.name ?? body.categoryId}${!category||data.categories.filter(c=>c.name===category.name).length>1?` (ID ${body.categoryId})`: ''}"?`,`Create a ${KIND_NAMES[body.channelType].toLowerCase()} for social counter "${body.label}" in category "${category?.name ?? body.categoryId}${!category||data.categories.filter(c=>c.name===category.name).length>1?` (ID ${body.categoryId})`: ''}"?`)) : Promise.resolve(window.confirm(tr(`Buat ${KIND_NAMES[body.channelType].toLowerCase()} untuk counter sosial "${body.label}" di kategori "${category?.name ?? body.categoryId}${!category||data.categories.filter(c=>c.name===category.name).length>1?` (ID ${body.categoryId})`: ''}"?`,`Create a ${KIND_NAMES[body.channelType].toLowerCase()} for social counter "${body.label}" in category "${category?.name ?? body.categoryId}${!category||data.categories.filter(c=>c.name===category.name).length>1?` (ID ${body.categoryId})`: ''}"?`)))))) return;
           change(externalStatus, () => request('POST', '/counters', body),
             (result) => `${tr('Counter sosial dibuat: channel','Social counter created: channel')} "${result.channelName}".${result.count === null ? tr(' Angkanya menyusul saat sumbernya menjawab.',' The count will follow when the source responds.') : ''}`);
         };

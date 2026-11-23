@@ -231,7 +231,7 @@
       paintList(data);
       const target = $('#saTarget');
       const selected = target.value;
-      target.innerHTML = data.channels.map((channel) => `<option value="${esc(channel.id)}" ${channel.usable ? '' : 'data-usable="0"'}># ${esc(channel.name)} · ID ${esc(channel.id)}${channel.usable ? '' : tr(' (bot tidak bisa kirim)',' (bot cannot send)')}</option>`).join('');
+      target.innerHTML = data.channels.map((channel) => `<option value="${esc(channel.id)}" ${channel.usable ? '' : 'data-usable="0"'}># ${esc(channel.name)}${data.channels.filter(c=>c.name===channel.name).length>1?` · ID ${esc(channel.id)}`:''}${channel.usable ? '' : tr(' (bot tidak bisa kirim)',' (bot cannot send)')}</option>`).join('');
       if (state.editingId) keepUnavailable(target, selected, 'channel');
       if ([...target.options].some((option) => option.value === selected)) target.value = selected;
       const mention = $('#saMention');
@@ -239,7 +239,7 @@
       mention.innerHTML = [
         `<option value="">${tr('Tidak ada ping','No ping')}</option>`,
         `<option value="everyone">@everyone (${tr('butuh izin khusus','requires special permission')})</option>`,
-        ...data.roles.map((role) => `<option value="${esc(role.id)}">@ ${esc(role.name)} · ID ${esc(role.id)}${role.usable ? '' : tr(' (tidak dapat di-ping)',' (cannot be pinged)')}</option>`),
+        ...data.roles.map((role) => `<option value="${esc(role.id)}">@ ${esc(role.name)}${data.roles.filter(r=>r.name===role.name).length>1?` · ID ${esc(role.id)}`:''}${role.usable ? '' : tr(' (tidak dapat di-ping)',' (cannot be pinged)')}</option>`),
       ].join('');
       if (state.editingId) keepUnavailable(mention, mentionSelected, 'role');
       if ([...mention.options].some((option) => option.value === mentionSelected)) mention.value = mentionSelected;
@@ -345,7 +345,7 @@
           await request('PATCH', `/${encodeURIComponent(alert.id)}`, { confirmed: true, enabled: !alert.enabled });
           notify(alert.enabled ? tr('Feed dijeda.','Feed paused.') : tr('Feed diaktifkan.','Feed enabled.'));
         } else if (action === 'test') {
-          const answer = await act(`/${encodeURIComponent(alert.id)}/test`, {}, tr(`Kirim pesan TES ke #${alert.channelName ?? alert.targetChannelId} (ID ${alert.targetChannelId})? Pesan sungguhan (tanpa mention) akan tampil di channel itu.`,`Send a TEST message to #${alert.channelName ?? alert.targetChannelId} (ID ${alert.targetChannelId})? A real message without mentions will appear there.`));
+          const answer = await act(`/${encodeURIComponent(alert.id)}/test`, {}, tr(`Kirim pesan TES ke #${alert.channelName ?? alert.targetChannelId}${!alert.channelName||(state.data?.channels||[]).filter(c=>c.name===alert.channelName).length>1?` (ID ${alert.targetChannelId})`:''}? Pesan sungguhan (tanpa mention) akan tampil di channel itu.`,`Send a TEST message to #${alert.channelName ?? alert.targetChannelId}${!alert.channelName||(state.data?.channels||[]).filter(c=>c.name===alert.channelName).length>1?` (ID ${alert.targetChannelId})`:''}? A real message without mentions will appear there.`));
           if (answer) notify(tr('Pesan tes terkirim.','Test message sent.'));
         } else if (action === 'delete') {
           if ((await (window.ZentixDialog ? window.ZentixDialog.confirm(tr(`Hapus feed "${alert.label}"? Feed berhenti mengirim; pesan lama di Discord tidak dihapus.`,`Delete feed "${alert.label}"? It will stop sending; old Discord messages will not be deleted.`)) : Promise.resolve(window.confirm(tr(`Hapus feed "${alert.label}"? Feed berhenti mengirim; pesan lama di Discord tidak dihapus.`,`Delete feed "${alert.label}"? It will stop sending; old Discord messages will not be deleted.`)))))) {

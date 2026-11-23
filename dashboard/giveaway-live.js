@@ -286,7 +286,7 @@
    slot.innerHTML=`<form class="f-form" id="giveawayCreateForm"><fieldset style="border:0;padding:0;margin:0;min-width:0">`
     +`<label class="f-field"><span><b>Channel</b><small>${tr('Hanya channel teks tempat bot boleh mengirim.','Only text channels where the bot can send messages.')}${truncated?tr(' Daftar dipotong; tidak semua channel tampil.',' List truncated; not all channels are shown.'):''}</small></span>`
     +`<select name="channelId" required><option value="">${tr('Pilih channel…','Choose a channel…')}</option>`
-    +`${channels.map(c=>`<option value="${esc(c.id)}"># ${esc(c.name)} · ID ${esc(c.id)}</option>`).join('')}</select></label>`
+    +`${channels.map(c=>`<option value="${esc(c.id)}"># ${esc(c.name)}${channels.filter(x=>x.name===c.name).length>1?` · ID ${esc(c.id)}`:''}</option>`).join('')}</select></label>`
     +`<label class="f-field"><span><b>${tr('Hadiah','Prize')}</b><small>${tr(`Tampil sebagai judul pesan. Maksimal ${esc(limits.prizeMaxLength)} karakter.`,`Shown as the message title. Maximum ${esc(limits.prizeMaxLength)} characters.`)}</small></span>`
     +`<input name="prize" type="text" maxlength="${esc(limits.prizeMaxLength)}" autocomplete="off" required></label>`
     +`<label class="f-field"><span><b>${tr('Jumlah pemenang','Number of winners')}</b><small>${esc(limits.minWinners)}–${esc(limits.maxWinners)}</small></span>`

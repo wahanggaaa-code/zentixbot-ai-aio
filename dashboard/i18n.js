@@ -59,9 +59,23 @@
   ['Draf AI kosong atau terlalu panjang. Coba lagi.','The AI draft is empty or too long. Try again.'],
  ]);
  const aiError=message=>lang==='en' ? (aiErrors.get(message) ?? message) : message;
+ // Only errors produced by the AI foundation for these two draft endpoints.
+ const aiDraftFoundationErrors=new Map([
+  ['503|STORAGE_UNAVAILABLE|Penghitung AI tidak valid.','The AI usage counter is invalid.'],
+  ['403|FORBIDDEN|Identitas server atau anggota tidak valid.','Invalid server or member identity.'],
+  ['429|BUSY|Terlalu banyak permintaan AI yang berjalan.','Too many AI requests are in progress.'],
+  ['403|DISABLED|AI belum diaktifkan atau belum disetujui.','AI is not enabled or consented to.'],
+  ['503|NO_CREDENTIALS|Kredensial provider belum dikonfigurasi.','Provider credentials are not configured.'],
+  ['502|REQUEST_REJECTED|Provider menolak permintaan.','The provider rejected the request.'],
+  ['503|PROVIDERS_UNAVAILABLE|Semua provider gagal atau timeout.','All providers failed or timed out.'],
+  ['503|PROVIDERS_UNAVAILABLE|Tidak ada kredensial provider tersedia.','No provider credentials are available.'],
+ ]);
  // These draft validation responses are returned directly, without an API error code.
  const aiDraftError=(path,status,code,message)=>{
-  if(lang!=='en'||status!==400||code!==undefined)return message;
+  if(lang!=='en'||!['faq-question-draft','announcement-draft'].includes(path))return message;
+  const foundation=aiDraftFoundationErrors.get(`${status}|${code}|${message}`);
+  if(foundation!==undefined)return foundation;
+  if(status!==400||code!==undefined)return message;
   if(path==='faq-question-draft'&&message==='Konfirmasi dan pertanyaan pilihan (3–600 karakter) diperlukan.')return 'Confirmation and a selected question (3–600 characters) are required.';
   if(path==='announcement-draft'&&message==='Konfirmasi dan poin pengumuman (1–1200 karakter) diperlukan.')return 'Confirmation and announcement points (1–1200 characters) are required.';
   return message;
@@ -112,6 +126,11 @@
   ['Bot membutuhkan izin Manage Channels, Move Members dan Connect pada channel itu.','The bot needs Manage Channels, Move Members and Connect permissions in that channel.'],
   ['Tidak ada perubahan yang dikirim.','No changes were sent.'],
   ['Parameter halaman tidak valid.','Invalid page parameter.'],
+  ['Data Join to Create perlu diperiksa.','Join to Create data needs review.'],
+  ['Daftar channel sementara terlalu besar untuk ditampilkan.','The temporary channel list is too large to display.'],
+  ['Data channel sementara perlu diperiksa.','Temporary channel data needs review.'],
+  ['Data operasi tertunda Join to Create perlu diperiksa.','Pending Join to Create operation data needs review.'],
+  ['Opsi channel Join to Create perlu diperiksa.','Join to Create channel options need review.'],
   ['Gagal membaca Join to Create dari database.','Could not read Join to Create from the database.'],
   ['Parameter pemeriksaan tidak valid.','Invalid check parameter.'],
   ['Data berubah atau perlu diperiksa; muat ulang inventaris.','Data changed or needs review; reload the inventory.'],
@@ -207,6 +226,8 @@
   ['Warna goodbye tersimpan perlu diperiksa.','The saved goodbye color needs review.'],
   ['Gambar goodbye tersimpan perlu diperiksa.','The saved goodbye image needs review.'],
   ['Pengaturan welcome tidak valid.','Invalid welcome settings.'],
+  ['Pengaturan welcome perlu diperiksa.','Welcome settings need review.'],
+  ['Pilih maksimal 5 autorole (ID role Discord, tidak boleh ganda).','Choose up to 5 autoroles (Discord role IDs, no duplicates).'],
   ['Pengaturan goodbye tidak valid.','Invalid goodbye settings.'],
   ['Versi pengaturan tidak valid.','Invalid settings revision.'],
   ['Nilai aktif dan ping harus boolean.','Enabled and ping must be boolean values.'],
