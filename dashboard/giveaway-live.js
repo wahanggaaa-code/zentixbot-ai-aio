@@ -25,7 +25,29 @@
   ['GIVEAWAY_UNAVAILABLE',['Database tidak tersedia. Tidak ada yang diubah.','The database is unavailable. Nothing was changed.']],
   ['GIVEAWAY_SCOPE',['Giveaway di luar server ini.','The giveaway is outside this server.']],
  ]);
- function apiError(data){
+ // Fixed response text without a giveaway outcome code, keyed by HTTP status.
+ const VALIDATION_ERRORS=new Map([
+  ['400\0Parameter halaman tidak valid.','Invalid page parameter.'],
+  ['409\0ID giveaway tidak valid; periksa data sebelum melihat daftar.','Invalid giveaway ID; review the data before viewing the list.'],
+  ['400\0ID pesan tidak valid.','Invalid message ID.'],
+  ['400\0Parameter tidak valid.','Invalid parameter.'],
+  ['400\0Permintaan Giveaway tidak valid.','Invalid giveaway request.'],
+  ['400\0Durasi tidak valid. Gunakan angka 1–999 dengan satuan menit, jam atau hari.','Invalid duration. Use a number from 1–999 with minutes, hours or days as the unit.'],
+  ['503\0Database tidak tersedia.','The database is unavailable.'],
+  ['503\0Gagal membaca data Giveaway dari database.','Could not read giveaway data from the database.'],
+  ['409\0Data Giveaway perlu diperiksa atau tidak tersedia.','Giveaway data needs review or is unavailable.'],
+  ['503\0Hasil mungkin tidak diketahui. Periksa Discord dan database sebelum mengulang.','The result may be unknown. Check Discord and the database before retrying.'],
+ ]);
+ function apiError(data,status,path,method){
+  if(window.ZentixI18n?.language==='en'){
+   const validation=VALIDATION_ERRORS.get(`${status}\0${data.error}`);
+   if(validation)return validation;
+   // Only the create endpoint emits this fixed template with numeric server limits.
+   if(status===400&&path==='create'&&method==='POST'&&typeof data.error==='string'){
+    const limits=/^Isian tidak valid\. Pemenang (\d{1,9})–(\d{1,9}), hadiah 1–(\d{1,9}) karakter, durasi dalam batas yang ditampilkan\.$/.exec(data.error);
+    if(limits)return `Invalid fields. Winners ${limits[1]}–${limits[2]}, prize 1–${limits[3]} characters, duration within the displayed limits.`;
+   }
+  }
   const known=API_ERRORS.get(data.code);
   if(window.ZentixI18n?.language==='en'&&known&&data.error===known[0])return known[1];
   if(data.error==='Hasil tidak dapat dipastikan. Periksa Discord dan database sebelum mengulang.')return tr(data.error,'The outcome cannot be determined. Check Discord and the database before retrying.');
@@ -41,7 +63,7 @@
    ...(body?{body:JSON.stringify(body)}:{}),
   });
   const data=await response.json();
-  if(!response.ok)throw Object.assign(Error((window.ZentixI18n?.accessError?.(data.error,response.status) ?? apiError(data))||tr('Permintaan gagal.','Request failed.')),{code:data.code});
+  if(!response.ok)throw Object.assign(Error((window.ZentixI18n?.accessError?.(data.error,response.status) ?? apiError(data,response.status,path,method))||tr('Permintaan gagal.','Request failed.')),{code:data.code});
   return data;
  }
 

@@ -43,7 +43,7 @@
       : '';
     return `<form class="f-form" data-trigger="${index}"><h3>${esc(name)}</h3><p class="f-muted">ID ${esc(trigger.channelId)}</p>${permission}`
       + fields(trigger, data)
-      + `<div class="f-form-actions"><button type="button" class="f-outline" data-remove="${index}">${tr('LEPAS TRIGGER','REMOVE TRIGGER')}</button><button type="submit" class="f-primary">${tr('SIMPAN ↗','SAVE ↗')}</button></div></form>`;
+      + `<div class="f-form-actions"><button type="button" class="f-outline" data-remove="${index}" aria-label="${esc(tr(`Lepas trigger ${name} (ID ${trigger.channelId})`,`Remove trigger ${name} (ID ${trigger.channelId})`))}">${tr('LEPAS TRIGGER','REMOVE TRIGGER')}</button><button type="submit" class="f-primary" aria-label="${esc(tr(`Simpan pengaturan trigger ${name} (ID ${trigger.channelId})`,`Save trigger settings for ${name} (ID ${trigger.channelId})`))}">${tr('SIMPAN ↗','SAVE ↗')}</button></div></form>`;
   }
 
   function setupForm(data) {
