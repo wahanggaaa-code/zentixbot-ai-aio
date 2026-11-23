@@ -208,6 +208,20 @@
         : '';
     }
 
+    function keepUnavailable(select, value, kind) {
+      if (!value || [...select.options].some(option => option.value === value)) return;
+      const option = document.createElement('option');
+      option.value = value;
+      option.dataset.unavailable = '1';
+      option.textContent = kind === 'channel'
+        ? tr(`Channel tersimpan tidak tersedia · ID ${value}`,`Saved channel unavailable · ID ${value}`)
+        : tr(`Role tersimpan tidak tersedia · ID ${value}`,`Saved role unavailable · ID ${value}`);
+      select.append(option);
+    }
+    function clearUnavailable(select) {
+      select.querySelectorAll('option[data-unavailable="1"]').forEach(option => option.remove());
+    }
+
     async function reload() {
       const data = await request('GET');
       state.data = data;
@@ -217,15 +231,17 @@
       paintList(data);
       const target = $('#saTarget');
       const selected = target.value;
-      target.innerHTML = data.channels.map((channel) => `<option value="${esc(channel.id)}" ${channel.usable ? '' : 'data-usable="0"'}># ${esc(channel.name)}${channel.usable ? '' : tr(' (bot tidak bisa kirim)',' (bot cannot send)')}</option>`).join('');
+      target.innerHTML = data.channels.map((channel) => `<option value="${esc(channel.id)}" ${channel.usable ? '' : 'data-usable="0"'}># ${esc(channel.name)} · ID ${esc(channel.id)}${channel.usable ? '' : tr(' (bot tidak bisa kirim)',' (bot cannot send)')}</option>`).join('');
+      if (state.editingId) keepUnavailable(target, selected, 'channel');
       if ([...target.options].some((option) => option.value === selected)) target.value = selected;
       const mention = $('#saMention');
       const mentionSelected = mention.value;
       mention.innerHTML = [
         `<option value="">${tr('Tidak ada ping','No ping')}</option>`,
         `<option value="everyone">@everyone (${tr('butuh izin khusus','requires special permission')})</option>`,
-        ...data.roles.map((role) => `<option value="${esc(role.id)}">@ ${esc(role.name)}${role.usable ? '' : tr(' (tidak dapat di-ping)',' (cannot be pinged)')}</option>`),
+        ...data.roles.map((role) => `<option value="${esc(role.id)}">@ ${esc(role.name)} · ID ${esc(role.id)}${role.usable ? '' : tr(' (tidak dapat di-ping)',' (cannot be pinged)')}</option>`),
       ].join('');
+      if (state.editingId) keepUnavailable(mention, mentionSelected, 'role');
       if ([...mention.options].some((option) => option.value === mentionSelected)) mention.value = mentionSelected;
       paintPreview();
     }
@@ -239,6 +255,8 @@
       $('#saLabelRow').hidden = false;
       $('#saCancelEdit').hidden = true;
       $('#saSave').textContent = tr('SIMPAN FEED ↗','SAVE FEED ↗');
+      clearUnavailable($('#saTarget'));
+      clearUnavailable($('#saMention'));
       form.reset();
       window.ZentixGreetingColor?.set(form,'#5865f2');
       syncNotifyFieldsets();
@@ -277,8 +295,12 @@
       form.elements.customMessage.value = alert.customMessage || '';
       form.elements.aiSummaryEnabled.checked = alert.aiSummaryEnabled;
       const target = $('#saTarget');
-      if ([...target.options].some((option) => option.value === alert.targetChannelId)) target.value = alert.targetChannelId;
+      clearUnavailable(target);
+      keepUnavailable(target, alert.targetChannelId, 'channel');
+      target.value = alert.targetChannelId;
       const mention = $('#saMention');
+      clearUnavailable(mention);
+      keepUnavailable(mention, alert.mentionRoleId, 'role');
       mention.value = alert.mentionRoleId ?? '';
       for (const box of form.querySelectorAll('input[name=notifyTypes]')) box.checked = alert.notifyTypes.includes(box.value);
       syncNotifyFieldsets();
@@ -323,7 +345,7 @@
           await request('PATCH', `/${encodeURIComponent(alert.id)}`, { confirmed: true, enabled: !alert.enabled });
           notify(alert.enabled ? tr('Feed dijeda.','Feed paused.') : tr('Feed diaktifkan.','Feed enabled.'));
         } else if (action === 'test') {
-          const answer = await act(`/${encodeURIComponent(alert.id)}/test`, {}, tr(`Kirim pesan TES ke #${alert.channelName ?? alert.targetChannelId}? Pesan sungguhan (tanpa mention) akan tampil di channel itu.`,`Send a TEST message to #${alert.channelName ?? alert.targetChannelId}? A real message without mentions will appear there.`));
+          const answer = await act(`/${encodeURIComponent(alert.id)}/test`, {}, tr(`Kirim pesan TES ke #${alert.channelName ?? alert.targetChannelId} (ID ${alert.targetChannelId})? Pesan sungguhan (tanpa mention) akan tampil di channel itu.`,`Send a TEST message to #${alert.channelName ?? alert.targetChannelId} (ID ${alert.targetChannelId})? A real message without mentions will appear there.`));
           if (answer) notify(tr('Pesan tes terkirim.','Test message sent.'));
         } else if (action === 'delete') {
           if ((await (window.ZentixDialog ? window.ZentixDialog.confirm(tr(`Hapus feed "${alert.label}"? Feed berhenti mengirim; pesan lama di Discord tidak dihapus.`,`Delete feed "${alert.label}"? It will stop sending; old Discord messages will not be deleted.`)) : Promise.resolve(window.confirm(tr(`Hapus feed "${alert.label}"? Feed berhenti mengirim; pesan lama di Discord tidak dihapus.`,`Delete feed "${alert.label}"? It will stop sending; old Discord messages will not be deleted.`)))))) {
@@ -360,6 +382,8 @@
       const x = form.elements;
       const notifyTypes = [...form.querySelectorAll('input[name=notifyTypes]:checked')].map((box) => box.value);
       if (!notifyTypes.length) { notify(tr('Pilih minimal satu tipe konten.','Select at least one content type.')); return; }
+      if (x.targetChannelId.selectedOptions[0]?.dataset.unavailable === '1') { notify(tr('Channel tersimpan tidak tersedia. Pilih channel yang tersedia sebelum menyimpan.','The saved channel is unavailable. Choose an available channel before saving.')); return; }
+      if (x.mentionRoleId.selectedOptions[0]?.dataset.unavailable === '1') { notify(tr('Role tersimpan tidak tersedia. Pilih role yang tersedia atau tanpa ping sebelum menyimpan.','The saved role is unavailable. Choose an available role or no ping before saving.')); return; }
       button.disabled = true;
       try {
         if (state.editingId) {

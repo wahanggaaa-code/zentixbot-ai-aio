@@ -16,8 +16,8 @@
    slot.textContent=tr('Memuat pengaturan…','Loading settings…');
    try{
     const data=await request();if(!slot.isConnected)return;const w=data.goodbye;let revision=data.revision;
-    const channels=[['',tr('Belum dipilih','Not selected')],...data.channels.map(c=>[c.id,'# '+c.name])];
-    if(w.channelId&&!data.channels.some(c=>c.id===w.channelId))channels.push([w.channelId,tr('ID tersimpan — tidak tersedia','Saved ID — unavailable')]);
+    const channels=[['',tr('Belum dipilih','Not selected')],...data.channels.map(c=>[c.id,`# ${c.name} · ID ${c.id}`])];
+    if(w.channelId&&!data.channels.some(c=>c.id===w.channelId))channels.push([w.channelId,`${tr('ID tersimpan — tidak tersedia','Saved ID — unavailable')} · ${w.channelId}`]);
     const options=channels.map(([v,n])=>`<option value="${esc(v)}" ${v===(w.channelId||'')?'selected':''}>${esc(n)}</option>`).join('');
     slot.innerHTML=`<p class="f-muted">${tr('Perubahan channel dan pesan juga digunakan AI setelah mode gabungan disimpan. Simpan hanya setelah memeriksa channel.','Channel and message changes are also used by AI after combined mode is saved. Save only after checking the channel.')}</p><p id="goodbyeError" class="f-muted" role="status"></p><form class="f-form" id="goodbyeForm"><fieldset style="border:0;padding:0;margin:0;min-width:0">
     ${field(tr('Aktifkan goodbye','Enable goodbye'),tr('Kirim pesan saat anggota keluar.','Send a message when a member leaves.'),`<span class="f-check"><input name="enabled" type="checkbox" ${w.enabled?'checked':''}><span class="fake-switch"></span></span>`)}

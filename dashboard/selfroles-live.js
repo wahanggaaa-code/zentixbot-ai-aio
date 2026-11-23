@@ -314,7 +314,7 @@
     const usable = data.roles.filter((role) => role.usable);
     if (!usable.length) return `<p class="f-muted">${tr('Belum ada role yang boleh ditawarkan. Buat role biasa di Discord dan letakkan di bawah role bot.','No eligible roles yet. Create a regular role in Discord and place it below the bot role.')}</p>`;
 
-    const channels = data.channels.map((channel) => `<option value="${esc(channel.id)}"${channel.usable ? '' : ' disabled'}>#${esc(channel.name)}${channel.usable ? '' : tr(' (izin bot kurang)',' (bot lacks permissions)')}</option>`).join('');
+    const channels = data.channels.map((channel) => `<option value="${esc(channel.id)}"${channel.usable ? '' : ' disabled'}>#${esc(channel.name)} · ID ${esc(channel.id)}${channel.usable ? '' : tr(' (izin bot kurang)',' (bot lacks permissions)')}</option>`).join('');
     const boxes = data.roles.map((role) => `<div style="display:flex;align-items:center;gap:8px;padding:4px 0"><label style="flex:1;display:flex;align-items:center;gap:6px"><input type="checkbox" name="roleIds" value="${esc(role.id)}" aria-label="${esc(`Role ${role.name} (ID ${role.id})${role.usable ? '' : ` — ${roleReason(role.reason)}`}`)}"${role.usable ? '' : ' disabled'}> `
       + `${esc(role.name)}${role.usable ? '' : ` <small>— ${esc(roleReason(role.reason))}</small>`}</label>`
       + `<input name="emoji-${esc(role.id)}" maxlength="48" placeholder="emoji" aria-label="${esc(tr(`Emoji untuk ${role.name} (ID ${role.id})`,`Emoji for ${role.name} (ID ${role.id})`))}" style="width:130px"${role.usable ? '' : ' disabled'}></div>`).join('');
