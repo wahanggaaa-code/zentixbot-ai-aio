@@ -50,8 +50,9 @@
     if (!data.voiceChannels.length) {
       return tr('<p class="f-muted">Bot tidak melihat channel suara di server ini. Buat channel suara di Discord, atau jalankan /jointocreate setup.</p>','<p class="f-muted">The bot cannot see any voice channels in this server. Create one in Discord or run /jointocreate setup.</p>');
     }
+    const channelLabel = channel => `${channel.category ? channel.category + ' / ' : ''}${channel.name || tr('Channel tanpa nama','Unnamed channel')}`;
     const options = data.voiceChannels.map((channel, index) => `<option value="${index}"${channel.usable ? '' : ' disabled'}>`
-      + `${esc(channel.category ? channel.category + ' / ' : '')}${esc(channel.name)}${channel.usable ? '' : tr(' (izin bot kurang)',' (bot lacks permission)')}</option>`).join('');
+      + `${esc(channelLabel(channel))}${!channel.name || data.voiceChannels.filter(other => channelLabel(other) === channelLabel(channel)).length > 1 ? ` · ID ${esc(channel.id)}` : ''}${channel.usable ? '' : tr(' (izin bot kurang)',' (bot lacks permission)')}</option>`).join('');
     return `<form class="f-form" data-setup><p class="f-muted">${tr('Join to Create belum memiliki trigger. Pilih channel suara yang sudah ada; anggota yang masuk ke channel itu mendapat channel sementara di kategori yang sama.','Join to Create has no trigger yet. Choose an existing voice channel; members joining it get a temporary channel in the same category.')}</p>`
       + `<label class="f-field"><span><b>${tr('Channel trigger','Trigger channel')}</b><small>${tr('Bot memerlukan Manage Channels, Move Members dan Connect.','The bot needs Manage Channels, Move Members and Connect.')}${data.voiceChannelsTruncated ? tr(' Daftar dipotong; gunakan /jointocreate setup bila channel tidak tampil.',' List truncated; use /jointocreate setup if the channel is not shown.') : ''}</small></span>`
       + `<select name="channel"><option value="">${tr('Pilih channel suara','Select a voice channel')}</option>${options}</select></label>`
@@ -144,7 +145,9 @@
           if (setup.elements.channel.value === '' || !channel || !channel.usable) { status.textContent = tr('Pilih channel suara yang dapat dikelola bot.','Select a voice channel the bot can manage.'); return; }
           const { values, error } = readFields(setup);
           if (error) { status.textContent = error; return; }
-          if (!(await (window.ZentixDialog ? window.ZentixDialog.confirm(`${tr('Jadikan','Make')} "${channel.name}" ${tr('trigger Join to Create?','the Join to Create trigger?')}`) : Promise.resolve(window.confirm(`${tr('Jadikan','Make')} "${channel.name}" ${tr('trigger Join to Create?','the Join to Create trigger?')}`))))) return;
+          const name = channel.name || tr('Channel tanpa nama','Unnamed channel');
+          const identifier = !channel.name || data.voiceChannels.filter(other => other.name === channel.name).length > 1 ? ` (ID ${channel.id})` : '';
+          if (!(await (window.ZentixDialog ? window.ZentixDialog.confirm(`${tr('Jadikan','Make')} "${name}${identifier}" ${tr('trigger Join to Create?','the Join to Create trigger?')}`) : Promise.resolve(window.confirm(`${tr('Jadikan','Make')} "${name}${identifier}" ${tr('trigger Join to Create?','the Join to Create trigger?')}`))))) return;
           send('POST', '/triggers', { ...values, channelId: channel.id, confirmed: true }, tr('Join to Create diaktifkan.','Join to Create enabled.'));
         };
       }

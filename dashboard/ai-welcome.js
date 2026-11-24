@@ -26,7 +26,11 @@
    if(message==='Pengaturan tidak valid.')return 'Invalid settings.';
    if(message==='Pilihan aktif/nonaktif tidak valid.')return 'Invalid enabled/disabled option.';
   }
-  if(!['welcome','goodbye'].includes(path)||!['GET','PATCH'].includes(method)||status!==400)return message;
+  if(status!==400)return message;
+  // Preview and test also read saved settings, without guild-specific channel validation.
+  const savedErrors=['Pengaturan AI Welcome tidak valid.','Status harus boolean.','ID channel tidak valid.','Pilih channel atau DM.','Pilih channel untuk AI Welcome.','Gaya atau bahasa tidak valid.','Template cadangan harus 1–1000 karakter.','AI Goodbye tidak mendukung DM.'];
+  if(method==='POST'&&['welcome/preview','welcome/test','goodbye/preview','goodbye/test'].includes(path)&&code==='INVALID_WELCOME'&&savedErrors.includes(message))return AI_GREETING_ERRORS.get(message) ?? message;
+  if(!['welcome','goodbye'].includes(path)||!['GET','PATCH'].includes(method))return message;
   if(code==='INVALID_WELCOME'||(path==='goodbye'&&method==='PATCH'&&code==='UNAVAILABLE'&&message==='AI Goodbye tidak mendukung DM.'))return AI_GREETING_ERRORS.get(message) ?? message;
   return message;
  }

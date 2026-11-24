@@ -99,7 +99,12 @@
   ['activities/points|GET|503|UNAVAILABLE|Terlalu banyak data poin untuk ditampilkan.','There is too much points data to display.'],
   ['activities/points|GET|503|UNAVAILABLE|Saldo poin tidak valid.','The points balance is invalid.'],
  ]);
- const activityError=(path,method,status,code,message)=>{if(lang!=='en')return message;const direct=activityErrors.get(`${path}|${method}|${status}|${code}|${message}`);if(direct!==undefined)return direct;return path==='activities/start'&&method==='POST' ? (activityErrors.get(`activities|PATCH|${status}|${code}|${message}`)??message) : message;};
+ const activityError=(path,method,status,code,message)=>{if(lang!=='en')return message;const direct=activityErrors.get(`${path}|${method}|${status}|${code}|${message}`);if(direct!==undefined)return direct;
+  // Reads validate saved settings without a guild, so only those validation errors can occur on GET.
+  const readErrors=['Pengaturan activity tidak valid.','Pengaturan ronde berulang tidak valid.','Jarak ronde berulang harus 5 menit sampai 24 jam.','Channel tidak valid.','Pilih channel activity.'];
+  const validatesSettings=(path==='activities'&&method==='GET'&&readErrors.includes(message))||(path==='activities/start'&&method==='POST');
+  return validatesSettings ? (activityErrors.get(`activities|PATCH|${status}|${code}|${message}`)??message) : message;
+ };
  // Exact Join to Create API messages only; never rewrite unknown details or saved templates.
  const jtcErrors=new Map([
   ['Pengaturan berubah sejak halaman dimuat. Muat ulang, periksa, lalu ulangi.','Settings changed since the page was loaded. Reload, check, then try again.'],

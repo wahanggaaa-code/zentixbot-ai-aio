@@ -234,8 +234,10 @@
   const TYPE_TEXT = { buttons: tr('Tombol Grid','Button grid'), section_buttons: 'Section List', dropdown: 'Dropdown', reaction: 'Reaction' };
   const MODE_TEXT = { toggle: 'Toggle', unique: 'Unique (1 role)', verify: tr('Verify (hanya tambah)','Verify (add only)') };
   const STYLE_OPTIONS = ['Primary', 'Secondary', 'Success', 'Danger'];
+  const roleChoice = (role, roles) => `${role.name || tr('Role tanpa nama','Unnamed role')}${!role.name || roles.filter(other => other.name === role.name).length > 1 ? ` · ID ${role.id}` : ''}`;
   const requiredRoleOptions = (selected, roles) => [`<option value="">${tr('Tidak ada','None')}</option>`]
-    .concat(roles.filter((role) => role.usable).map((role) => `<option value="${esc(role.id)}"${role.id === selected ? ' selected' : ''}>${esc(role.name)}</option>`))
+    .concat(roles.filter((role) => role.usable).map((role) => `<option value="${esc(role.id)}"${role.id === selected ? ' selected' : ''}>${esc(roleChoice(role, roles))}</option>`))
+    .concat(selected && !roles.some(role => role.id === selected && role.usable) ? [`<option value="${esc(selected)}" selected disabled>${esc(tr('Role tersimpan tidak tersedia','Saved role unavailable'))} · ID ${esc(selected)}</option>`] : [])
     .join('');
 
   function panelBlock(panel, index, data) {
@@ -253,7 +255,7 @@
 
     const add = panel.roles.length >= data.limits.roles ? `<p class="f-muted">${tr(`Panel sudah memuat ${esc(data.limits.roles)} role (batas maksimum).`,`The panel already has ${esc(data.limits.roles)} roles (maximum).`)}</p>`
       : free.length ? `<form class="f-form" data-add="${index}"><label class="f-field"><span><b>${tr('Tambah role','Add role')}</b><small>${tr('Hanya role yang boleh ditawarkan dan belum ada di panel ini.','Only eligible roles not already on this panel.')}</small></span>`
-        + `<select name="roleId"><option value="">${tr('Pilih role','Choose role')}</option>${free.map((role) => `<option value="${esc(role.id)}">${esc(role.name)}</option>`).join('')}</select></label>`
+        + `<select name="roleId"><option value="">${tr('Pilih role','Choose role')}</option>${free.map((role) => `<option value="${esc(role.id)}">${esc(roleChoice(role, data.roles))}</option>`).join('')}</select></label>`
         + `<div class="f-form-actions"><span>${tr('MENGUBAH PESAN DI DISCORD','CHANGES THE DISCORD MESSAGE')}</span><button type="submit" class="f-primary" aria-label="${esc(tr(`Tambah role ke panel ${panelName} (ID pesan ${panel.messageId})`,`Add role to panel ${panelName} (message ID ${panel.messageId})`))}">${tr('TAMBAH ROLE ↗','ADD ROLE ↗')}</button></div></form>`
         : `<p class="f-muted">${tr('Tidak ada role lain yang boleh ditawarkan.','No other roles are eligible to be offered.')}</p>`;
 
@@ -316,7 +318,7 @@
 
     const channels = data.channels.map((channel) => `<option value="${esc(channel.id)}"${channel.usable ? '' : ' disabled'}>#${esc(channel.name)}${data.channels.filter(c=>c.name===channel.name).length>1?` · ID ${esc(channel.id)}`:''}${channel.usable ? '' : tr(' (izin bot kurang)',' (bot lacks permissions)')}</option>`).join('');
     const boxes = data.roles.map((role) => `<div style="display:flex;align-items:center;gap:8px;padding:4px 0"><label style="flex:1;display:flex;align-items:center;gap:6px"><input type="checkbox" name="roleIds" value="${esc(role.id)}" aria-label="${esc(`Role ${role.name} (ID ${role.id})${role.usable ? '' : ` — ${roleReason(role.reason)}`}`)}"${role.usable ? '' : ' disabled'}> `
-      + `${esc(role.name)}${role.usable ? '' : ` <small>— ${esc(roleReason(role.reason))}</small>`}</label>`
+      + `${esc(roleChoice(role, data.roles))}${role.usable ? '' : ` <small>— ${esc(roleReason(role.reason))}</small>`}</label>`
       + `<input name="emoji-${esc(role.id)}" maxlength="48" placeholder="emoji" aria-label="${esc(tr(`Emoji untuk ${role.name} (ID ${role.id})`,`Emoji for ${role.name} (ID ${role.id})`))}" style="width:130px"${role.usable ? '' : ' disabled'}></div>`).join('');
 
     return `<form class="f-form" id="selfRolesCreateForm">`
@@ -504,7 +506,8 @@
             const roleId = add.elements.roleId.value;
             if (!roleId) { status.textContent = tr('Pilih role terlebih dahulu.','Choose a role first.'); return; }
             const role = data.roles.find((entry) => entry.id === roleId);
-            if (!(await (window.ZentixDialog ? window.ZentixDialog.confirm(tr(`Tambahkan role "${role?.name ?? roleId}" ke panel "${label}"? Semua anggota yang melihat panel dapat mengambil role itu sendiri.`,`Add role "${role?.name ?? roleId}" to panel "${label}"? All members who see the panel can assign themselves that role.`)) : Promise.resolve(window.confirm(tr(`Tambahkan role "${role?.name ?? roleId}" ke panel "${label}"? Semua anggota yang melihat panel dapat mengambil role itu sendiri.`,`Add role "${role?.name ?? roleId}" to panel "${label}"? All members who see the panel can assign themselves that role.`)))))) return;
+            const roleLabel = role ? roleChoice(role, data.roles) : roleId;
+            if (!(await (window.ZentixDialog ? window.ZentixDialog.confirm(tr(`Tambahkan role "${roleLabel}" ke panel "${label}"? Semua anggota yang melihat panel dapat mengambil role itu sendiri.`,`Add role "${roleLabel}" to panel "${label}"? All members who see the panel can assign themselves that role.`)) : Promise.resolve(window.confirm(tr(`Tambahkan role "${roleLabel}" ke panel "${label}"? Semua anggota yang melihat panel dapat mengambil role itu sendiri.`,`Add role "${roleLabel}" to panel "${label}"? All members who see the panel can assign themselves that role.`)))))) return;
             change(status, () => request('POST', path + '/roles', { confirmed: true, revision: panel.revision, roleId }),
               (result) => `${tr('Role ditambahkan.','Role added.')} ${redrawText(result.message)}`);
           };
@@ -595,12 +598,13 @@
           if (!body.title || !body.description) { createStatus.textContent = tr('Judul dan deskripsi wajib diisi.','Title and description are required.'); return; }
           if (!body.roleIds.length) { createStatus.textContent = tr('Pilih minimal satu role.','Choose at least one role.'); return; }
           if (interactionType === 'reaction') {
-            const missing = items.filter((item) => !item.emoji).map((item) => data.roles.find((entry) => entry.id === item.roleId)?.name ?? item.roleId);
+            const missing = items.filter((item) => !item.emoji).map((item) => { const role=data.roles.find(entry=>entry.id===item.roleId); return role ? roleChoice(role,data.roles) : item.roleId; });
             if (missing.length) { createStatus.textContent = tr(`Mode Reaction memerlukan emoji untuk setiap role. Belum ada: ${missing.join(', ')}`,`Reaction mode requires an emoji for every role. Missing: ${missing.join(', ')}`); return; }
           }
           const channel = data.channels.find((entry) => entry.id === body.channelId);
-          const namesList = body.roleIds.map((id) => data.roles.find((entry) => entry.id === id)?.name ?? id).join(', ');
-          if (!(await (window.ZentixDialog ? window.ZentixDialog.confirm(tr(`Kirim panel "${body.title}" ke #${channel?.name ?? body.channelId}? Semua anggota yang melihatnya dapat mengambil sendiri role: ${namesList}.`,`Send panel "${body.title}" to #${channel?.name ?? body.channelId}? All members who see it can assign themselves these roles: ${namesList}.`)) : Promise.resolve(window.confirm(tr(`Kirim panel "${body.title}" ke #${channel?.name ?? body.channelId}? Semua anggota yang melihatnya dapat mengambil sendiri role: ${namesList}.`,`Send panel "${body.title}" to #${channel?.name ?? body.channelId}? All members who see it can assign themselves these roles: ${namesList}.`)))))) return;
+          const namesList = body.roleIds.map((id) => { const role=data.roles.find(entry=>entry.id===id); return role ? roleChoice(role,data.roles) : id; }).join(', ');
+          const channelName = channel ? `${channel.name}${data.channels.filter(other=>other.name===channel.name).length>1?` · ID ${channel.id}`:''}` : body.channelId;
+          if (!(await (window.ZentixDialog ? window.ZentixDialog.confirm(tr(`Kirim panel "${body.title}" ke #${channelName}? Semua anggota yang melihatnya dapat mengambil sendiri role: ${namesList}.`,`Send panel "${body.title}" to #${channelName}? All members who see it can assign themselves these roles: ${namesList}.`)) : Promise.resolve(window.confirm(tr(`Kirim panel "${body.title}" ke #${channelName}? Semua anggota yang melihatnya dapat mengambil sendiri role: ${namesList}.`,`Send panel "${body.title}" to #${channelName}? All members who see it can assign themselves these roles: ${namesList}.`)))))) return;
           change(createStatus, () => request('POST', '/panels', body),
             (result) => (result.reactionFailures?.length
               ? tr('Panel dibuat, tetapi sebagian emoji reaksi gagal ditempel. Tambahkan reaksi secara manual atau buat ulang panel.','Panel created, but some reactions could not be added. Add them manually or recreate the panel.')
