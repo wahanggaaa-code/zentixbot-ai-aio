@@ -114,9 +114,9 @@
         <div class="sa-vars" id="saVars">${VARIABLES.map((v) => `<button type="button" class="f-outline" data-var="${v}" aria-label="${esc(tr(`Sisipkan ${v}`,`Insert ${v}`))}">${v}</button>`).join('')}</div>
         <fieldset class="f-field" aria-labelledby="saAiTitle" aria-describedby="saAiHint"><span><b id="saAiTitle">${tr('Ringkasan AI','AI summary')}</b><small id="saAiHint">${tr('Ringkasan opsional 1–2 kalimat untuk video dan Shorts baru, menggunakan AI bot. Judul dan deskripsi dikirim ke provider AI; ringkasan diminta dalam bahasa Indonesia.','Optional 1–2 sentence summary for new videos and Shorts, using the bot’s AI. The title and description are sent to the AI provider; the summary is requested in Indonesian.')}</small></span>
           <span class="f-check"><input type="checkbox" name="aiSummaryEnabled" id="saAi" aria-label="${tr('Ringkasan AI','AI summary')}" aria-describedby="saAiHint"><span class="fake-switch"></span></span></fieldset>
-        <div class="f-form-actions"><span id="saFormState">${tr('✳ SIMPAN UNTUK MENERAPKAN','✳ SAVE TO APPLY')}</span>
+        <div class="f-form-actions"><span id="saFormState">${tr('SIMPAN UNTUK MENERAPKAN','SAVE TO APPLY')}</span>
           <div><button type="button" class="f-outline" id="saCancelEdit" hidden>${tr('BATAL UBAH','CANCEL EDIT')}</button>
-          <button class="f-primary" type="submit" id="saSave">${tr('SIMPAN FEED ↗','SAVE FEED ↗')}</button></div></div>
+          <button class="f-primary" type="submit" id="saSave">${tr('SIMPAN FEED','SAVE FEED')}</button></div></div>
       </form>
     </section>
     <aside><section class="f-panel"><div class="f-panel-head"><div><h2>Live preview</h2><p>${tr('Perkiraan tampilan pesan di Discord; teks bawaan bot tetap berbahasa Indonesia.','Approximate appearance of the Discord message. Default bot message text remains Indonesian.')}</p></div><span>⊚</span></div>
@@ -131,7 +131,7 @@
           <small id="saPreviewFooter" style="color:#a6a7af;font-size:9px">-# Zentix Social Alerts</small>
         </div>
       </div></div>
-      <div class="f-preview-action"><button type="button" id="saTestPreview" class="f-outline">${tr('KIRIM TES ↗','SEND TEST ↗')}</button></div>
+      <div class="f-preview-action"><button type="button" id="saTestPreview" class="f-outline">${tr('KIRIM TES','SEND TEST')}</button></div>
       <p class="f-muted">${tr('Tes mengirim <b>pesan sungguhan</b> ke channel target dengan pengaturan yang tersimpan — tanpa mention (tes tidak pernah nge-ping, termasuk @everyone).','The test sends a <b>real message</b> to the target channel using saved settings — without mentions (tests never ping, including @everyone).')}</p>
     </aside>
   </div>
@@ -254,7 +254,7 @@
       $('#saInputRow').hidden = false;
       $('#saLabelRow').hidden = false;
       $('#saCancelEdit').hidden = true;
-      $('#saSave').textContent = tr('SIMPAN FEED ↗','SAVE FEED ↗');
+      $('#saSave').textContent = tr('SIMPAN FEED','SAVE FEED');
       clearUnavailable($('#saTarget'));
       clearUnavailable($('#saMention'));
       form.reset();
@@ -289,7 +289,7 @@
       $('#saInputRow').hidden = true;
       $('#saLabelRow').hidden = true;
       $('#saCancelEdit').hidden = false;
-      $('#saSave').textContent = tr('SIMPAN PERUBAHAN ↗','SAVE CHANGES ↗');
+      $('#saSave').textContent = tr('SIMPAN PERUBAHAN','SAVE CHANGES');
       const color = /^#[0-9a-f]{6}$/i.test(alert.accentColor || '') ? alert.accentColor : '';
       if (window.ZentixGreetingColor) window.ZentixGreetingColor.set(form,color); else form.elements.accentColor.value=color;
       form.elements.customMessage.value = alert.customMessage || '';

@@ -36,24 +36,24 @@
  ];
 
  function render(){
-  return `<section class="placeholder-head"><div class="kicker"><span class="pill-num">04 / ${tr('PENGATURAN','SETTINGS')}</span><i></i> YOUR CONTROL CENTER</div>`
+  return `<section class="placeholder-head"><div class="kicker"><span class="pill-num">${tr('PENGATURAN','SETTINGS')}</span><i></i> YOUR CONTROL CENTER</div>`
    +`<h1>${tr('Semua dalam','Everything under')}<br>${tr('kendali.','control.')}</h1><p>${tr('Kondisi server, penyimpanan dan akses dashboard saat ini. Owner bot juga dapat mengatur status bot di sini.','Current server status, storage and dashboard access. The bot owner can also configure bot presence here.')}</p></section>`
    +`<div class="f-layout" style="padding-top:25px"><div>`
    +`<section class="f-panel"><div class="f-panel-head"><div><h2>${tr('Server di Discord','Discord server')}</h2>`
-   +`<p>${tr('Yang dilihat bot di Discord saat halaman dimuat, bukan data tersimpan.','What the bot sees on Discord when the page loads, not stored data.')}</p></div><span>✳</span></div>`
+   +`<p>${tr('Yang dilihat bot di Discord saat halaman dimuat, bukan data tersimpan.','What the bot sees on Discord when the page loads, not stored data.')}</p></div></div>`
    +`<div id="settingsDiscord" aria-live="polite">${tr('Memuat…','Loading…')}</div></section>`
    +`<section class="f-panel" style="margin-top:18px"><div class="f-panel-head"><div><h2>${tr('Status bot','Bot presence')}</h2><p>${tr('Atur status online dan tulisan di profil Discord · khusus owner bot.','Set the online status and Discord profile activity · bot owner only.')}</p></div><span>◌</span></div>`
    +`<div id="settingsPresence" aria-live="polite">${tr('Memuat…','Loading…')}</div></section>`
    +`<section class="f-panel" style="margin-top:18px"><div class="f-panel-head"><div><h2>${tr('Tempat mengatur','Where to configure')}</h2>`
-   +`<p>${tr('Pengaturan tersimpan ada di halaman masing-masing fitur.','Saved settings are on each feature page.')}</p></div><span>✳</span></div>`
+   +`<p>${tr('Pengaturan tersimpan ada di halaman masing-masing fitur.','Saved settings are on each feature page.')}</p></div></div>`
    +`<div class="f-table-wrap"><table class="f-table f-table-fit"><tbody>${SHORTCUTS.map(([go,title,desc])=>`<tr><td><b>${title}</b><br><small>${desc}</small></td>`
-    +`<td><button type="button" class="f-link" data-go="${go}">${tr('BUKA ↗','OPEN ↗')}</button></td></tr>`).join('')}</tbody></table></div></section>`
+    +`<td><button type="button" class="f-link" data-go="${go}">${tr('BUKA','OPEN')}</button></td></tr>`).join('')}</tbody></table></div></section>`
    +`</div><aside>`
-   +`<section class="f-panel"><div class="f-panel-head"><div><h2>${tr('Penyimpanan','Storage')}</h2><p>${tr('Database yang dipakai bot.','Database used by the bot.')}</p></div><span>✳</span></div>`
+   +`<section class="f-panel"><div class="f-panel-head"><div><h2>${tr('Penyimpanan','Storage')}</h2><p>${tr('Database yang dipakai bot.','Database used by the bot.')}</p></div></div>`
    +`<div id="settingsStorage" aria-live="polite">${tr('Memuat…','Loading…')}</div></section>`
-   +`<section class="f-panel" style="margin-top:18px"><div class="f-panel-head"><div><h2>${tr('Akses &amp; izin','Access &amp; permissions')}</h2><p>${tr('Mengapa sesi ini boleh membuka dashboard.','Why this session can access the dashboard.')}</p></div><span>✳</span></div>`
+   +`<section class="f-panel" style="margin-top:18px"><div class="f-panel-head"><div><h2>${tr('Akses &amp; izin','Access &amp; permissions')}</h2><p>${tr('Mengapa sesi ini boleh membuka dashboard.','Why this session can access the dashboard.')}</p></div></div>`
    +`<div id="settingsAccess" aria-live="polite">${tr('Memuat…','Loading…')}</div></section>`
-   +`<section class="f-panel" style="margin-top:18px"><div class="f-panel-head"><div><h2>${tr('Koneksi hosting','Hosting connection')}</h2><p>${tr('Sumber statistik resource. Khusus owner bot.','Source of resource statistics. Bot owner only.')}</p></div><span>✳</span></div>`
+   +`<section class="f-panel" style="margin-top:18px"><div class="f-panel-head"><div><h2>${tr('Koneksi hosting','Hosting connection')}</h2><p>${tr('Sumber statistik resource. Khusus owner bot.','Source of resource statistics. Bot owner only.')}</p></div></div>`
    +`<div id="settingsHosting" aria-live="polite">${tr('Memuat…','Loading…')}</div></section>`
    +`<p class="f-muted" id="settingsReadAt"></p>`
    +`<button type="button" class="f-outline" id="settingsReload">${tr('MUAT ULANG ↻','RELOAD ↻')}</button>`
@@ -109,7 +109,7 @@
    const missing=bot.permissions.items.filter(item=>!item.granted);
    const summary=bot.permissions.administrator
     ?tr('Bot memiliki izin Administrator, sehingga semua izin di bawah berlaku.','The bot has Administrator permission, so all permissions below apply.')
-    :missing.length?`${missing.length} ${tr('izin belum dimiliki bot di tingkat server. Fitur yang memakainya bisa gagal.','server-level permissions are missing. Features that use them may fail.')}`
+    :missing.length?`${missing.length} ${tr('izin belum dimiliki bot di tingkat server. Fitur yang memakainya bisa gagal.',missing.length===1?'server-level permission is missing. Features that use it may fail.':'server-level permissions are missing. Features that use them may fail.')}`
     :tr('Semua izin yang diperiksa dimiliki bot di tingkat server.','The bot has all checked permissions at server level.');
    permissions=`<p id="settingsPermissionSummary" class="f-muted" role="status">${esc(summary)}</p>`
     +`<div class="f-table-wrap"><table class="f-table f-table-fit"><thead><tr><th>${tr('IZIN BOT','BOT PERMISSION')}</th><th>${tr('CONTOH PEMAKAI','EXAMPLE USE')}</th><th>STATUS</th></tr></thead><tbody>`
@@ -137,7 +137,7 @@
  function accessHtml(access,dashboard){
   const basis=access.isGuildOwner?tr('Owner server','Server owner'):access.isAdministrator?tr('Memiliki izin Administrator','Has Administrator permission'):tr('Tidak dapat dipastikan','Cannot determine');
   const roles=access.adminRoles.length
-   ?`<ul>${access.adminRoles.map(role=>`<li>${esc(role.name)}${role.managed?tr(' <small>(milik bot/integrasi)</small>',' <small>(bot/integration managed)</small>'):''}</li>`).join('')}</ul>`
+   ?`<ul>${access.adminRoles.map(role=>`<li>${esc(role.name||tr('Peran tanpa nama','Unnamed role'))}${(!role.name||access.adminRoles.filter(other=>other.name===role.name).length>1)&&role.id?` · ID ${esc(role.id)}`:''}${role.managed?tr(' <small>(milik bot/integrasi)</small>',' <small>(bot/integration managed)</small>'):''}</li>`).join('')}</ul>`
     +(access.adminRolesTruncated?`<p class="f-muted">${tr('Daftar dipotong; ada peran lain.','List truncated; more roles exist.')}</p>`:'')
    :`<p class="f-muted">${tr('Tidak ada peran dengan izin Administrator. Hanya owner server yang dapat masuk.','No roles have Administrator permission. Only the server owner can sign in.')}</p>`;
   return table([
@@ -175,7 +175,7 @@
    if(!hosting.configured){slot.innerHTML=`<p class="f-muted">${tr('Belum dikonfigurasi. Panel, ID server dan kunci API hosting diatur lewat environment bot, bukan dari dashboard.','Not configured. The panel, server ID and hosting API key are configured in the bot environment, not in the dashboard.')}</p>`;return}
    slot.innerHTML=`<p class="f-muted">${tr('Dikonfigurasi lewat environment bot. Nilainya tidak ditampilkan.','Configured in the bot environment. Values are not displayed.')}</p>`
     +'<p id="settingsHostingStatus" class="f-muted" role="status"></p>'
-    +`<button type="button" class="f-outline" id="settingsHostingCheck">${tr('PERIKSA KONEKSI ↗','CHECK CONNECTION ↗')}</button>`;
+    +`<button type="button" class="f-outline" id="settingsHostingCheck">${tr('PERIKSA KONEKSI','CHECK CONNECTION')}</button>`;
    const status=slot.querySelector('#settingsHostingStatus'),button=slot.querySelector('#settingsHostingCheck');
    button.onclick=async()=>{
     button.disabled=true;status.textContent=tr('Menghubungi panel hosting…','Contacting hosting panel…');
@@ -187,26 +187,28 @@
    };
   }
 
+  let presenceVersion=0;
   async function bindPresence(isOwner){
-   const slot=slots.presence;
+   const slot=slots.presence,version=++presenceVersion;
    if(!isOwner){slot.textContent=tr('Hanya owner bot yang dapat mengubah status bot.','Only the bot owner can change bot presence.');return;}
    slot.textContent=tr('Memuat status bot…','Loading bot presence…');
    let data;
-   try{data=await request('presence')}catch(e){if(slot.isConnected)slot.textContent=e.message;return;}
-   if(!slot.isConnected)return;
+   try{data=await request('presence')}catch(e){if(slot.isConnected&&version===presenceVersion){slot.textContent='';const message=document.createElement('p');message.className='f-muted';message.textContent=e.message;slot.append(message);const retry=document.createElement('button');retry.type='button';retry.className='f-outline';retry.textContent=tr('COBA LAGI','RETRY');retry.onclick=()=>bindPresence(true);slot.append(retry)}return;}
+   if(!slot.isConnected||version!==presenceVersion)return;
    const {status,text}=data.settings;
    const labels={online:'Online',idle:tr('Tidak aktif','Idle'),dnd:tr('Jangan ganggu','Do Not Disturb'),invisible:tr('Tidak terlihat','Invisible')};
-   slot.innerHTML=`<form id="botPresenceForm" class="f-form"><label class="f-field"><span><b>${tr('Status online','Online status')}</b><small>${tr('Tidak terlihat membuat bot tampak offline.','Invisible makes the bot appear offline.')}</small></span><select name="status">${Object.entries(labels).map(([id,label])=>`<option value="${id}" ${id===status?'selected':''}>${label}</option>`).join('')}</select></label><label class="f-field"><span><b>${tr('Tulisan status','Status text')}</b><small>${tr('Maksimal 128 karakter. Kosongkan untuk menghapus tulisan.','Maximum 128 characters. Leave empty to clear the text.')}</small></span><input name="text" type="text" maxlength="128" value="${esc(text)}" placeholder="${tr('mis. Siap membantu ✨','e.g. Ready to help ✨')}"></label><div class="f-feature-note"><p><b>${tr('Preview profil bot','Bot profile preview')}</b><br><span id="presencePreviewStatus"></span><br><span id="presencePreviewText"></span></p></div><div class="f-form-actions"><span>✳ ${tr('TERSIMPAN DI DATABASE','SAVED IN DATABASE')}</span><button type="submit" class="f-primary">${tr('SIMPAN STATUS ↗','SAVE STATUS ↗')}</button></div></form><p class="f-muted" id="presenceResult" role="status"></p>`;
+   slot.innerHTML=`<form id="botPresenceForm" class="f-form"><label class="f-field"><span><b>${tr('Status online','Online status')}</b><small>${tr('Tidak terlihat membuat bot tampak offline.','Invisible makes the bot appear offline.')}</small></span><select name="status">${Object.entries(labels).map(([id,label])=>`<option value="${id}" ${id===status?'selected':''}>${label}</option>`).join('')}</select></label><label class="f-field"><span><b>${tr('Tulisan status','Status text')}</b><small>${tr('Maksimal 128 karakter. Kosongkan untuk menghapus tulisan.','Maximum 128 characters. Leave empty to clear the text.')}</small></span><input name="text" type="text" maxlength="128" value="${esc(text)}" placeholder="${tr('mis. Siap membantu ✨','e.g. Ready to help ✨')}"></label><div class="f-feature-note"><p><b>${tr('Preview profil bot','Bot profile preview')}</b><br><span id="presencePreviewStatus"></span><br><span id="presencePreviewText"></span></p></div><div class="f-form-actions"><span>${tr('TERSIMPAN DI DATABASE','SAVED IN DATABASE')}</span><button type="submit" class="f-primary">${tr('SIMPAN STATUS','SAVE STATUS')}</button></div></form><p class="f-muted" id="presenceResult" role="status"></p>`;
    const form=slot.querySelector('form'),out=slot.querySelector('#presenceResult'),button=form.querySelector('button');
    function preview(){slot.querySelector('#presencePreviewStatus').textContent=labels[form.elements.status.value]||'—';slot.querySelector('#presencePreviewText').textContent=form.elements.text.value.trim()||tr('Tanpa tulisan status','No status text');}
    form.addEventListener('input',preview);form.addEventListener('change',preview);preview();
-   form.onsubmit=async e=>{e.preventDefault();button.disabled=true;out.textContent=tr('Menyimpan…','Saving…');
-    try{const result=await request('presence',{method:'PATCH',body:JSON.stringify({status:form.elements.status.value,text:form.elements.text.value})});form.elements.text.value=result.settings.text;preview();out.textContent=result.sent?tr('Tersimpan dan dikirim ke Discord. Tampilan dapat membutuhkan waktu untuk diperbarui.','Saved and sent to Discord. The display may take time to update.'):tr('Tersimpan, tetapi belum dapat dikirim ke Discord. Status akan dicoba lagi saat bot restart atau Anda menyimpan ulang.','Saved, but could not be sent to Discord yet. It will be retried when the bot restarts or you save again.');}
-    catch(error){out.textContent=error.message}finally{button.disabled=false}
+   form.onsubmit=async e=>{e.preventDefault();const payload={status:form.elements.status.value,text:form.elements.text.value};button.disabled=true;form.elements.status.disabled=true;form.elements.text.disabled=true;reload.disabled=true;out.textContent=tr('Menyimpan…','Saving…');
+    try{const result=await request('presence',{method:'PATCH',body:JSON.stringify(payload)});if(!form.isConnected||version!==presenceVersion)return;form.elements.text.value=result.settings.text;preview();out.textContent=result.sent?tr('Tersimpan dan dikirim ke Discord. Tampilan dapat membutuhkan waktu untuk diperbarui.','Saved and sent to Discord. The display may take time to update.'):tr('Tersimpan, tetapi belum dapat dikirim ke Discord. Status akan dicoba lagi saat bot restart atau Anda menyimpan ulang.','Saved, but could not be sent to Discord yet. It will be retried when the bot restarts or you save again.');}
+    catch(error){if(form.isConnected&&version===presenceVersion)out.textContent=error.message}finally{button.disabled=false;form.elements.status.disabled=false;form.elements.text.disabled=false;if(form.isConnected&&version===presenceVersion)reload.disabled=false}
    };
   }
 
   async function load(){
+   presenceVersion++;
    reload.disabled=true;
    for(const slot of Object.values(slots))slot.textContent=tr('Memuat…','Loading…');
    readAt.textContent='';

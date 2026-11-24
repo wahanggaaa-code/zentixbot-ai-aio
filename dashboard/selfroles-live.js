@@ -36,6 +36,7 @@
     return `<div style="margin:14px 0;max-width:440px">`
       + `<p class="f-muted" style="margin:0 0 6px;font-size:12px;text-transform:uppercase;letter-spacing:.06em">${tr('Pratinjau tampilan pesan','Message appearance preview')}</p>`
       + `<div data-card style="background:#2b2d31;border:1px solid #1e1f22;border-left:4px solid ${PREVIEW_ACCENT};border-radius:14px;overflow:hidden;color:#dbdee1"></div>`
+      + `<p data-section-label-help class="f-muted" role="status" hidden></p>`
       + `<p class="f-muted" style="margin:6px 0 0;font-size:11px">${tr('Mode perilaku tidak terlihat di pesan. Isi form di atas mengubah pratinjau ini.','Behavior mode is not shown in the message. The form above updates this preview.')}</p>`
       + `</div>`;
   }
@@ -53,6 +54,13 @@
     const description = settings.elements.description.value.trim() || 'Select your roles.';
     const interactionType = settings.elements.interactionType.value;
     const behaviorMode = settings.elements.behaviorMode.value;
+    const sectionHelp=scope.querySelector('[data-section-label-help]');
+    if(sectionHelp){
+      sectionHelp.hidden=interactionType!=='section_buttons';
+      const label=behaviorMode==='verify'?'Verifikasi':behaviorMode==='unique'?'Ambil':'Ambil/Lepas';
+      const meaning=behaviorMode==='verify'?'Verify':behaviorMode==='unique'?'Take':'Take/Remove';
+      sectionHelp.textContent=tr(`Tombol di Discord memakai label bahasa Indonesia: ${label}.`,`The Discord button label is in Indonesian: ${label} (${meaning}).`);
+    }
     const maxSelect = Math.max(1, Math.min(25, Number(settings.elements.maxSelect?.value) || 1));
     const placeholder = settings.elements.dropdownPlaceholder?.value.trim() || 'Select your roles';
     const accentRaw = (settings.elements.accentColor.value || '').trim();
@@ -219,10 +227,10 @@
 
   function render() {
     return `<div id="selfRolesLive"><section class="f-panel"><div class="f-panel-head"><div><h2>${tr('Panel tersimpan','Saved panels')}</h2>`
-      + `<p>${tr('Pesan interaktif tempat anggota memilih sendiri role-nya: tombol, daftar section, dropdown atau reaksi klasik.','Interactive messages where members choose roles: buttons, section lists, dropdowns or classic reactions.')}</p></div><span>✳</span></div>`
+      + `<p>${tr('Pesan interaktif tempat anggota memilih sendiri role-nya: tombol, daftar section, dropdown atau reaksi klasik.','Interactive messages where members choose roles: buttons, section lists, dropdowns or classic reactions.')}</p></div></div>`
       + `<div id="selfRolesList" aria-live="polite">${tr('Memuat…','Loading…')}</div></section>`
       + `<section class="f-panel" style="margin-top:18px"><div class="f-panel-head"><div><h2>${tr('Buat panel','Create panel')}</h2>`
-      + `<p>${tr('Mengirim pesan baru ke channel yang dipilih.','Sends a new message to the selected channel.')}</p></div><span>✳</span></div>`
+      + `<p>${tr('Mengirim pesan baru ke channel yang dipilih.','Sends a new message to the selected channel.')}</p></div></div>`
       + `<div id="selfRolesCreate" aria-live="polite">${tr('Memuat…','Loading…')}</div></section>`
       + `<div class="f-callout">ⓘ &nbsp; Mode <b>Toggle</b>: ${tr('klik/pilih lagi untuk lepas.','click/select again to remove.')} <b>Unique</b>: ${tr('hanya 1 role dari panel ini.','only one role from this panel.')} <b>Verify</b>: ${tr('hanya bisa menambah.','add only.')} `
       + `${tr('Pada tipe','For')} <b>Dropdown</b>, ${tr('role panel yang tidak terpilih akan dilepas (kecuali mode Verify).','unselected panel roles are removed (except in Verify mode).')} `
@@ -245,23 +253,26 @@
     const free = data.roles.filter((role) => role.usable && !onPanel.has(role.id));
     const place = panel.channelName === null ? tr('Channel tidak terlihat oleh bot','Channel not visible to the bot') : `#${panel.channelName}`;
     const panelName = panel.title || tr('Panel tanpa judul','Untitled panel');
+    const knownRoles = [...data.roles, ...panel.roles.filter(role => !data.roles.some(other => other.id === role.id))];
+    const roleSummary = role => role.name === null ? roleName(role) : roleChoice(role, knownRoles);
     const roles = panel.roles.map((role) => `<li style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:6px 0">`
-      + `<span><b>${esc(roleName(role))}</b>${role.ok ? '' : ` <small role="note">⚠ ${tr('Tidak dapat diberikan:','Cannot be assigned:')} ${esc(roleReason(role.reason))}</small>`}</span>`
+      + `<span data-role-summary><b>${esc(roleSummary(role))}</b>${role.ok ? '' : ` <small role="note">⚠ ${tr('Tidak dapat diberikan:','Cannot be assigned:')} ${esc(roleReason(role.reason))}</small>`}</span>`
       + `<button type="button" class="f-outline" data-remove="${esc(role.id)}" aria-label="${esc(tr(`Lepas role ${roleName(role)} (ID ${role.id})`,`Remove role ${roleName(role)} (ID ${role.id})`))}"${panel.roles.length < 2 ? ` disabled title="${tr('Role terakhir tidak dapat dilepas; hapus panelnya.','The last role cannot be removed; delete the panel instead.')}"` : ''}>${tr('LEPAS','REMOVE')}</button></li>`).join('');
 
     const interactionType = panel.interactionType || 'buttons';
     const behaviorMode = panel.behaviorMode || 'toggle';
-    const requiredRole = panel.requiredRoleId ? (data.roles.find((entry) => entry.id === panel.requiredRoleId)?.name ?? panel.requiredRoleId) : null;
+    const requiredEntry = panel.requiredRoleId ? data.roles.find((entry) => entry.id === panel.requiredRoleId) : null;
+    const requiredRole = panel.requiredRoleId ? (requiredEntry ? roleChoice(requiredEntry, knownRoles) : `${tr('Role tersimpan tidak ada dalam daftar','Saved role not in the list')} · ID ${panel.requiredRoleId}`) : null;
 
     const add = panel.roles.length >= data.limits.roles ? `<p class="f-muted">${tr(`Panel sudah memuat ${esc(data.limits.roles)} role (batas maksimum).`,`The panel already has ${esc(data.limits.roles)} roles (maximum).`)}</p>`
       : free.length ? `<form class="f-form" data-add="${index}"><label class="f-field"><span><b>${tr('Tambah role','Add role')}</b><small>${tr('Hanya role yang boleh ditawarkan dan belum ada di panel ini.','Only eligible roles not already on this panel.')}</small></span>`
         + `<select name="roleId"><option value="">${tr('Pilih role','Choose role')}</option>${free.map((role) => `<option value="${esc(role.id)}">${esc(roleChoice(role, data.roles))}</option>`).join('')}</select></label>`
-        + `<div class="f-form-actions"><span>${tr('MENGUBAH PESAN DI DISCORD','CHANGES THE DISCORD MESSAGE')}</span><button type="submit" class="f-primary" aria-label="${esc(tr(`Tambah role ke panel ${panelName} (ID pesan ${panel.messageId})`,`Add role to panel ${panelName} (message ID ${panel.messageId})`))}">${tr('TAMBAH ROLE ↗','ADD ROLE ↗')}</button></div></form>`
+        + `<div class="f-form-actions"><span>${tr('MENGUBAH PESAN DI DISCORD','CHANGES THE DISCORD MESSAGE')}</span><button type="submit" class="f-primary" aria-label="${esc(tr(`Tambah role ke panel ${panelName} (ID pesan ${panel.messageId})`,`Add role to panel ${panelName} (message ID ${panel.messageId})`))}">${tr('TAMBAH ROLE','ADD ROLE')}</button></div></form>`
         : `<p class="f-muted">${tr('Tidak ada role lain yang boleh ditawarkan.','No other roles are eligible to be offered.')}</p>`;
 
     const settings = `<p><b>${tr('Tipe:','Type:')}</b> ${esc(TYPE_TEXT[interactionType] || interactionType)} · <b>Mode:</b> ${esc(MODE_TEXT[behaviorMode] || behaviorMode)}`
       + (interactionType === 'dropdown' ? ` · <b>${tr('Maks pilihan:','Max selections:')}</b> ${esc(panel.maxSelect ?? 1)}` : '') + `</p>`
-      + (requiredRole ? `<p><b>${tr('Butuh role:','Required role:')}</b> ${esc(requiredRole)}</p>` : '')
+      + (requiredRole ? `<p data-required-role><b>${tr('Butuh role:','Required role:')}</b> ${esc(requiredRole)}</p>` : '')
       + (bannerText(panel.bannerUrl) || '')
       + (panel.accentColor ? `<p><b>${tr('Warna:','Color:')}</b> <span style="color:#${esc(panel.accentColor)}">#${esc(panel.accentColor)}</span></p>` : '');
 
@@ -269,7 +280,7 @@
     const itemRows = panel.roles.map((role) => {
       const item = role.item || {};
       return `<li data-item="${esc(role.id)}" style="display:grid;grid-template-columns:auto 2fr 2fr 1.6fr 110px;gap:6px;align-items:center;padding:6px 0;border-bottom:1px dashed var(--softline)">`
-        + `<span style="white-space:nowrap"><button type="button" class="f-outline" data-move="up" aria-label="${esc(tr(`Naikkan role ${roleName(role)} (ID ${role.id})`,`Move role ${roleName(role)} up (ID ${role.id})`))}">↑</button> <button type="button" class="f-outline" data-move="down" aria-label="${esc(tr(`Turunkan role ${roleName(role)} (ID ${role.id})`,`Move role ${roleName(role)} down (ID ${role.id})`))}">↓</button></span>`
+        + `<span><b data-item-role-name>${esc(roleSummary(role))}</b><br><button type="button" class="f-outline" data-move="up" aria-label="${esc(tr(`Naikkan role ${roleName(role)} (ID ${role.id})`,`Move role ${roleName(role)} up (ID ${role.id})`))}">↑</button> <button type="button" class="f-outline" data-move="down" aria-label="${esc(tr(`Turunkan role ${roleName(role)} (ID ${role.id})`,`Move role ${roleName(role)} down (ID ${role.id})`))}">↓</button></span>`
         + `<input aria-label="${esc(tr(`Label role ${roleName(role)} (ID ${role.id})`,`Label for role ${roleName(role)} (ID ${role.id})`))}" name="label" maxlength="80" placeholder="${esc(roleName(role))}" value="${esc(item.label ?? '')}">`
         + `<input aria-label="${esc(tr(`Deskripsi role ${roleName(role)} (ID ${role.id})`,`Description for role ${roleName(role)} (ID ${role.id})`))}" name="description" maxlength="100" placeholder="${tr('deskripsi','description')}" value="${esc(item.description ?? '')}">`
         + `<input aria-label="${esc(tr(`Emoji role ${roleName(role)} (ID ${role.id})`,`Emoji for role ${roleName(role)} (ID ${role.id})`))}" name="emoji" maxlength="48" placeholder="${tr('🎭 atau &lt;:nama:id&gt;','🎭 or &lt;:name:id&gt;')}" value="${esc(item.emoji ?? '')}">`
@@ -277,9 +288,9 @@
         + `</li>`;
     }).join('');
     const itemsForm = `<form class="f-form" data-items="${index}">`
-      + `<div class="f-field"><span><b>${tr('Atur item','Configure items')}</b><small>${tr('Urutan tampil, label, deskripsi, emoji dan gaya tombol per role. Emoji wajib dan berbeda untuk mode Reaction.','Display order, label, description, emoji and button style for each role. Reaction mode requires a unique emoji for each item.')}</small></span>`
+      + `<div class="f-field" role="group" aria-label="${esc(tr(`Atur item panel ${panelName} (ID pesan ${panel.messageId})`,`Configure items for panel ${panelName} (message ID ${panel.messageId})`))}" aria-describedby="selfRolesItemHelp_${index}"><span><b>${tr('Atur item','Configure items')}</b><small id="selfRolesItemHelp_${index}">${tr('Urutan tampil, label, deskripsi, emoji dan gaya tombol per role. Emoji wajib dan berbeda untuk mode Reaction.','Display order, label, description, emoji and button style for each role. Reaction mode requires a unique emoji for each item.')}</small></span>`
       + `<ol style="list-style:none;margin:0;padding:0" data-itemrows>${itemRows}</ol></div>`
-      + `<div class="f-form-actions"><span>${tr('MENGUBAH PESAN DI DISCORD','CHANGES THE DISCORD MESSAGE')}</span><button type="submit" class="f-primary" aria-label="${esc(tr(`Simpan item panel ${panelName} (ID pesan ${panel.messageId})`,`Save items for panel ${panelName} (message ID ${panel.messageId})`))}">${tr('SIMPAN ITEM ↗','SAVE ITEMS ↗')}</button></div></form>`;
+      + `<div class="f-form-actions"><span>${tr('MENGUBAH PESAN DI DISCORD','CHANGES THE DISCORD MESSAGE')}</span><button type="submit" class="f-primary" aria-label="${esc(tr(`Simpan item panel ${panelName} (ID pesan ${panel.messageId})`,`Save items for panel ${panelName} (message ID ${panel.messageId})`))}">${tr('SIMPAN ITEM','SAVE ITEMS')}</button></div></form>`;
 
     const typeOptions = Object.entries(TYPE_TEXT).map(([value, label]) => `<option value="${value}"${value === interactionType ? ' selected' : ''}>${esc(label)}</option>`).join('');
     const modeOptions = Object.entries(MODE_TEXT).map(([value, label]) => `<option value="${value}"${value === behaviorMode ? ' selected' : ''}>${esc(label)}</option>`).join('');
@@ -300,12 +311,12 @@
       + `<label class="f-field data-dropdown-only"><span><b>${tr('Maks pilihan','Maximum selections')}</b><small>${tr('Dropdown saja: 1–25.','Dropdown only: 1–25.')}</small></span><input name="maxSelect" type="number" min="1" max="25" value="${esc(panel.maxSelect ?? 1)}"></label>`
       + `<label class="f-field data-dropdown-only"><span><b>${tr('Placeholder dropdown','Dropdown placeholder')}</b><small>${tr('Teks sebelum dipilih.','Text before selection.')}</small></span><input name="dropdownPlaceholder" maxlength="100" value="${esc(panel.dropdownPlaceholder ?? '')}"></label>`
       + `<label class="f-field"><span><b>${tr('Butuh role','Required role')}</b><small>${tr('(opsional) Hanya anggota dengan role ini yang bisa memakai panel.','(optional) Only members with this role can use the panel.')}</small></span><select name="requiredRoleId">${requiredRoleOptions(panel.requiredRoleId ?? '', data.roles)}</select></label>`
-      + `<div class="f-form-actions"><span>${tr('MENGUBAH PESAN DI DISCORD','CHANGES THE DISCORD MESSAGE')}</span><button type="submit" class="f-primary" aria-label="${esc(tr(`Simpan pengaturan panel ${panelName} (ID pesan ${panel.messageId})`,`Save settings for panel ${panelName} (message ID ${panel.messageId})`))}">${tr('SIMPAN PENGATURAN ↗','SAVE SETTINGS ↗')}</button></div></form>`
+      + `<div class="f-form-actions"><span>${tr('MENGUBAH PESAN DI DISCORD','CHANGES THE DISCORD MESSAGE')}</span><button type="submit" class="f-primary" aria-label="${esc(tr(`Simpan pengaturan panel ${panelName} (ID pesan ${panel.messageId})`,`Save settings for panel ${panelName} (message ID ${panel.messageId})`))}">${tr('SIMPAN PENGATURAN','SAVE SETTINGS')}</button></div></form>`
       + `<p><b>${tr('Role di panel','Roles on panel')} (${esc(panel.roles.length)} / ${esc(data.limits.roles)})</b></p><ul style="list-style:none;margin:0;padding:0">${roles}</ul>${add}`
       + itemsForm
       + previewShell()
       + `<div class="f-form-actions"><span></span><span>`
-      + (panel.status === 'message_missing' ? `<button type="button" class="f-outline" data-repost="${index}" aria-label="${esc(tr(`Pasang ulang panel ${panelName} (ID pesan ${panel.messageId})`,`Repost panel ${panelName} (message ID ${panel.messageId})`))}">${tr('PASANG ULANG ↗','REPOST ↗')}</button> ` : '')
+      + (panel.status === 'message_missing' ? `<button type="button" class="f-outline" data-repost="${index}" aria-label="${esc(tr(`Pasang ulang panel ${panelName} (ID pesan ${panel.messageId})`,`Repost panel ${panelName} (message ID ${panel.messageId})`))}">${tr('PASANG ULANG','REPOST')}</button> ` : '')
       + (panel.status === 'ok' ? `<button type="button" class="f-outline" data-refresh="${index}" aria-label="${esc(tr(`Segarkan pesan panel ${panelName} (ID pesan ${panel.messageId})`,`Refresh panel message ${panelName} (message ID ${panel.messageId})`))}">${tr('SEGARKAN PESAN ↻','REFRESH MESSAGE ↻')}</button> ` : '')
       + `<button type="button" class="f-outline" data-delete="${index}" aria-label="${esc(tr(`Hapus panel ${panelName} (ID pesan ${panel.messageId})`,`Delete panel ${panelName} (message ID ${panel.messageId})`))}">${tr('HAPUS PANEL','DELETE PANEL')}</button></span></div></div>`;
   }
@@ -334,10 +345,10 @@
       + `<label class="f-field data-dropdown-only"><span><b>${tr('Maks pilihan','Maximum selections')}</b><small>${tr('Dropdown saja: 1–25.','Dropdown only: 1–25.')}</small></span><input name="maxSelect" type="number" min="1" max="25" value="1"></label>`
       + `<label class="f-field data-dropdown-only"><span><b>${tr('Placeholder dropdown','Dropdown placeholder')}</b><small>${tr('Teks sebelum dipilih.','Text before selection.')}</small></span><input name="dropdownPlaceholder" maxlength="100" placeholder="${tr('Pilih role kamu','Select your roles')}"></label>`
       + `<label class="f-field"><span><b>${tr('Butuh role','Required role')}</b><small>${tr('(opsional) Hanya anggota dengan role ini yang bisa memakai panel.','(optional) Only members with this role can use the panel.')}</small></span><select name="requiredRoleId">${requiredRoleOptions('', data.roles)}</select></label>`
-      + `<div class="f-field"><span><b>${tr('Role yang ditawarkan','Offered roles')}</b><small>${tr(`Pilih 1 sampai ${esc(data.limits.roles)} role. Emoji hanya wajib untuk mode Reaction.`,`Choose 1 to ${esc(data.limits.roles)} roles. Emoji are required only for Reaction mode.`)}${data.rolesTruncated ? tr(' Daftar role dipotong.',' Role list truncated.') : ''}</small></span>`
+      + `<div class="f-field" role="group" aria-labelledby="selfRolesOfferedLabel" aria-describedby="selfRolesOfferedHelp"><span><b id="selfRolesOfferedLabel">${tr('Role yang ditawarkan','Offered roles')}</b><small id="selfRolesOfferedHelp">${tr(`Pilih 1 sampai ${esc(data.limits.roles)} role. Emoji hanya wajib untuk mode Reaction.`,`Choose 1 to ${esc(data.limits.roles)} roles. Emoji are required only for Reaction mode.`)}${data.rolesTruncated ? tr(' Daftar role dipotong.',' Role list truncated.') : ''}</small></span>`
       + `<div style="max-height:260px;overflow:auto">${boxes}</div></div>`
       + previewShell()
-      + `<div class="f-form-actions"><span>${tr('MENGIRIM PESAN KE DISCORD','SENDS A DISCORD MESSAGE')}</span><button type="submit" class="f-primary">${tr('BUAT PANEL ↗','CREATE PANEL ↗')}</button></div></form>`;
+      + `<div class="f-form-actions"><span>${tr('MENGIRIM PESAN KE DISCORD','SENDS A DISCORD MESSAGE')}</span><button type="submit" class="f-primary">${tr('BUAT PANEL','CREATE PANEL')}</button></div></form>`;
   }
 
   function bind(root) {
@@ -604,7 +615,10 @@
           const channel = data.channels.find((entry) => entry.id === body.channelId);
           const namesList = body.roleIds.map((id) => { const role=data.roles.find(entry=>entry.id===id); return role ? roleChoice(role,data.roles) : id; }).join(', ');
           const channelName = channel ? `${channel.name}${data.channels.filter(other=>other.name===channel.name).length>1?` · ID ${channel.id}`:''}` : body.channelId;
-          if (!(await (window.ZentixDialog ? window.ZentixDialog.confirm(tr(`Kirim panel "${body.title}" ke #${channelName}? Semua anggota yang melihatnya dapat mengambil sendiri role: ${namesList}.`,`Send panel "${body.title}" to #${channelName}? All members who see it can assign themselves these roles: ${namesList}.`)) : Promise.resolve(window.confirm(tr(`Kirim panel "${body.title}" ke #${channelName}? Semua anggota yang melihatnya dapat mengambil sendiri role: ${namesList}.`,`Send panel "${body.title}" to #${channelName}? All members who see it can assign themselves these roles: ${namesList}.`)))))) return;
+          const requiredRole=body.requiredRoleId?data.roles.find(role=>role.id===body.requiredRoleId):null;
+          const access=body.requiredRoleId?tr(`Anggota yang melihat panel dan memiliki role ${requiredRole?roleChoice(requiredRole,data.roles):body.requiredRoleId} dapat memilih role: ${namesList}.`,`Members who see the panel and have the ${requiredRole?roleChoice(requiredRole,data.roles):body.requiredRoleId} role can choose: ${namesList}.`):tr(`Anggota yang melihat panel dapat memilih role: ${namesList}.`,`Members who see the panel can choose: ${namesList}.`);
+          const confirmation=tr(`Kirim panel "${body.title}" ke #${channelName}? ${access}`,`Send panel "${body.title}" to #${channelName}? ${access}`);
+          if (!(await (window.ZentixDialog ? window.ZentixDialog.confirm(confirmation) : Promise.resolve(window.confirm(confirmation))))) return;
           change(createStatus, () => request('POST', '/panels', body),
             (result) => (result.reactionFailures?.length
               ? tr('Panel dibuat, tetapi sebagian emoji reaksi gagal ditempel. Tambahkan reaksi secara manual atau buat ulang panel.','Panel created, but some reactions could not be added. Add them manually or recreate the panel.')

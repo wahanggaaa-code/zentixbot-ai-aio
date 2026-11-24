@@ -20,7 +20,7 @@
 
   function render() {
     return `<section class="f-panel"><div class="f-panel-head"><div><h2>${tr('Pengaturan trigger','Trigger settings')}</h2>`
-      + `<p>${tr('Berlaku untuk channel sementara yang dibuat setelah disimpan. Channel yang sudah ada tidak diubah.','Applies to temporary channels created after saving. Existing channels are unchanged.')}</p></div><span>✳</span></div>`
+      + `<p>${tr('Berlaku untuk channel sementara yang dibuat setelah disimpan. Channel yang sudah ada tidak diubah.','Applies to temporary channels created after saving. Existing channels are unchanged.')}</p></div></div>`
       + `<div id="jtcSettings" aria-live="polite">${tr('Memuat…','Loading…')}</div></section>`;
   }
 
@@ -43,7 +43,7 @@
       : '';
     return `<form class="f-form" data-trigger="${index}"><h3>${esc(name)}</h3><p class="f-muted">ID ${esc(trigger.channelId)}</p>${permission}`
       + fields(trigger, data)
-      + `<div class="f-form-actions"><button type="button" class="f-outline" data-remove="${index}" aria-label="${esc(tr(`Lepas trigger ${name} (ID ${trigger.channelId})`,`Remove trigger ${name} (ID ${trigger.channelId})`))}">${tr('LEPAS TRIGGER','REMOVE TRIGGER')}</button><button type="submit" class="f-primary" aria-label="${esc(tr(`Simpan pengaturan trigger ${name} (ID ${trigger.channelId})`,`Save trigger settings for ${name} (ID ${trigger.channelId})`))}">${tr('SIMPAN ↗','SAVE ↗')}</button></div></form>`;
+      + `<div class="f-form-actions"><button type="button" class="f-outline" data-remove="${index}" aria-label="${esc(tr(`Lepas trigger ${name} (ID ${trigger.channelId})`,`Remove trigger ${name} (ID ${trigger.channelId})`))}">${tr('LEPAS TRIGGER','REMOVE TRIGGER')}</button><button type="submit" class="f-primary" aria-label="${esc(tr(`Simpan pengaturan trigger ${name} (ID ${trigger.channelId})`,`Save trigger settings for ${name} (ID ${trigger.channelId})`))}">${tr('SIMPAN','SAVE')}</button></div></form>`;
   }
 
   function setupForm(data) {
@@ -57,7 +57,7 @@
       + `<label class="f-field"><span><b>${tr('Channel trigger','Trigger channel')}</b><small>${tr('Bot memerlukan Manage Channels, Move Members dan Connect.','The bot needs Manage Channels, Move Members and Connect.')}${data.voiceChannelsTruncated ? tr(' Daftar dipotong; gunakan /jointocreate setup bila channel tidak tampil.',' List truncated; use /jointocreate setup if the channel is not shown.') : ''}</small></span>`
       + `<select name="channel"><option value="">${tr('Pilih channel suara','Select a voice channel')}</option>${options}</select></label>`
       + fields(DEFAULTS, data)
-      + `<div class="f-form-actions"><span>${tr('PERUBAHAN TERSIMPAN DI DATABASE BOT','CHANGES SAVED IN BOT DATABASE')}</span><button type="submit" class="f-primary">${tr('AKTIFKAN JOIN TO CREATE ↗','ENABLE JOIN TO CREATE ↗')}</button></div></form>`;
+      + `<div class="f-form-actions"><span>${tr('PERUBAHAN TERSIMPAN DI DATABASE BOT','CHANGES SAVED IN BOT DATABASE')}</span><button type="submit" class="f-primary">${tr('AKTIFKAN JOIN TO CREATE','ENABLE JOIN TO CREATE')}</button></div></form>`;
   }
 
   /** Reads the three inputs. Returns { values } or { error }. */

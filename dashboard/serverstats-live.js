@@ -75,23 +75,23 @@
 
   function render() {
     return `<div id="serverStatsLive"><section class="f-panel"><div class="f-panel-head"><div><h2>${tr('Counter aktif','Active counters')}</h2>`
-      + `<p>${tr('Channel yang namanya mengikuti jumlah anggota. Satu per jenis, ditambah maksimal 10 counter role dan 10 counter goal.','Channels whose names track counts. One per type, plus up to 10 role counters and 10 goal counters.')}</p></div><span>✳</span></div>`
+      + `<p>${tr('Channel yang namanya mengikuti jumlah anggota. Satu per jenis, ditambah maksimal 10 counter role dan 10 counter goal.','Channels whose names track counts. One per type, plus up to 10 role counters and 10 goal counters.')}</p></div></div>`
       + `<div id="serverStatsList" aria-live="polite">${tr('Memuat…','Loading…')}</div></section>`
       + `<section class="f-panel" style="margin-top:18px"><div class="f-panel-head"><div><h2>${tr('Setup standar','Standard setup')}</h2>`
-      + `<p>${tr('Buat paket counter umum sekaligus. Jenis yang sudah ada dilewati; yang lain dibuat dengan nama yang benar sejak awal.','Create a bundle of common counters. Existing types are skipped; others are created with the correct names from the start.')}</p></div><span>✳</span></div>`
+      + `<p>${tr('Buat paket counter umum sekaligus. Jenis yang sudah ada dilewati; yang lain dibuat dengan nama yang benar sejak awal.','Create a bundle of common counters. Existing types are skipped; others are created with the correct names from the start.')}</p></div></div>`
       + `<div id="serverStatsSetup" aria-live="polite">${tr('Memuat…','Loading…')}</div></section>`
       + `<section class="f-panel" style="margin-top:18px"><div class="f-panel-head"><div><h2>${tr('Buat counter','Create counter')}</h2>`
-      + `<p>${tr('Membuat channel baru di Discord, di kategori yang dipilih.','Creates a new Discord channel in the selected category.')}</p></div><span>✳</span></div>`
+      + `<p>${tr('Membuat channel baru di Discord, di kategori yang dipilih.','Creates a new Discord channel in the selected category.')}</p></div></div>`
       + `<div id="serverStatsCreate" aria-live="polite">${tr('Memuat…','Loading…')}</div></section>`
       + `<section class="f-panel" style="margin-top:18px"><div class="f-panel-head"><div><h2>${tr('Counter eksternal — game & sosial','External counters — game & social')}</h2>`
-      + `<p>${tr('Pemain game yang sedang online dan pengikut akun sosial. Angka diambil dari layanan luar, bukan dari Discord; counter tampil "tidak diketahui" bila sumbernya tidak menjawab. Kunci API (kalau perlu) diisi owner di .env, bukan di sini.','Online game players and social account followers. Counts come from external services, not Discord; counters show "unknown" when the source does not respond. The owner sets API keys (if required) in .env, not here.')}</p></div><span>✳</span></div>`
+      + `<p>${tr('Pemain game yang sedang online dan pengikut akun sosial. Angka diambil dari layanan luar, bukan dari Discord; counter tampil "tidak diketahui" bila sumbernya tidak menjawab. Kunci API (kalau perlu) diisi owner di .env, bukan di sini.','Online game players and social account followers. Counts come from external services, not Discord; counters show "unknown" when the source does not respond. The owner sets API keys (if required) in .env, not here.')}</p></div></div>`
       + `<div id="serverStatsExternal" aria-live="polite">${tr('Memuat…','Loading…')}</div></section>`
       + `<section class="f-panel" style="margin-top:18px"><div class="f-panel-head"><div><h2>${tr('Format angka','Number format')}</h2>`
-      + `<p>${tr('Cara bot menulis angka pada nama channel counter. Berlaku untuk semua counter di server ini.','How the bot writes numbers in counter channel names. Applies to all counters on this server.')}</p></div><span>✳</span></div>`
+      + `<p>${tr('Cara bot menulis angka pada nama channel counter. Berlaku untuk semua counter di server ini.','How the bot writes numbers in counter channel names. Applies to all counters on this server.')}</p></div></div>`
       + `<div id="serverStatsNotation" aria-live="polite">${tr('Memuat…','Loading…')}</div></section>`
       + `<section class="f-panel" style="margin-top:18px"><div class="f-panel-head"><div><h2>${tr('Diagnostik','Diagnostics')}</h2>`
-      + `<p>${tr('Periksa apakah counter berjalan: izin bot, jumlah yang terbaca, entri rusak. Tidak mengubah apa pun.','Check counters: bot permissions, readable counts, and invalid entries. Does not change anything.')}</p></div><span>✳</span></div>`
-      + `<div id="serverStatsCheck"><button type="button" class="f-outline" id="serverStatsCheckBtn">${tr('PERIKSA ↗','CHECK ↗')}</button><div id="serverStatsCheckResult" aria-live="polite"></div></div></section>`
+      + `<p>${tr('Periksa apakah counter berjalan: izin bot, jumlah yang terbaca, entri rusak. Tidak mengubah apa pun.','Check counters: bot permissions, readable counts, and invalid entries. Does not change anything.')}</p></div></div>`
+      + `<div id="serverStatsCheck"><button type="button" class="f-outline" id="serverStatsCheckBtn">${tr('PERIKSA','CHECK')}</button><div id="serverStatsCheckResult" aria-live="polite"></div></div></section>`
       + `<div class="f-callout">ⓘ &nbsp; ${tr('Discord membatasi seberapa sering nama channel boleh diganti, jadi angka pada nama channel dapat tertinggal beberapa menit dari jumlah sebenarnya. ','Discord limits how often channel names can be changed, so the count may lag behind by a few minutes. ')}`
       + `${tr('Ganti nama channel counter di Discord sesuai keinginan, asalkan ada angka di dalamnya — bot hanya mengganti angka itu. ','Rename the counter channel in Discord as you like, provided it contains a number — the bot only changes that number. ')}`
       + `${tr('Channel counter memakai izin kategorinya: kunci kategori bila anggota tidak boleh masuk atau menulis di sana.','Counter channels use their category permissions: lock the category if members should not enter or write there.')}</div></div>`;
@@ -101,7 +101,7 @@
     const options = NOTATION_OPTIONS.map((option) => `<label class="f-field f-radio-row"><input type="radio" name="notation" value="${esc(option.id)}"${option.id === data.notation ? ' checked' : ''}>`
       + `<span><b>${esc(option.label)}</b><small>${esc(option.hint)}</small></span></label>`).join('');
     return `<form class="f-form" id="serverStatsNotationForm"><div>${options}</div>`
-      + `<div class="f-form-actions"><span>${tr('BERLAKU UNTUK SEMUA COUNTER','APPLIES TO ALL COUNTERS')}</span><button type="submit" class="f-primary">${tr('SIMPAN FORMAT ↗','SAVE FORMAT ↗')}</button></div></form>`;
+      + `<div class="f-form-actions"><span>${tr('BERLAKU UNTUK SEMUA COUNTER','APPLIES TO ALL COUNTERS')}</span><button type="submit" class="f-primary">${tr('SIMPAN FORMAT','SAVE FORMAT')}</button></div></form>`;
   }
 
   /** What the page says about one counter, from the fields of the API. */
@@ -158,7 +158,7 @@
       + `<p><b>${tr('Jumlah saat ini:','Current count:')}</b> ${counter.count === null ? tr('tidak diketahui','unknown') : esc(counter.count)} &nbsp;·&nbsp; <b>Status:</b> ${esc(statusText(counter))}</p>`
       + `<label class="f-field"><span><b>${tr('Jenis hitungan','Count type')}</b><small>${tr('Jenis yang sudah dipakai counter lain tidak ditawarkan.','Types already used by another counter are not offered.')}</small></span><select name="type" aria-label="${esc(tr(`Jenis hitungan ${name} (ID counter ${counter.id})`,`Count type for ${name} (counter ID ${counter.id})`))}">${options}</select></label>`
       + `<div class="f-form-actions"><button type="button" class="f-outline" data-delete="${index}" aria-label="${esc(tr(`Hapus counter dan channel ${name} (ID counter ${counter.id})`,`Delete counter and channel ${name} (counter ID ${counter.id})`))}">${tr('HAPUS COUNTER & CHANNEL','DELETE COUNTER & CHANNEL')}</button>`
-      + `<button type="submit" class="f-primary" aria-label="${esc(tr(`Ubah jenis counter ${name} (ID counter ${counter.id})`,`Change type for counter ${name} (counter ID ${counter.id})`))}">${tr('UBAH JENIS ↗','CHANGE TYPE ↗')}</button></div></form>`;
+      + `<button type="submit" class="f-primary" aria-label="${esc(tr(`Ubah jenis counter ${name} (ID counter ${counter.id})`,`Change type for counter ${name} (counter ID ${counter.id})`))}">${tr('UBAH JENIS','CHANGE TYPE')}</button></div></form>`;
   }
 
   function createForm(data) {
@@ -182,7 +182,7 @@
       + `<select name="channelType"><option value="voice">${KIND_NAMES.voice}</option><option value="text">${KIND_NAMES.text}</option></select></label>`
       + `<label class="f-field"><span><b>${tr('Kategori','Category')}</b><small>${tr('Bot memerlukan View Channel dan Manage Channels di kategori itu.','The bot needs View Channel and Manage Channels in that category.')}${data.categoriesTruncated ? tr(' Daftar dipotong; kategori yang tidak tampil mungkin dibatasi oleh izin bot.',' List truncated; missing categories may be restricted by bot permissions.') : ''}</small></span>`
       + `<select name="categoryId"><option value="">${tr('Pilih kategori','Choose category')}</option>${categories}</select></label>`
-      + `<div class="f-form-actions"><span>${tr('MEMBUAT CHANNEL DI DISCORD','CREATES A DISCORD CHANNEL')}</span><button type="submit" class="f-primary">${tr('BUAT COUNTER ↗','CREATE COUNTER ↗')}</button></div></form>`;
+      + `<div class="f-form-actions"><span>${tr('MEMBUAT CHANNEL DI DISCORD','CREATES A DISCORD CHANNEL')}</span><button type="submit" class="f-primary">${tr('BUAT COUNTER','CREATE COUNTER')}</button></div></form>`;
   }
 
   const GAME_PROVIDER_LABELS = { steam: 'Steam (AppID)', minecraft: 'Minecraft Java (host)', fivem: 'FiveM / FXServer (host)' };
@@ -211,7 +211,7 @@
       + `<label class="f-field"><span><b>Label</b><small>${tr('Nama pendek pada channel counter, mis. "CS2" atau "Server MC" (maks. 30 karakter).','Short name on the counter channel, e.g. "CS2" or "MC Server" (maximum 30 characters).')}</small></span><input type="text" name="label" maxlength="30" required placeholder="CS2"></label>`
       + `<label class="f-field"><span><b>${tr('Jenis channel','Channel type')}</b></span><select name="channelType"><option value="voice">${KIND_NAMES.voice}</option><option value="text">${KIND_NAMES.text}</option></select></label>`
       + `<label class="f-field"><span><b>${tr('Kategori','Category')}</b></span><select name="categoryId"><option value="">${tr('Pilih kategori','Choose category')}</option>${categories}</select></label>`
-      + `<div class="f-form-actions"><span>${tr('MEMBUAT CHANNEL DI DISCORD','CREATES A DISCORD CHANNEL')}</span><button type="submit" class="f-primary">${tr('BUAT COUNTER GAME ↗','CREATE GAME COUNTER ↗')}</button></div></form>`
+      + `<div class="f-form-actions"><span>${tr('MEMBUAT CHANNEL DI DISCORD','CREATES A DISCORD CHANNEL')}</span><button type="submit" class="f-primary">${tr('BUAT COUNTER GAME','CREATE GAME COUNTER')}</button></div></form>`
       + `<form class="f-form" id="serverStatsSocialForm"><h3>${tr('🔗 Sosial','🔗 Social')}</h3>`
       + `<p class="f-muted">${tr('Pengikut akun sosial kamu (maks. 10 counter sosial). Masing-masing butuh kunci owner di .env.','Your social account followers (maximum 10 social counters). Each requires an owner key in .env.')}</p>`
       + `<label class="f-field"><span><b>Platform</b></span><select name="platform">${Object.entries(SOCIAL_PLATFORM_LABELS).map(([id, label]) => `<option value="${id}">${esc(label)}</option>`).join('')}</select></label>`
@@ -223,7 +223,7 @@
       + `<label class="f-field"><span><b>Label</b><small>${tr('Nama pendek pada channel counter (maks. 30 karakter).','Short name on the counter channel (maximum 30 characters).')}</small></span><input type="text" name="label" maxlength="30" required placeholder="YouTube"></label>`
       + `<label class="f-field"><span><b>${tr('Jenis channel','Channel type')}</b></span><select name="channelType"><option value="voice">${KIND_NAMES.voice}</option><option value="text">${KIND_NAMES.text}</option></select></label>`
       + `<label class="f-field"><span><b>${tr('Kategori','Category')}</b></span><select name="categoryId"><option value="">${tr('Pilih kategori','Choose category')}</option>${categories}</select></label>`
-      + `<div class="f-form-actions"><span>${tr('MEMBUAT CHANNEL DI DISCORD','CREATES A DISCORD CHANNEL')}</span><button type="submit" class="f-primary">${tr('BUAT COUNTER SOSIAL ↗','CREATE SOCIAL COUNTER ↗')}</button></div></form>`;
+      + `<div class="f-form-actions"><span>${tr('MEMBUAT CHANNEL DI DISCORD','CREATES A DISCORD CHANNEL')}</span><button type="submit" class="f-primary">${tr('BUAT COUNTER SOSIAL','CREATE SOCIAL COUNTER')}</button></div></form>`;
   }
 
   function setupForm(data) {
@@ -236,7 +236,7 @@
       + `<select name="categoryId"><option value="">${tr('Pilih kategori','Choose category')}</option>${categories}</select></label>`
       + `<label class="f-field"><span><b>${tr('Jenis channel','Channel type')}</b><small>${tr('Channel suara disarankan: namanya tampil apa adanya.','Voice channels are recommended: their names appear as written.')}</small></span>`
       + `<select name="channelType"><option value="voice">${KIND_NAMES.voice}</option><option value="text">${KIND_NAMES.text}</option></select></label>`
-      + `<div class="f-form-actions"><span>${tr('MEMBUAT SAMPAI 6 CHANNEL','CREATES UP TO 6 CHANNELS')}</span><button type="submit" class="f-primary">${tr('SETUP STANDAR ↗','STANDARD SETUP ↗')}</button></div></form>`;
+      + `<div class="f-form-actions"><span>${tr('MEMBUAT SAMPAI 6 CHANNEL','CREATES UP TO 6 CHANNELS')}</span><button type="submit" class="f-primary">${tr('SETUP STANDAR','STANDARD SETUP')}</button></div></form>`;
   }
 
   // Diagnostic text is owned by the bot. Match both the issue code and the complete

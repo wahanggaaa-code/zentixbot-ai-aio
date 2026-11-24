@@ -70,13 +70,13 @@
  function render(){
   return `<div class="f-layout"><div>`
    +`<section class="f-panel"><div class="f-panel-head"><div><h2>${tr('Daftar Giveaway tersimpan','Saved giveaways')}</h2>`
-   +`<p>${tr('Diurutkan berdasarkan ID pesan, bukan waktu.','Sorted by message ID, not time.')}</p></div><span>✳</span></div>`
-   +`<div id="giveawayLive" aria-live="polite">${tr('Memuat daftar…','Loading list…')}</div></section></div>`
+   +`<p>${tr('Diurutkan berdasarkan ID pesan, bukan waktu.','Sorted by message ID, not time.')}</p></div></div>`
+   +`<p id="giveawayBackgroundOutcome" class="f-muted" role="status"></p><div id="giveawayLive" aria-live="polite">${tr('Memuat daftar…','Loading list…')}</div></section></div>`
    +`<aside><section class="f-panel"><div class="f-panel-head"><div><h2>${tr('Buat Giveaway','Create giveaway')}</h2>`
-   +`<p>${tr('Bot langsung mengirim pesan publik ke channel yang dipilih.','The bot immediately sends a public message to the selected channel.')}</p></div><span>✳</span></div>`
+   +`<p>${tr('Bot langsung mengirim pesan publik ke channel yang dipilih.','The bot immediately sends a public message to the selected channel.')}</p></div></div>`
    +`<div id="giveawayCreate" aria-live="polite">${tr('Memuat pilihan…','Loading options…')}</div></section>`
    +`<section class="f-panel" style="margin-top:18px"><div class="f-panel-head"><div><h2>${tr('Yang perlu diperhatikan','Important information')}</h2>`
-   +`<p>${tr('Data berasal dari database bot, bukan hasil pemeriksaan pesan Discord.','Data comes from the bot database, not from checking Discord messages.')}</p></div><span>✳</span></div>`
+   +`<p>${tr('Data berasal dari database bot, bukan hasil pemeriksaan pesan Discord.','Data comes from the bot database, not from checking Discord messages.')}</p></div></div>`
    +`<p class="f-muted">${tr('Status tersimpan bukan jaminan pesan Discord sudah sesuai. Status pengiriman yang tidak tercatat bukan bukti gagal atau berhasil. Periksa pesan sebelum bertindak.','Saved status does not guarantee the Discord message matches. An unrecorded delivery status is not proof of success or failure. Check the message before acting.')}</p>`
    +`<p class="f-muted">${tr('Mengakhiri atau mengundi ulang akan mengedit pesan dan mengirim atau memperbarui pengumuman. Menghapus akan menghapus pesan Giveaway dan seluruh entrinya; pengumuman pemenang yang sudah ada dibiarkan.','Ending or rerolling edits the message and sends or updates an announcement. Deleting removes the giveaway message and all entries; existing winner announcements remain.')}</p>`
    +`<p class="f-muted">${tr('Jika pengiriman tertunda, periksa channel dulu: tandai terkirim bila pengumumannya sudah ada, atau kirim ulang bila belum. Bot tidak pernah mengulang sendiri.','If delivery is pending, check the channel first: mark delivered if the announcement exists, or resend if it does not. The bot never retries automatically.')}</p>`
@@ -154,7 +154,7 @@
  }
 
  function confirmation(action,latest){
-  const what=tr(`giveaway “${latest.prize}” (pesan ${latest.messageId}, ${latest.entries} entri tersimpan)`,`giveaway “${latest.prize}” (message ${latest.messageId}, ${latest.entries} saved entries)`);
+  const what=tr(`giveaway “${latest.prize}” (pesan ${latest.messageId}, ${latest.entries} entri tersimpan)`,`giveaway “${latest.prize}” (message ${latest.messageId}, ${latest.entries} saved ${latest.entries===1?'entry':'entries'})`);
   if(action==='end')return tr(`Akhiri ${what}? Bot akan mengedit pesan dan mengirim atau memperbarui pengumuman di Discord.`,`End ${what}? The bot will edit the message and send or update the Discord announcement.`);
   if(action==='reroll')return tr(`Undi ulang ${what}? Bot akan mengedit pesan dan mengirim atau memperbarui pengumuman di Discord.`,`Reroll ${what}? The bot will edit the message and send or update the Discord announcement.`);
   if(action==='mark_delivered')return tr(`Tandai hasil ${what} sebagai sudah terkirim? Lakukan hanya jika Anda sudah melihat pengumuman pemenangnya di Discord. Bot tidak mengirim apa pun.`,`Mark the result of ${what} as delivered? Only do this if you have seen the winner announcement in Discord. The bot sends nothing.`);
@@ -167,27 +167,33 @@
   if(action==='delete')return result.discord==='deleted'?tr('Giveaway dihapus: pesan dan catatan.','Giveaway deleted: message and record.'):tr('Catatan dihapus; pesannya sudah tidak ada di Discord.','Record deleted; the message was already absent from Discord.');
   if(action==='delete_record')return tr('Catatan dihapus. Discord tidak disentuh.','Record deleted. Discord was not touched.');
   if(action==='mark_delivered')return tr('Ditandai terkirim. Tidak ada yang dikirim ke Discord.','Marked delivered. Nothing was sent to Discord.');
-  if(action==='redeliver')return tr(`Hasil dikirim ulang: ${result.winners} pemenang tersimpan.`,`Result resent: ${result.winners} saved winners.`);
-  return tr(`Selesai: ${result.winners} pemenang dari ${result.entries} entri tersimpan.`,`Done: ${result.winners} winners from ${result.entries} saved entries.`);
+  if(action==='redeliver')return tr(`Hasil dikirim ulang: ${result.winners} pemenang tersimpan.`,`Result resent: ${result.winners} saved ${result.winners===1?'winner':'winners'}.`);
+  return tr(`Selesai: ${result.winners} pemenang dari ${result.entries} entri tersimpan.`,`Done: ${result.winners} ${result.winners===1?'winner':'winners'} from ${result.entries} saved ${result.entries===1?'entry':'entries'}.`);
  }
 
  function bindList(root){
   const slot=root.querySelector('#giveawayLive');
   if(!slot)return ()=>{};
 
+  let listVersion=0,actionInFlight=false,actionNeedsReload=false,actionRevision=0;
+  const outcome=root.querySelector('#giveawayBackgroundOutcome');
+  const refreshActionButtons=()=>slot.querySelectorAll('[data-gw-action]').forEach(button=>{button.disabled=actionInFlight||actionNeedsReload});
+  const backgroundOutcome=(g,text)=>{if(!outcome?.isConnected)return;outcome.textContent=tr(`Hasil aksi untuk pesan ${g.messageId}: ${text} Muat ulang daftar dan periksa Discord sebelum bertindak lagi.`,`Action result for message ${g.messageId}: ${text} Reload the list and check Discord before acting again.`);};
   async function load(after,notice=''){
-   slot.textContent=tr('Memuat daftar…','Loading list…');
+   const version=++listVersion,revision=actionRevision;
+   slot.setAttribute('aria-busy','true');slot.textContent=tr('Memuat daftar…','Loading list…');
    let data;
    try{data=await request('list'+(after?'?after='+encodeURIComponent(after):''))}
    catch(e){
-    if(!slot.isConnected)return;
-    slot.textContent=e.message;
+    if(!slot.isConnected||version!==listVersion)return;
+    slot.setAttribute('aria-busy','false');slot.textContent=e.message;
     const retry=document.createElement('button');
     retry.type='button';retry.className='f-outline';retry.textContent=tr('COBA LAGI','RETRY');retry.onclick=()=>load(after);
     slot.append(retry);
     return;
    }
-   if(!slot.isConnected)return;
+   if(!slot.isConnected||version!==listVersion)return;
+   slot.setAttribute('aria-busy','false');
 
    const legacy=data.legacyDetected?`<p role="alert">${tr('Ada data Giveaway lama di penyimpanan lain. Daftar ini mungkin tidak lengkap; periksa database sebelum mengambil keputusan.','Legacy giveaway data exists in another store. This list may be incomplete; check the database before deciding.')}</p>`:'';
    const table=data.giveaways.length
@@ -201,8 +207,10 @@
    const nav=slot.querySelector('#giveawayNav'),noticeEl=slot.querySelector('#giveawayNotice'),followUp=slot.querySelector('#giveawayFollowUp');
    const make=(label,handler)=>{const b=document.createElement('button');b.type='button';b.className='f-outline';b.textContent=label;b.onclick=handler;nav.append(b)};
    make(tr('MULAI DARI AWAL ↻','START OVER ↻'),()=>load(null));
-   if(data.next)make(tr('HALAMAN BERIKUTNYA ↗','NEXT PAGE ↗'),()=>load(data.next));
+   if(data.next)make(tr('HALAMAN BERIKUTNYA','NEXT PAGE'),()=>load(data.next));
 
+   if(!actionInFlight&&revision===actionRevision){actionNeedsReload=false;if(outcome)outcome.textContent='';}
+   refreshActionButtons();
    const buttons=[...slot.querySelectorAll('[data-gw-action]')];
    const setButtons=disabled=>buttons.forEach(b=>b.disabled=disabled);
    const setNav=disabled=>nav.querySelectorAll('button').forEach(b=>b.disabled=disabled);
@@ -213,6 +221,7 @@
     let posted=false;
     try{
      const latest=await request('prepare?messageId='+encodeURIComponent(g.messageId));
+     if(!noticeEl.isConnected||version!==listVersion)return;
      const reason=refusal(action,latest);
      if(reason)throw Error(reason);
      if(!(await (window.ZentixDialog ? window.ZentixDialog.confirm(confirmation(action,latest)) : Promise.resolve(window.confirm(confirmation(action,latest)))))){
@@ -220,11 +229,16 @@
       setButtons(false);setNav(false);
       return;
      }
-     posted=true;
+     if(!noticeEl.isConnected||version!==listVersion)return;
+     posted=true;actionInFlight=true;refreshActionButtons();
      noticeEl.textContent=action==='mark_delivered'||action==='delete_record'?tr('Menyimpan…','Saving…'):tr('Menyimpan dan menghubungi Discord…','Saving and contacting Discord…');
      const result=await request('action','POST',{messageId:g.messageId,action,revision:latest.revision,confirmed:true});
-     await load(after,successText(action,result));
+     actionInFlight=false;actionNeedsReload=true;actionRevision++;
+     if(noticeEl.isConnected&&version===listVersion)await load(after,successText(action,result));
+     else{refreshActionButtons();backgroundOutcome(g,successText(action,result));}
     }catch(e){
+     if(posted){actionInFlight=false;actionNeedsReload=true;actionRevision++;}
+     if(!noticeEl.isConnected||version!==listVersion){if(posted){refreshActionButtons();backgroundOutcome(g,e.message+tr(' Hasil mungkin tidak diketahui.',' The result may be unknown.'));}return;}
      // After a request was sent, the list on screen is out of date: only reloading is offered.
      const uncertain=posted&&(action==='end'||action==='reroll');
      noticeEl.textContent=e.message+(uncertain?tr(' Hasil mungkin tidak diketahui. Periksa Discord dan database sebelum mencoba lagi.',' The result may be unknown. Check Discord and the database before trying again.'):'');
@@ -252,11 +266,11 @@
 
  // ---- Create ------------------------------------------------------------
  const UNIT_MS={m:60_000,h:3_600_000,d:86_400_000};
- const UNIT_TEXT={m:tr('menit','minutes'),h:tr('jam','hours'),d:tr('hari','days')};
+ const unitText=(unit,count)=>({m:tr('menit',count===1?'minute':'minutes'),h:tr('jam',count===1?'hour':'hours'),d:tr('hari',count===1?'day':'days')})[unit];
  /** "5 menit", "30 hari": the largest unit that divides the limit exactly. */
  function spanText(ms){
-  for(const unit of ['d','h','m'])if(ms%UNIT_MS[unit]===0)return `${ms/UNIT_MS[unit]} ${UNIT_TEXT[unit]}`;
-  return `${Math.ceil(ms/1000)} ${tr('detik','seconds')}`;
+  for(const unit of ['d','h','m'])if(ms%UNIT_MS[unit]===0)return `${ms/UNIT_MS[unit]} ${unitText(unit,ms/UNIT_MS[unit])}`;
+  return `${Math.ceil(ms/1000)} ${tr('detik',Math.ceil(ms/1000)===1?'second':'seconds')}`;
  }
 
  function bindCreate(root,reloadList){
@@ -296,7 +310,7 @@
     +`<label class="f-field"><span><b>${tr('Satuan','Unit')}</b></span><select name="unit">`
     +`<option value="m">${tr('menit','minutes')}</option><option value="h">${tr('jam','hours')}</option><option value="d" selected>${tr('hari','days')}</option></select></label>`
     +`<p id="giveawayCreateStatus" class="f-muted" role="status"></p>`
-    +`<div class="f-form-actions"><span>✳ ${tr('PESAN PUBLIK','PUBLIC MESSAGE')}</span><button type="submit" class="f-primary">${tr('BUAT GIVEAWAY ↗','CREATE GIVEAWAY ↗')}</button></div>`
+    +`<div class="f-form-actions"><span>${tr('PESAN PUBLIK','PUBLIC MESSAGE')}</span><button type="submit" class="f-primary">${tr('BUAT GIVEAWAY','CREATE GIVEAWAY')}</button></div>`
     +`</fieldset></form>`;
    const form=slot.querySelector('form'),fields=form.querySelector('fieldset'),status=slot.querySelector('#giveawayCreateStatus');
 
@@ -315,9 +329,11 @@
     if(!/^[1-9]\d{0,2}$/.test(amountText)||!UNIT_MS[unit]||durationMs<limits.minDurationMs||durationMs>limits.maxDurationMs){
      status.textContent=tr(`Durasi harus ${spanText(limits.minDurationMs)} sampai ${spanText(limits.maxDurationMs)}.`,`Duration must be ${spanText(limits.minDurationMs)} to ${spanText(limits.maxDurationMs)}.`);return;
     }
-    const summary=tr(`“${prize}” di #${channel.name}, ${winnerCount} pemenang, durasi ${amount} ${UNIT_TEXT[unit]}`,`“${prize}” in #${channel.name}, ${winnerCount} winners, duration ${amount} ${UNIT_TEXT[unit]}`);
-    if(!(await (window.ZentixDialog ? window.ZentixDialog.confirm(tr(`Buat giveaway ${summary}? Bot akan langsung mengirim pesan publik di channel itu.`,`Create giveaway ${summary}? The bot will immediately send a public message in that channel.`)) : Promise.resolve(window.confirm(tr(`Buat giveaway ${summary}? Bot akan langsung mengirim pesan publik di channel itu.`,`Create giveaway ${summary}? The bot will immediately send a public message in that channel.`))))))return;
-    fields.disabled=true;status.textContent=tr('Mengirim pesan dan menyimpan…','Sending message and saving…');
+    const summary=tr(`“${prize}” di #${channel.name}, ${winnerCount} pemenang, durasi ${amount} ${unitText(unit,amount)}`,`“${prize}” in #${channel.name}, ${winnerCount} ${winnerCount===1?'winner':'winners'}, duration ${amount} ${unitText(unit,amount)}`);
+    fields.disabled=true;
+    if(!(await (window.ZentixDialog ? window.ZentixDialog.confirm(tr(`Buat giveaway ${summary}? Bot akan langsung mengirim pesan publik di channel itu.`,`Create giveaway ${summary}? The bot will immediately send a public message in that channel.`)) : Promise.resolve(window.confirm(tr(`Buat giveaway ${summary}? Bot akan langsung mengirim pesan publik di channel itu.`,`Create giveaway ${summary}? The bot will immediately send a public message in that channel.`)))))){fields.disabled=false;return;}
+    if(!form.isConnected)return;
+    status.textContent=tr('Mengirim pesan dan menyimpan…','Sending message and saving…');
     let created;
     try{created=await request('create','POST',{channelId,prize,winnerCount,duration:`${amount}${unit}`,confirmed:true})}
     catch(e){
