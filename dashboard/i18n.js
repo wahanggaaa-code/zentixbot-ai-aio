@@ -59,6 +59,15 @@
   ['Draf AI kosong atau terlalu panjang. Coba lagi.','The AI draft is empty or too long. Try again.'],
  ]);
  const aiError=message=>lang==='en' ? (aiErrors.get(message) ?? message) : message;
+ // Only exact errors from validating saved AI foundation settings; callers restrict route and method.
+ const aiStoredSettingsErrors=new Map([
+  ['Persetujuan dan status harus boolean.','Consent and enabled status must be boolean.'],
+  ['Nilai perUserDaily di luar batas.','Requests per member per day are out of range.'],
+  ['Nilai guildDaily di luar batas.','Server requests per day are out of range.'],
+  ['Nilai timeoutSeconds di luar batas.','Provider timeout is out of range.'],
+  ['Nilai maxOutputTokens di luar batas.','Maximum output tokens are out of range.'],
+ ]);
+ const aiStoredSettingsError=(status,code,message)=>lang==='en'&&status===400&&code==='INVALID_SETTINGS' ? (aiStoredSettingsErrors.get(message) ?? message) : message;
  // Only errors produced by the AI foundation for these two draft endpoints.
  const aiDraftFoundationErrors=new Map([
   ['503|STORAGE_UNAVAILABLE|Penghitung AI tidak valid.','The AI usage counter is invalid.'],
@@ -73,6 +82,7 @@
  // These draft validation responses are returned directly, without an API error code.
  const aiDraftError=(path,status,code,message)=>{
   if(lang!=='en'||!['faq-question-draft','announcement-draft'].includes(path))return message;
+  const settings=aiStoredSettingsError(status,code,message);if(settings!==message)return settings;
   const foundation=aiDraftFoundationErrors.get(`${status}|${code}|${message}`);
   if(foundation!==undefined)return foundation;
   if(status!==400||code!==undefined)return message;
@@ -277,7 +287,7 @@
  };
  const LOG_GROUPS={moderation:['Moderasi Zentix','Zentix moderation'],leveling:['Leveling','Leveling'],message:['Pesan','Messages'],role:['Role','Roles'],channel:['Channel','Channels'],voice:['Suara','Voice'],discordmod:['Moderasi Discord','Discord moderation'],member:['Anggota','Members'],reactionrole:['Role reaksi','Reaction roles'],selfrole:['Self Role','Self Role'],giveaway:['Giveaway','Giveaway'],counter:['Counter','Counters'],application:['Application','Applications'],report:['Laporan','Reports']};
  const logLabel=(kind,key)=>{const map=kind==='event'?LOG_LABELS:kind==='group'?LOG_GROUPS:null;return map&&Object.hasOwn(map,key)?map[key][lang==='en'?1:0]:undefined;};
- window.ZentixI18n={t,logLabel,accessError,aiError,aiDraftError,activityError,jtcError,moduleError,greetingError, get language(){return lang}};
+ window.ZentixI18n={t,logLabel,accessError,aiError,aiDraftError,aiStoredSettingsError,activityError,jtcError,moduleError,greetingError, get language(){return lang}};
  document.documentElement.lang=lang;
  const apply=()=>{
   document.querySelectorAll('[data-i18n]').forEach(el=>{el.textContent=t(el.dataset.i18n)});

@@ -201,9 +201,16 @@
  }
  const when = (at) => { try { return new Date(at).toLocaleString(tr('id-ID','en-GB'), { dateStyle: 'medium', timeStyle: 'short', hour12: false }); } catch { return '-'; } };
 
+ // Display IDs only for ambiguous or unavailable server roles; IDs remain the stored values.
+ function serverRoleLabel(id,roles){
+  const role=roles.find(r=>r.id===id);
+  if(!role)return `${tr('Role tidak ditemukan','Role not found')} · ID ${id}`;
+  const name=role.name||tr('Role tanpa nama','Unnamed role');
+  return `${name}${!role.name||roles.some(r=>r.id!==id&&r.name===role.name)?` · ID ${id}`:''}`;
+ }
  function accessText(access, fallback, existingRoles=[]) {
   if (!access) return fallback;
-  const who = [...list(access.roles), ...list(access.existingRoles).map(id => existingRoles.find(r=>r.id===id)?.name || tr(`Role ${id} (perlu diperiksa)`,`Role ${id} (review needed)`)) ].join(', ') || tr('(belum ada role)','(no roles yet)');
+  const who = [...list(access.roles), ...list(access.existingRoles).map(id => serverRoleLabel(id,existingRoles)) ].join(', ') || tr('(belum ada role)','(no roles yet)');
   if (access.mode === 'private-read-only') return tr(`PRIVAT + BACA SAJA: @everyone ditolak melihat, mengirim dan membuat thread; ${who} dan bot diizinkan.`,`PRIVATE + READ ONLY: @everyone is denied viewing, sending and creating threads; ${who} and the bot are allowed.`);
   return access.mode === 'private' ? tr(`PRIVAT: @everyone ditolak melihat; ${who} dan bot boleh melihat.`,`PRIVATE: @everyone is denied viewing; ${who} and the bot may view.`) : tr(`BACA SAJA: @everyone ditolak mengirim/membuat thread; ${who} dan bot diizinkan. Akses lihat mengikuti default server, bukan pembatasan kategori.`,`READ ONLY: @everyone is denied sending/creating threads; ${who} and the bot are allowed. View access follows server defaults, not category restrictions.`);
  }
@@ -249,11 +256,12 @@
     for(const id of list(access.existingRoles)) {
      const item=el('label',null);const input=el('input',{type:'checkbox',checked:true});
      input.onchange=()=>onAccessEdit(categoryIndex,channelIndex,'existingRole',{id,checked:false});
-     item.append(input, ` ${existingRoles.find(r=>r.id===id)?.name || tr('Role tidak ditemukan','Role not found')} (${id}) `);serverGroup.append(item);
+     input.setAttribute('aria-label',`${tr('Role server','Server role')}: ${existingRoles.find(r=>r.id===id)?.name || tr('Role tidak ditemukan','Role not found')} (ID ${id})`);
+     item.append(input, ` ${serverRoleLabel(id,existingRoles)} `);serverGroup.append(item);
     }
     if(existingRoles.length){
      const selectRole=el('select',{});selectRole.setAttribute('aria-label',tr('Tambahkan role server','Add server role'));selectRole.append(el('option',{value:''},tr('Pilih role server…','Choose server role…')));
-     for(const role of existingRoles.filter(r=>!list(access.existingRoles).includes(r.id)))selectRole.append(el('option',{value:role.id},`${role.name} (${role.id})`));
+     for(const role of existingRoles.filter(r=>!list(access.existingRoles).includes(r.id)))selectRole.append(el('option',{value:role.id},serverRoleLabel(role.id,existingRoles)));
      selectRole.onchange=()=>{if(selectRole.value)onAccessEdit(categoryIndex,channelIndex,'existingRole',{id:selectRole.value,checked:true})};serverGroup.append(selectRole);
     }
     group.append(serverGroup);
@@ -318,7 +326,7 @@
   const roleView=el('select',{});roleView.dataset.builderRoleReview='';roleView.setAttribute('aria-label',tr('Tinjau overwrite untuk role','Review overwrites for role'));
   roleView.append(el('option',{value:'everyone'},'@everyone'));
   for(const r of list(plan.roles)){const name=typeof r==='string'?r:r.name;roleView.append(el('option',{value:'new:'+name},`${tr('Role baru:','New role:')} ${name}`))}
-  for(const r of existingRoles)roleView.append(el('option',{value:'existing:'+r.id},`${tr('Role server','Server role')}: ${r.name} (${r.id})`));
+  for(const r of existingRoles)roleView.append(el('option',{value:'existing:'+r.id},`${tr('Role server','Server role')}: ${serverRoleLabel(r.id,existingRoles)}`));
   const view=el('div',{className:'b-access-summary'});
   const refresh=()=>{
    const selected=roleView.value;view.replaceChildren();
@@ -378,7 +386,7 @@
 <section class="f-panel"><div class="f-panel-head"><div><h2>${tr('Bongkar bangunan terakhir','Tear down latest build')}</h2><p>${tr('Menghapus persis objek yang tercatat pada bangunan terakhir. Tinjau dulu, lalu ketik konfirmasinya.','Deletes exactly the objects recorded in the latest build. Review first, then type the confirmation.')}</p></div><span>⌫</span></div>
 <div class="b-actions"><button type="button" class="f-outline" id="aiUndoPrepare" disabled>${tr('TINJAU BONGKAR ↗','REVIEW TEARDOWN ↗')}</button></div>
 <div class="b-tree" id="aiUndoPreview"><p class="f-muted">${tr('Belum ada yang ditinjau.','Nothing reviewed yet.')}</p></div>
-<label class="f-field"><span><b>${tr('Konfirmasi bongkar','Teardown confirmation')}</b><small id="aiUndoHint">${tr('Tinjau dulu; kalimat yang harus diketik muncul di sini.','Review first; the phrase to type appears here.')}</small></span><input id="aiUndoConfirmation" autocomplete="off" autocapitalize="characters" spellcheck="false"></label>
+<label class="f-field"><span><b>${tr('Konfirmasi bongkar','Teardown confirmation')}</b><small id="aiUndoHint" aria-live="polite">${tr('Tinjau dulu; kalimat yang harus diketik muncul di sini.','Review first; the phrase to type appears here.')}</small></span><input id="aiUndoConfirmation" aria-describedby="aiUndoHint" autocomplete="off" autocapitalize="characters" spellcheck="false"></label>
 <div class="b-actions"><button type="button" class="f-outline b-danger" id="aiUndoApply" disabled>${tr('BONGKAR SEKARANG ↗','TEAR DOWN NOW ↗')}</button><button type="button" class="f-outline" id="aiUndoForget" disabled>${tr('LEPAS DARI RIWAYAT','REMOVE FROM HISTORY')}</button></div>
 <p class="f-muted b-status" id="aiUndoStatus" aria-live="polite"></p>
 </section></div>${aside(tr('Cara kerja bongkar','How teardown works'), tr('Hanya owner bot yang dapat menjalankan.','Only the bot owner can run this.'), tr('Setiap penerapan dicatat beserta ID objek yang benar-benar dibuat. Bongkar menghapus ID itu saja: channel dulu, lalu kategori, lalu role. Hanya bangunan terakhir yang dapat dibongkar; setelah habis, bangunan sebelumnya menjadi yang terakhir. Objek yang gagal dihapus tetap tercatat untuk dicoba lagi. Kategori yang masih berisi channel lain dan channel sistem server tidak dihapus.','Each application records the IDs of objects actually created. Teardown deletes only those IDs: channels first, then categories, then roles. Only the latest build can be torn down; once removed, the previous build becomes the latest. Objects that fail to delete remain recorded for retry. Categories containing other channels and server system channels are not deleted.'), tr('Channel dihapus beserta seluruh pesannya dan role dilepas dari semua anggota. Bot tidak dapat memulihkannya. "Lepas dari riwayat" hanya menghapus catatan: objeknya tetap ada di Discord dan tidak bisa lagi dibongkar otomatis.','Channels are deleted with all messages and roles removed from all members. The bot cannot restore them. "Remove from history" only removes the record: objects remain in Discord and cannot be torn down automatically afterwards.'))}</div>`;
@@ -391,7 +399,7 @@
 <fieldset class="b-perms"><legend>${tr('Izin dasar role (hanya tindakan atur izin)','Basic role permissions (set permissions action only)')}</legend><p class="f-muted">${tr('Daftar lengkap izin dasar baru: centang yang diinginkan. Tidak mengubah permission overwrite channel.','Complete new set of basic permissions: check those wanted. Does not change channel permission overwrites.')}</p><div class="b-perm-grid">${names.map((n) => `<label><input type="checkbox" name="permission" value="${n}"><span>${n}</span></label>`).join('')}</div></fieldset>
 <div class="b-actions"><button class="f-outline" type="submit">${tr('TINJAU TINDAKAN ↗','REVIEW ACTION ↗')}</button></div></form>
 <pre class="b-pre" id="aiManualPreview">${tr('Belum ada tindakan ditinjau.','No action reviewed yet.')}</pre>
-<label class="f-field"><span><b>${tr('Konfirmasi target','Confirm target')}</b><small>${tr('Untuk rename/izin ketik ID. Untuk hapus ketik HAPUS diikuti spasi dan ID. Hapus tidak bisa di-rollback.','For rename/permissions type the ID. To delete, type HAPUS followed by a space and the ID. Deletion cannot be rolled back.')}</small></span><input id="aiManualConfirmation" autocomplete="off"></label>
+<label class="f-field"><span><b>${tr('Konfirmasi target','Confirm target')}</b><small id="aiManualConfirmationHint">${tr('Untuk rename/izin ketik ID. Untuk hapus ketik HAPUS diikuti spasi dan ID. Hapus tidak bisa di-rollback.','For rename/permissions type the ID. To delete, type HAPUS followed by a space and the ID. Deletion cannot be rolled back.')}</small></span><input id="aiManualConfirmation" aria-describedby="aiManualConfirmationHint" autocomplete="off"></label>
 <div class="b-actions"><button type="button" class="f-outline" id="aiManualApply" disabled>${tr('JALANKAN TINDAKAN ↗','RUN ACTION ↗')}</button><button type="button" class="f-outline" id="aiManualUndo" disabled>${tr('ROLLBACK PERUBAHAN TERAKHIR ↗','ROLL BACK LAST CHANGE ↗')}</button></div>
 <p class="f-muted b-status" id="aiManualStatus" aria-live="polite"></p>
 </section></div>${aside(tr('Sebelum mengubah','Before changing'), tr('Hanya owner bot yang dapat menjalankan.','Only the bot owner can run this.'), tr('Untuk objek yang sudah ada di server, apa pun asalnya. Setiap tindakan ditinjau dulu dan dikonfirmasi dengan mengetik ID target. Permission overwrite channel tidak dapat diubah dari sini.','For objects already on the server, regardless of origin. Each action is reviewed and confirmed by typing the target ID. Channel permission overwrites cannot be changed here.'), tr('Hapus channel dapat menghapus pesan; hapus role menghilangkan penetapan role. Bot tidak dapat memulihkan data tersebut. Tinjauan dan rollback hanya disimpan 5 menit di memori dan hilang saat restart. Perubahan lain dapat membuat rollback ditolak.','Deleting a channel can delete messages; deleting a role removes its assignments. The bot cannot restore them. Reviews and rollback are stored in memory for only 5 minutes and disappear on restart. Other changes may cause rollback to be rejected.'))}</div>`;

@@ -38,7 +38,12 @@
   if(window.ZentixI18n?.language!=='en')return message;
   // The same validator runs on saved settings during GET and the connection test.
   if((path==='settings'&&(!method||method==='GET'||method==='PATCH'))||(path==='test'&&method==='POST'&&status===400&&code==='INVALID_SETTINGS'))return FOUNDATION_ERRORS.get(`settings|${status}|${code}|${message}`) ?? FOUNDATION_ERRORS.get(`${path}|${status}|${code}|${message}`) ?? message;
-  if((path==='search/settings'&&method==='PATCH')||((path==='search'||path==='test')&&method==='POST'))return FOUNDATION_ERRORS.get(`${path}|${status}|${code}|${message}`) ?? message;
+  // Search reads its own saved provider order and the AI foundation settings before testing.
+  if((path==='search/settings'&&(!method||method==='GET'||method==='PATCH'))||(path==='search'&&method==='POST')){
+   if(status===400&&code==='UNAVAILABLE')return FOUNDATION_ERRORS.get(`search/settings|${status}|${code}|${message}`) ?? FOUNDATION_ERRORS.get(`${path}|${status}|${code}|${message}`) ?? message;
+   if(path==='search'&&method==='POST'&&status===400&&code==='INVALID_SETTINGS')return FOUNDATION_ERRORS.get(`settings|${status}|${code}|${message}`) ?? message;
+  }
+  if((path==='search'||path==='test')&&method==='POST')return FOUNDATION_ERRORS.get(`${path}|${status}|${code}|${message}`) ?? message;
   return message;
  };
  async function request(path,opts={}){const session=await window.ZentixSession;const r=await fetch('/dashboard/api/ai/'+path,{cache:'no-store',...opts,headers:opts.body?{'Content-Type':'application/json','x-csrf-token':session.csrf}:{}});const b=await r.json();if(!r.ok){const message=foundationError(path,opts.method,r.status,b.code,b.error);throw Error((window.ZentixI18n?.accessError?.(b.error,r.status) ?? window.ZentixI18n?.aiError?.(message) ?? message)||tr('Permintaan gagal','Request failed'));}return b;}

@@ -68,7 +68,8 @@
  function duration(ms){
   if(ms===null||ms===undefined)return unknown;
   const minutes=Math.floor(ms/60000),days=Math.floor(minutes/1440),hours=Math.floor(minutes%1440/60);
-  return esc(days?`${days} ${tr('hari','days')} ${hours} ${tr('jam','hours')}`:hours?`${hours} ${tr('jam','hours')} ${minutes%60} ${tr('menit','minutes')}`:`${minutes} ${tr('menit','minutes')}`);
+  const unit=(n,id,en)=>`${n} ${tr(id,en+(n===1?'':'s'))}`;
+  return esc(days?`${unit(days,'hari','day')} ${unit(hours,'jam','hour')}`:hours?`${unit(hours,'jam','hour')} ${unit(minutes%60,'menit','minute')}`:unit(minutes,'menit','minute'));
  }
 
  // Translate only known built-in API descriptions; preserve unexpected server-provided text.
@@ -101,7 +102,7 @@
   ];
   if(bot.highestRole){
    const above=bot.highestRole.rolesAbove;
-   rows.push(line(tr('Peran tertinggi bot','Bot highest role'),`${esc(bot.highestRole.name)}<br><small>${above?`${esc(above)} ${tr('peran berada di atasnya dan tidak dapat diberikan atau dicabut oleh bot.','roles are above it and cannot be assigned or removed by the bot.')}`:tr('Tidak ada peran di atasnya.','There are no roles above it.')}</small>`));
+   rows.push(line(tr('Peran tertinggi bot','Bot highest role'),`${esc(bot.highestRole.name)}<br><small>${above?`${esc(above)} ${tr('peran berada di atasnya dan tidak dapat diberikan atau dicabut oleh bot.',above===1?'role is above it and cannot be assigned or removed by the bot.':'roles are above it and cannot be assigned or removed by the bot.')}`:tr('Tidak ada peran di atasnya.','There are no roles above it.')}</small>`));
   }
   let permissions=`<p class="f-muted">${tr('Izin bot tidak dapat dibaca dari Discord saat ini.','Bot permissions cannot currently be read from Discord.')}</p>`;
   if(bot.permissions){
@@ -195,7 +196,7 @@
    if(!slot.isConnected)return;
    const {status,text}=data.settings;
    const labels={online:'Online',idle:tr('Tidak aktif','Idle'),dnd:tr('Jangan ganggu','Do Not Disturb'),invisible:tr('Tidak terlihat','Invisible')};
-   slot.innerHTML=`<form id="botPresenceForm" class="f-form"><label class="f-field"><span><b>Status online</b><small>${tr('Tidak terlihat membuat bot tampak offline.','Invisible makes the bot appear offline.')}</small></span><select name="status">${Object.entries(labels).map(([id,label])=>`<option value="${id}" ${id===status?'selected':''}>${label}</option>`).join('')}</select></label><label class="f-field"><span><b>${tr('Tulisan status','Status text')}</b><small>${tr('Maksimal 128 karakter. Kosongkan untuk menghapus tulisan.','Maximum 128 characters. Leave empty to clear the text.')}</small></span><input name="text" type="text" maxlength="128" value="${esc(text)}" placeholder="${tr('mis. Siap membantu ✨','e.g. Ready to help ✨')}"></label><div class="f-feature-note"><p><b>${tr('Preview profil bot','Bot profile preview')}</b><br><span id="presencePreviewStatus"></span><br><span id="presencePreviewText"></span></p></div><div class="f-form-actions"><span>✳ ${tr('TERSIMPAN DI DATABASE','SAVED IN DATABASE')}</span><button type="submit" class="f-primary">${tr('SIMPAN STATUS ↗','SAVE STATUS ↗')}</button></div></form><p class="f-muted" id="presenceResult" role="status"></p>`;
+   slot.innerHTML=`<form id="botPresenceForm" class="f-form"><label class="f-field"><span><b>${tr('Status online','Online status')}</b><small>${tr('Tidak terlihat membuat bot tampak offline.','Invisible makes the bot appear offline.')}</small></span><select name="status">${Object.entries(labels).map(([id,label])=>`<option value="${id}" ${id===status?'selected':''}>${label}</option>`).join('')}</select></label><label class="f-field"><span><b>${tr('Tulisan status','Status text')}</b><small>${tr('Maksimal 128 karakter. Kosongkan untuk menghapus tulisan.','Maximum 128 characters. Leave empty to clear the text.')}</small></span><input name="text" type="text" maxlength="128" value="${esc(text)}" placeholder="${tr('mis. Siap membantu ✨','e.g. Ready to help ✨')}"></label><div class="f-feature-note"><p><b>${tr('Preview profil bot','Bot profile preview')}</b><br><span id="presencePreviewStatus"></span><br><span id="presencePreviewText"></span></p></div><div class="f-form-actions"><span>✳ ${tr('TERSIMPAN DI DATABASE','SAVED IN DATABASE')}</span><button type="submit" class="f-primary">${tr('SIMPAN STATUS ↗','SAVE STATUS ↗')}</button></div></form><p class="f-muted" id="presenceResult" role="status"></p>`;
    const form=slot.querySelector('form'),out=slot.querySelector('#presenceResult'),button=form.querySelector('button');
    function preview(){slot.querySelector('#presencePreviewStatus').textContent=labels[form.elements.status.value]||'—';slot.querySelector('#presencePreviewText').textContent=form.elements.text.value.trim()||tr('Tanpa tulisan status','No status text');}
    form.addEventListener('input',preview);form.addEventListener('change',preview);preview();
