@@ -11,7 +11,7 @@ export const DEFAULT_AI_GOODBYE=Object.freeze({...DEFAULT_AI_WELCOME,fallback:'S
 const invalid=message=>Object.assign(new Error(message),{status:400,code:'INVALID_WELCOME'});
 export function validateAIWelcome(v,guild){
  const keys=Object.keys(DEFAULT_AI_WELCOME);
- if(!v||typeof v!=='object'||Array.isArray(v)||Object.keys(v).some(k=>!keys.includes(k)&&k!=='shared')||!keys.every(k=>Object.hasOwn(v,k))||(v.shared!==undefined&&typeof v.shared!=='boolean'))throw invalid('Pengaturan AI Welcome tidak valid.');
+ if(!v||typeof v!=='object'||Array.isArray(v)||Object.keys(v).some(k=>!keys.includes(k)&&k!=='shared'&&k!=='persona')||!keys.every(k=>Object.hasOwn(v,k))||(v.shared!==undefined&&typeof v.shared!=='boolean'))throw invalid('Pengaturan AI Welcome tidak valid.');
  if(['enabled','toChannel','toDm'].some(k=>typeof v[k]!=='boolean'))throw invalid('Status harus boolean.');
  if(v.channelId!==null&&(typeof v.channelId!=='string'||!/^\d{17,20}$/.test(v.channelId)))throw invalid('ID channel tidak valid.');
  if(guild&&v.channelId!==null&&guild.channels.cache.get(v.channelId)?.type!==ChannelType.GuildText)throw invalid('Pilih channel teks pada server ini.');
@@ -19,6 +19,7 @@ export function validateAIWelcome(v,guild){
  if(v.enabled&&v.toChannel&&!v.channelId)throw invalid('Pilih channel untuk AI Welcome.');
  if(guild&&v.enabled&&v.toChannel){const channel=guild.channels.cache.get(v.channelId),me=guild.members.me;const perms=me&&channel?.permissionsFor?.(me);if(!perms?.has([PermissionFlagsBits.ViewChannel,PermissionFlagsBits.SendMessages]))throw invalid('Bot memerlukan izin View Channel dan Send Messages pada channel.');}
  if(!['warm','casual','funny','formal'].includes(v.tone)||!['id','en'].includes(v.language))throw invalid('Gaya atau bahasa tidak valid.');
+ if(v.persona!==undefined&&!['default','friendly','cheerful','thoughtful','concise'].includes(v.persona))throw invalid('Template persona tidak valid.');
  if(typeof v.fallback!=='string'||!v.fallback.trim()||v.fallback.length>1000)throw invalid('Template cadangan harus 1–1000 karakter.');
  return {...v};
 }
@@ -38,7 +39,8 @@ export function sharedGreetingConfig(cfg, legacy, kind='welcome') {
   fallback:kind==='goodbye'?legacy.leaveMessage:legacy.welcomeMessage};
 }
 // No guild or user data is sent to the provider; only fixed instructions and validated enum values.
-export function welcomePrompt(cfg,kind='welcome'){return `Write one short, friendly Discord server ${kind==='goodbye'?'farewell':'welcome'} in ${cfg.language==='id'?'Indonesian':'English'} with a ${cfg.tone} tone. Output only the message. Include the exact placeholders {user} and {server}; do not include URLs, mentions or other placeholders.`;}
+const GREETING_PERSONAS=Object.freeze({friendly:'Use a caring community host voice, warm and welcoming without being overly familiar.',cheerful:'Use a cheerful community host voice with light, appropriate playfulness.',thoughtful:'Use a thoughtful, considerate community host voice, sincere and respectful.',concise:'Use a concise, direct community host voice with no unnecessary details.'});
+export function welcomePrompt(cfg,kind='welcome'){const style=Object.hasOwn(GREETING_PERSONAS,cfg.persona)?` ${GREETING_PERSONAS[cfg.persona]}`:'';return `Write one short, friendly Discord server ${kind==='goodbye'?'farewell':'welcome'} in ${cfg.language==='id'?'Indonesian':'English'} with a ${cfg.tone} tone.${style} Output only the message. Include the exact placeholders {user} and {server}; do not include URLs, mentions or other placeholders.`;}
 export function safeGeneratedTemplate(text){
  if(typeof text!=='string')return null;const s=text.trim();
  if(!s||s.length>1000||!s.includes('{user}')||!s.includes('{server}')||/https?:\/\/|www\.|discord\.gg|<@|@(everyone|here)/i.test(s)||/\{(?!user\}|server\})[^}]*\}/.test(s))return null;

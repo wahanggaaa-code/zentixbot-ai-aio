@@ -165,6 +165,9 @@ export function createAIFoundation({client,store=createAIStore(client),env=proce
     const cfg=validateSettings(await store.read(guildId));if(!cfg.enabled||!cfg.providerDataConsent)throw error('DISABLED','AI belum diaktifkan atau belum disetujui.',403);
     const chain=providerChain(cfg);
     if(!chain.some(([id])=>env[PROVIDERS[id].key]?.trim()))throw error('NO_CREDENTIALS','Kredensial provider belum dikonfigurasi.',503);
+    // Do not spend local quota when every configured, credentialed model is
+    // already known to be text-only and no provider request could be sent.
+    if(image&&!chain.some(([id,model])=>env[PROVIDERS[id].key]?.trim()&&!TEXT_ONLY_IMAGE_MODELS.has(model.toLowerCase())))throw error('PROVIDERS_UNAVAILABLE','Semua model dengan kunci yang tersedia hanya mendukung teks. Periksa model dan kunci provider.',503);
     const usage=await store.reserve(guildId,userId,cfg);let attempted=0;
     for(const [id,model] of chain){const provider=PROVIDERS[id],key=env[provider.key]?.trim();if(!key)continue;attempted++;
      if(image && TEXT_ONLY_IMAGE_MODELS.has(model.toLowerCase()))continue;
