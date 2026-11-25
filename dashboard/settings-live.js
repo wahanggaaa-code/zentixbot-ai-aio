@@ -42,7 +42,7 @@
    +`<section class="f-panel"><div class="f-panel-head"><div><h2>${tr('Server di Discord','Discord server')}</h2>`
    +`<p>${tr('Yang dilihat bot di Discord saat halaman dimuat, bukan data tersimpan.','What the bot sees on Discord when the page loads, not stored data.')}</p></div></div>`
    +`<div id="settingsDiscord" aria-live="polite">${tr('Memuat…','Loading…')}</div></section>`
-   +`<section class="f-panel" style="margin-top:18px"><div class="f-panel-head"><div><h2>${tr('Status bot','Bot presence')}</h2><p>${tr('Atur status online dan tulisan di profil Discord · khusus owner bot.','Set the online status and Discord profile activity · bot owner only.')}</p></div><span>◌</span></div>`
+   +`<section class="f-panel" style="margin-top:18px"><div class="f-panel-head"><div><h2>${tr('Status bot','Bot presence')}</h2><p>${tr('Atur status online dan tulisan di profil Discord · khusus owner bot.','Set the online status and Discord profile activity · bot owner only.')}</p></div></div>`
    +`<div id="settingsPresence" aria-live="polite">${tr('Memuat…','Loading…')}</div></section>`
    +`<section class="f-panel" style="margin-top:18px"><div class="f-panel-head"><div><h2>${tr('Tempat mengatur','Where to configure')}</h2>`
    +`<p>${tr('Pengaturan tersimpan ada di halaman masing-masing fitur.','Saved settings are on each feature page.')}</p></div></div>`

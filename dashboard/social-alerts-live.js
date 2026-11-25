@@ -81,19 +81,19 @@
   function render() {
     return `<div id="socialAlertsLive">
   <section class="f-panel"><div class="f-panel-head"><div><h2>Social Alerts</h2>
-    <p>${tr('Kirim pengumuman YouTube dan live Twitch ke Discord.','Send YouTube announcements and Twitch live alerts to Discord.')}</p></div><span>⊚</span></div>
+    <p>${tr('Kirim pengumuman YouTube dan live Twitch ke Discord.','Send YouTube announcements and Twitch live alerts to Discord.')}</p></div></div>
     <div class="f-field" style="border-bottom:0;padding-bottom:4px"><span><b>${tr('Aktifkan Social Alerts','Enable Social Alerts')}</b><small>${tr('Saat nonaktif, pengumuman berhenti dan feed tetap tersimpan.','When disabled, announcements stop and feeds remain saved.')}</small></span>
       <span class="f-check"><input type="checkbox" id="saMasterToggle" aria-label="${tr('Aktifkan Social Alerts','Enable Social Alerts')}"><span class="fake-switch"></span></span></div>
     <p class="f-muted" id="saMasterState">${tr('Memuat…','Loading…')}</p>
   </section>
   <div id="saKeysWarn"></div>
   <section class="f-panel" style="margin-top:18px"><div class="f-panel-head"><div><h2>${tr('Feed terhubung','Connected feeds')}</h2>
-    <p>${tr('Satu feed per akun dan channel.','One feed per account and channel.')}</p></div><span>⊚</span></div>
+    <p>${tr('Satu feed per akun dan channel.','One feed per account and channel.')}</p></div></div>
     <div id="saList" aria-live="polite">${tr('Memuat…','Loading…')}</div>
   </section>
   <div class="f-layout">
     <section class="f-panel"><div class="f-panel-head"><div><h2 id="saFormTitle">${tr('Tambah feed','Add feed')}</h2>
-      <p>${tr('YouTube: @handle, URL, atau ID. Twitch: login atau URL. Akun diverifikasi saat disimpan.','YouTube: @handle, URL or ID. Twitch: login or URL. Accounts are verified on save.')}</p></div><span>⊚</span></div>
+      <p>${tr('YouTube: @handle, URL, atau ID. Twitch: login atau URL. Akun diverifikasi saat disimpan.','YouTube: @handle, URL or ID. Twitch: login or URL. Accounts are verified on save.')}</p></div></div>
       <form class="f-form" id="saForm">
         <label class="f-field" id="saPlatformRow"><span><b>Platform</b><small>${tr('Tidak dapat diubah setelah feed dibuat.','Cannot be changed after the feed is created.')}</small></span>
           <select name="platform" id="saPlatform"><option value="youtube">YouTube</option><option value="twitch">Twitch</option></select></label>
@@ -119,8 +119,8 @@
           <button class="f-primary" type="submit" id="saSave">${tr('SIMPAN FEED','SAVE FEED')}</button></div></div>
       </form>
     </section>
-    <aside><section class="f-panel"><div class="f-panel-head"><div><h2>Live preview</h2><p>${tr('Perkiraan tampilan pesan di Discord; teks bawaan bot tetap berbahasa Indonesia.','Approximate appearance of the Discord message. Default bot message text remains Indonesian.')}</p></div><span>⊚</span></div>
-      <div class="discord-demo"><div class="discord-avatar">⊚</div><div class="discord-copy"><div><strong>ZentixBot</strong> <span class="discord-bot">BOT</span></div>
+    <aside><section class="f-panel"><div class="f-panel-head"><div><h2>Live preview</h2><p>${tr('Perkiraan tampilan pesan di Discord; teks bawaan bot tetap berbahasa Indonesia.','Approximate appearance of the Discord message. Default bot message text remains Indonesian.')}</p></div></div>
+      <div class="discord-demo"><div class="discord-avatar">Z</div><div class="discord-copy"><div><strong>ZentixBot</strong> <span class="discord-bot">BOT</span></div>
         <div class="discord-embed" id="saPreviewCard" style="border-left-color:#5865F2">
           <b id="saPreviewTop">📢 <span id="saPreviewCreatorTop">Nama Akun</span> mengunggah video baru</b>
           <div id="saPreviewTitle" style="margin-top:8px"><a id="saPreviewTitleLink" href="#" onclick="return false" style="color:#00a8fc;text-decoration:none">Judul video baru minggu ini</a></div>

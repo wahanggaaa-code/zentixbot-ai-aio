@@ -47,11 +47,10 @@
 .dock-brand img{display:block;width:30px;height:33px;object-fit:contain;margin:auto}
 
 /* Language menu shares the navigation drawer's glass panel and row treatment. */
-.dock-language{flex:none;border:0;background:transparent;color:#edeee6;font:700 10px var(--mono);padding:10px 5px;cursor:pointer}
+.dock-language{flex:none;min-width:44px;min-height:44px;border:0;background:transparent;color:#edeee6;font:700 22px/1 var(--mono);padding:6px 4px;cursor:pointer}
 .dock-language:hover,.dock-language[aria-expanded=true]{color:var(--lime)}
 .dock-language:focus-visible{outline:2px solid var(--lime);outline-offset:2px}
 .language-menu:not([hidden]){display:block;position:absolute;bottom:72px;left:50%;transform:translateX(-50%);width:min(320px,calc(100vw - 40px));padding:14px;background:rgba(41,42,37,.89);border:1px solid #ffffff55;border-radius:15px;box-shadow:0 16px 45px #0005;backdrop-filter:blur(22px);-webkit-backdrop-filter:blur(22px);color:#f5f6ec}
 .language-menu-top{font:9px var(--mono);color:#b4b7aa;letter-spacing:.08em;padding:4px 4px 12px;text-transform:uppercase}
 .language-menu button{display:flex;align-items:center;gap:13px;background:none;border:0;border-top:1px solid #ffffff2b;color:white;width:100%;text-align:left;padding:15px 4px;cursor:pointer}
 .language-menu button span{font:10px var(--mono);color:#aaa;min-width:25px}.language-menu button strong{font-size:17px;letter-spacing:-.03em}.language-menu button small{font:10px var(--mono);color:#b4b7aa;text-transform:none}.language-menu button[aria-pressed=true] strong{color:var(--lime)}
-@media(max-width:360px){.dock-language{font-size:9px;padding:10px 3px}}
