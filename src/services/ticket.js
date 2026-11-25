@@ -20,6 +20,7 @@ import { PRIORITY_MAP } from '../utils/helpers.js';
 import {createTicketTranscript} from './tickets/transcript.js';
 import {appendTicketActivity} from './tickets/activity.js';
 import {readAutoCloseConfig} from './tickets/autoCloseConfig.js';
+import {scheduleAutomaticTicketSummary} from './ai/automaticTicketSummary.js';
 const TICKET_DELETE_DELAY_MS = 3000;
 const TICKET_DELETE_DELAY_SECONDS = Math.floor(TICKET_DELETE_DELAY_MS / 1000);
 const TICKET_SERVICE = 'ticketService';
@@ -490,6 +491,7 @@ export async function closeTicket(channel, closer, reason = 'No reason provided'
     let movedToClosedCategory = false;
     
     ticketData.status = 'closed';
+    delete ticketData.aiSummary; // A new close must not display a previous close's summary.
     ticketData.closedBy = closer.id;
     ticketData.closedAt = new Date().toISOString();
     ticketData.closeReason = reason;
@@ -497,6 +499,7 @@ export async function closeTicket(channel, closer, reason = 'No reason provided'
     appendTicketActivity(ticketData,{type:'closed',actorId:closer.id,at:ticketData.closedAt});
     
     await saveTicketData(channel.guild.id, channel.id, ticketData);
+    scheduleAutomaticTicketSummary(channel, ticketData.closedAt);
 
     if (closedCategoryId && channel.parentId !== closedCategoryId) {
       const closedCategory = channel.guild.channels.cache.get(closedCategoryId)
@@ -780,6 +783,7 @@ export async function reopenTicket(channel, reopener) {
     let openCategoryMoveFailed = false;
     
     ticketData.status = 'open';
+    delete ticketData.aiSummary;
     ticketData.reopenedAt = new Date().toISOString();
     ticketData.autoClose = null;
     if (!ticketData.claimedBy) { ticketData.unclaimedAt = new Date().toISOString(); ticketData.reminderAttemptedAt = null; }

@@ -159,7 +159,7 @@ function isDuplicateTrack(player, track) {
     return player.queue.some((existing) => existing.info?.uri === uri);
 }
 
-export async function playQuery(client, interaction, query) {
+export async function playQuery(client, interaction, query, { allowPlaylist = true } = {}) {
     if (YOUTUBE_URL_PATTERN.test(query)) {
         throw new ZentixBotError(
             'YouTube URL blocked',
@@ -178,6 +178,7 @@ export async function playQuery(client, interaction, query) {
     const { loadType, tracks, playlistInfo } = result;
 
     if (loadType === 'playlist' || loadType === 'PLAYLIST_LOADED') {
+        if (!allowPlaylist) throw new ZentixBotError('Playlist not allowed', ErrorTypes.USER_INPUT, 'Only individual tracks can be added here.');
         let added = 0;
         let skipped = 0;
 
@@ -233,6 +234,7 @@ export async function playQuery(client, interaction, query) {
         }
 
         return {
+            track: { title: track.info.title, author: track.info.author },
             embed: v2Success(
                 willPlayNow ? 'Now Playing' : 'Track Added',
                 willPlayNow

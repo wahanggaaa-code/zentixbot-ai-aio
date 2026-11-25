@@ -112,7 +112,7 @@ export function validateInteractive(v, guild) {
     }
     if (typeof v.idleStart !== 'string' || typeof v.idleEnd !== 'string' || !CLOCK.test(v.idleStart) || !CLOCK.test(v.idleEnd)) throw err('Jam aktif tidak valid.');
     if (!Object.hasOwn(ZONES, v.zone)) throw err('Zona waktu tidak valid.');
-    if (typeof v.persona !== 'string' || !v.persona.trim() || v.persona.length > 500) throw err('Persona harus 1–500 karakter.');
+    if (typeof v.persona !== 'string' || v.persona.length > 500) throw err('Persona harus berupa teks maksimal 500 karakter.');
     const channelIds = channelList(v.channelIds, MAX_CHAT_CHANNELS, guild, 'Channel chat');
     const galleryChannelIds = channelList(v.galleryChannelIds, MAX_GALLERY_CHANNELS, guild, 'Channel galeri');
     if ((v.joinEnabled || v.idleEnabled) && channelIds.length === 0) throw err('Nimbrung dan sapaan saat sepi memerlukan minimal satu channel chat.');
@@ -274,7 +274,7 @@ const TASKS = {
  */
 export function buildPrompt({ kind, botName, persona, guildName, channelName, timeText, history = [], who = 'Anggota', idleMinutes = 0, replied = null, imageUnreadable = false, videoUnreadable = false, mediaContext = null, galleryReaction = false, idleApproach = '', previousNudges = [] }) {
     const head = [
-        `Kamu adalah ${safeName(botName)}, bot di server Discord "${oneLine(guildName, 80)}". Persona: ${oneLine(persona, 500)}`,
+        `Kamu adalah ${safeName(botName)}, bot di server Discord "${oneLine(guildName, 80)}".${oneLine(persona, 500) ? ` Persona: ${oneLine(persona, 500)}` : ''}`,
         `Kamu sedang berada di channel #${oneLine(channelName, 60)}. Sekarang ${timeText}.`,
         'Cara membalas: satu pesan chat pendek (1 sampai 3 kalimat), santai dan natural seperti anggota komunitas, dalam bahasa yang dipakai lawan bicara. Tanpa awalan nama, tanpa tanda kutip pembungkus, tanpa @everyone atau @here, tanpa tautan undangan.',
         ...(['reply', 'join'].includes(kind) ? [
