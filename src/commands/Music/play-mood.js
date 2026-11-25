@@ -1,5 +1,6 @@
 import { SlashCommandBuilder, MessageFlags } from 'discord.js';
 import { runMusicDj } from '../../services/ai/musicDj.js';
+import { createMusicDjSettingsStore, claimDjCooldown } from '../../services/ai/musicDjSettings.js';
 import { createAIFeatureControlsStore } from '../../services/ai/featureControls.js';
 
 export default {
@@ -17,7 +18,8 @@ export default {
         await interaction.deferReply({ flags: MessageFlags.Ephemeral });
         try {
             if (!(await createAIFeatureControlsStore(client).read(interaction.guildId)).musicDjEnabled) return interaction.editReply({ content: 'AI DJ belum diaktifkan di dashboard.', allowedMentions: { parse: [] } });
-            const result = await runMusicDj({ client, interaction, mood });
+            const settings = await createMusicDjSettingsStore(client).read(interaction.guildId);
+            const result = await runMusicDj({ client, interaction, mood, songCount:settings.songCount, beforeGenerate:()=>claimDjCooldown(interaction.guildId,settings.cooldownSeconds) });
             const safe = value => String(value || 'Tidak diketahui').replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/[@`*_~|\\]/g, '').slice(0, 120);
             const list = result.tracks.map((track, i) => `${i + 1}. ${safe(track.title)} — ${safe(track.author)}`).join('\n');
             return interaction.editReply({ content: `AI DJ: ${result.tracks.length} lagu ditambahkan, ${result.skipped} dilewati.\n${list || 'Tidak ada lagu yang berhasil ditambahkan.'}`.slice(0, 2000), allowedMentions: { parse: [] } });

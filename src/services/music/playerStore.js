@@ -9,6 +9,9 @@ export class GuildMusicData {
         this.volume = 75;
         this.shuffle = false;
         this.previousTracks = [];
+        this.djHistory = [];
+        this.djGeneration = 0;
+        this.djAutoplaySuppressed = false;
         this.twentyFourSeven = false;
         this.queuePages = new Map();
         this.updateInterval = null;

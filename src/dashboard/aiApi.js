@@ -15,6 +15,7 @@ import { createBuilder, PLAN_LIMITS, CHANNEL_TYPES } from '../services/ai/builde
 import { listThemes } from '../services/ai/builderThemes.js';
 import { createManualBuilder, MANUAL_ROLE_PERMISSIONS } from '../services/ai/builderManual.js';
 import { createSearchService } from '../services/ai/search.js';
+import { createMusicDjSettingsStore, validateMusicDjSettings } from '../services/ai/musicDjSettings.js';
 import { createAIFeatureControlsStore } from '../services/ai/featureControls.js';
 import { createSmart } from '../services/ai/smart.js';
 import { LANGUAGES, MAX_FAQ_ENTRIES, MAX_SMART_CHANNELS } from '../services/ai/smartSettings.js';
@@ -27,7 +28,9 @@ export function createAIApi(client,{auth,csrf,env=process.env,foundation=client.
  const fail=(res,e)=>res.status(e.status||503).json({error:e.status?e.message:'Layanan AI atau database tidak tersedia.',code:e.code||'UNAVAILABLE',...(e.created?{created:e.created,buildId:e.buildId??null,recorded:e.recorded===true}:{})});
  router.get('/failure-status',auth,owner,(req,res)=>{res.set('Cache-Control','no-store');res.json(foundation.failureStatus?.() ?? {failures:[],lastSuccess:null});});
  router.get('/feature-controls',auth,owner,async(req,res)=>{try{res.json({settings:await createAIFeatureControlsStore(client).read(req.guild.id)})}catch(e){fail(res,e)}});
- router.patch('/feature-controls/:feature',auth,owner,csrf,async(req,res)=>{try{if(!req.body||Array.isArray(req.body)||!(req.params.feature==='ticket-auto'?Object.keys(req.body).sort().join(',')==='confirmed,enabled'&&req.body.confirmed===true:Object.keys(req.body).join(',')==='enabled'))throw Object.assign(Error('Pengaturan fitur AI tidak valid atau konfirmasi diperlukan.'),{status:400});const settings=await createAIFeatureControlsStore(client).setEnabled(req.guild.id,req.params.feature,req.body.enabled);res.json({ok:true,settings})}catch(e){fail(res,e)}});
+ router.patch('/feature-controls/:feature',auth,owner,csrf,async(req,res)=>{try{if(!req.body||Array.isArray(req.body)||!(['ticket-auto','ticket-transfer'].includes(req.params.feature)?Object.keys(req.body).sort().join(',')==='confirmed,enabled'&&req.body.confirmed===true:Object.keys(req.body).join(',')==='enabled'))throw Object.assign(Error('Pengaturan fitur AI tidak valid atau konfirmasi diperlukan.'),{status:400});const settings=await createAIFeatureControlsStore(client).setEnabled(req.guild.id,req.params.feature,req.body.enabled);res.json({ok:true,settings})}catch(e){fail(res,e)}});
+ router.get('/music-dj-settings',auth,owner,async(req,res)=>{try{res.json({settings:await createMusicDjSettingsStore(client).read(req.guild.id)})}catch(e){fail(res,e)}});
+ router.patch('/music-dj-settings',auth,owner,csrf,async(req,res)=>{try{const {confirmed,...value}=req.body||{};if(confirmed!==true)throw Object.assign(Error('Konfirmasi diperlukan.'),{status:400});const settings=await createMusicDjSettingsStore(client).save(req.guild.id,validateMusicDjSettings(value));res.json({ok:true,settings})}catch(e){fail(res,e)}});
  router.get('/settings',auth,owner,async(req,res)=>{try{res.json({settings:await foundation.store.read(req.guild.id),credentials:foundation.credentials()})}catch(e){fail(res,e)}});
  // Generate an editable draft only; sending remains a separate Message Studio action.
  router.post('/faq-question-draft',auth,owner,csrf,async(req,res)=>{

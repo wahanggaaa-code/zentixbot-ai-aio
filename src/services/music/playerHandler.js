@@ -1,5 +1,6 @@
 // Player event handlers for Riffy. Adapted from Musicify playerHandler (Apache-2.0).
 
+import {trySmartAutoplay,rememberDjTrack} from '../ai/smartAutoplay.js';
 import { logger } from '../../utils/logger.js';
 import { v2Message } from '../../utils/componentsV2.js';
 import { getGuildMusicData, clearUpdateInterval } from './playerStore.js';
@@ -124,6 +125,9 @@ export function setupPlayerHandler(client) {
     client.riffy.on('trackStart', async (player, track) => {
         try {
             const guildData = getGuildMusicData(player.guildId);
+            guildData.djGeneration++;
+            guildData.djAutoplaySuppressed = false;
+            rememberDjTrack(guildData,track);
 
             // Keep the Lavalink player's loop mode aligned with the stored preference.
             // Skip temporarily clears track-loop so it can advance; restore it here.
@@ -158,7 +162,11 @@ export function setupPlayerHandler(client) {
             const guildData = getGuildMusicData(player.guildId);
             clearUpdateInterval(guildData);
 
-            if (guildData.autoplay) {
+            if (await trySmartAutoplay(client,player,guildData)) return;
+            // A new track or explicit stop can happen while AI is in flight.
+            if (client.riffy.players.get(player.guildId)!==player || player.playing || player.queue?.length) return;
+
+            if (guildData.autoplay && !guildData.djAutoplaySuppressed) {
                 player.autoplay(player);
                 return;
             }
@@ -217,6 +225,9 @@ export function setupPlayerHandler(client) {
         guildData.playerMessageId = null;
         guildData.playerChannelId = null;
         guildData.previousTracks = [];
+        guildData.djHistory = [];
+        guildData.djGeneration++;
+        guildData.djAutoplaySuppressed = true;
         guildData.autoPaused = false;
         if (guildData.idleTimeout) {
             clearTimeout(guildData.idleTimeout);

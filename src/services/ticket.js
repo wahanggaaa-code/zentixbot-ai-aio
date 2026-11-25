@@ -1,5 +1,8 @@
 // ticket.js
 
+import { randomUUID } from 'node:crypto';
+import { scheduleTransferTicketSummary } from './ai/transferTicketSummary.js';
+
 import { FileBuilder,
   ChannelType,
   ActionRowBuilder,
@@ -491,6 +494,8 @@ export async function closeTicket(channel, closer, reason = 'No reason provided'
     let movedToClosedCategory = false;
     
     ticketData.status = 'closed';
+    delete ticketData.aiTransferSummary;
+    delete ticketData.aiTransferToken;
     delete ticketData.aiSummary; // A new close must not display a previous close's summary.
     ticketData.closedBy = closer.id;
     ticketData.closedAt = new Date().toISOString();
@@ -746,8 +751,11 @@ export async function transferTicket(channel, actor, targetId, expectedClaimer) 
       ticketUserError('Staff cannot access ticket', 'Target staff must be able to view and send messages in this ticket.', ErrorTypes.VALIDATION, {ticketCode:'TICKET_TRANSFER_TARGET'});
     ticketData.claimedBy = targetId;
     ticketData.claimedAt = new Date().toISOString();
+    ticketData.aiTransferToken = randomUUID();
+    delete ticketData.aiTransferSummary;
     appendTicketActivity(ticketData,{type:'transferred',actorId:actor.id,from:expectedClaimer,to:targetId,at:ticketData.claimedAt});
     await saveTicketData(channel.guild.id, channel.id, ticketData);
+    scheduleTransferTicketSummary(channel, targetId, ticketData.aiTransferToken);
     let displayUpdated = true;
     try {
       const messages = await channel.messages.fetch();
@@ -1141,6 +1149,8 @@ export async function unclaimTicket(channel, unclaimer) {
     
     const previousClaimer = ticketData.claimedBy;
     ticketData.claimedBy = null;
+    delete ticketData.aiTransferSummary;
+    delete ticketData.aiTransferToken;
     ticketData.claimedAt = null;
     ticketData.unclaimedAt = new Date().toISOString();
     ticketData.reminderAttemptedAt = null;

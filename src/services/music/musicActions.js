@@ -514,6 +514,9 @@ export function buildQueueReply(client, guildId, page = 0) {
 }
 
 export async function destroyPlayerSession(client, guildId, player, guildData, { forceDisconnect = false } = {}) {
+    guildData.djGeneration = (guildData.djGeneration || 0) + 1;
+    guildData.djAutoplaySuppressed = true;
+    guildData.djHistory = [];
     clearUpdateInterval(guildData);
     if (guildData.idleTimeout) {
         clearTimeout(guildData.idleTimeout);
