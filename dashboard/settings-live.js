@@ -188,12 +188,12 @@
   }
 
   let presenceVersion=0;
-  async function bindPresence(isOwner){
+  async function bindPresence(isOwner, pending){
    const slot=slots.presence,version=++presenceVersion;
    if(!isOwner){slot.textContent=tr('Hanya owner bot yang dapat mengubah status bot.','Only the bot owner can change bot presence.');return;}
    slot.textContent=tr('Memuat status bot…','Loading bot presence…');
    let data;
-   try{data=await request('presence')}catch(e){if(slot.isConnected&&version===presenceVersion){slot.textContent='';const message=document.createElement('p');message.className='f-muted';message.textContent=e.message;slot.append(message);const retry=document.createElement('button');retry.type='button';retry.className='f-outline';retry.textContent=tr('COBA LAGI','RETRY');retry.onclick=()=>bindPresence(true);slot.append(retry)}return;}
+   try{const result=await (pending ?? request('presence').then(value=>({value}),error=>({error})));if(result.error)throw result.error;data=result.value}catch(e){if(slot.isConnected&&version===presenceVersion){slot.textContent='';const message=document.createElement('p');message.className='f-muted';message.textContent=e.message;slot.append(message);const retry=document.createElement('button');retry.type='button';retry.className='f-outline';retry.textContent=tr('COBA LAGI','RETRY');retry.onclick=()=>bindPresence(true);slot.append(retry)}return;}
    if(!slot.isConnected||version!==presenceVersion)return;
    const {status,text}=data.settings;
    const labels={online:'Online',idle:tr('Tidak aktif','Idle'),dnd:tr('Jangan ganggu','Do Not Disturb'),invisible:tr('Tidak terlihat','Invisible')};
@@ -212,6 +212,10 @@
    reload.disabled=true;
    for(const slot of Object.values(slots))slot.textContent=tr('Memuat…','Loading…');
    readAt.textContent='';
+   // Start both reads together. The server still authorizes presence independently, and
+   // its result is not shown unless the control center confirms the owner.
+   // Settle errors immediately so a fast failure cannot become an unhandled rejection.
+   const presence=request('presence').then(value=>({value}),error=>({error}));
    let data;
    try{data=await request('control-center')}
    catch(e){
@@ -228,7 +232,7 @@
    slots.access.innerHTML=accessHtml(data.access,data.dashboard);
    slots.access.querySelector('#settingsLogout').onclick=()=>document.getElementById('profileButton').click();
    bindHosting(data.hosting);
-   bindPresence(data.access.isBotOwner);
+   bindPresence(data.access.isBotOwner,presence);
    readAt.textContent=`${tr('Dibaca','Read at')} ${new Date(data.readAt).toLocaleString(tr('id-ID','en-US'),{hour12:false})}. ${tr('Halaman tidak memperbarui diri; muat ulang untuk kondisi terbaru.','This page does not refresh automatically; reload for the latest status.')}`;
    reload.disabled=false;
   }

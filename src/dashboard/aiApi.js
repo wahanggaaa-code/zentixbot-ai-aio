@@ -107,7 +107,7 @@ export function createAIApi(client,{auth,csrf,env=process.env,foundation=client.
  router.patch('/chat',auth,owner,csrf,async(req,res)=>{try{const settings=validateChatSettings(req.body,req.guild);await chatStore.save(req.guild.id,settings);res.json({ok:true,settings})}catch(e){fail(res,e)}});
  // Interactive AI in channels. Saving goes through the running handler so it applies to the next message.
  const interactive=client.aiInteractive||createInteractive({client,foundation});
- router.get('/interactive',auth,owner,async(req,res)=>{try{const settings=await interactive.store.read(req.guild.id);const channels=[...req.guild.channels.cache.values()].filter(c=>c.type===ChannelType.GuildText).map(({id,name})=>({id,name}));res.json({settings,channels,search:{configured:await searchReady(req.guild.id)}})}catch(e){fail(res,e)}});
+ router.get('/interactive',auth,owner,async(req,res)=>{try{const [settings,configured]=await Promise.all([interactive.store.read(req.guild.id),searchReady(req.guild.id)]);const channels=[...req.guild.channels.cache.values()].filter(c=>c.type===ChannelType.GuildText).map(({id,name})=>({id,name}));res.json({settings,channels,search:{configured}})}catch(e){fail(res,e)}});
  router.patch('/interactive',auth,owner,csrf,async(req,res)=>{try{const settings=await interactive.saveSettings(validateInteractive(req.body,req.guild));res.json({ok:true,settings})}catch(e){fail(res,e)}});
  router.post('/chat/panel',auth,owner,csrf,async(req,res)=>{try{if(!req.body||Object.keys(req.body).length!==1||req.body.confirmed!==true)throw Object.assign(Error('Konfirmasi diperlukan.'),{status:400});const settings=await chatStore.read(req.guild.id);res.json({ok:true,...await sendDMPublicPanel({client,guild:req.guild,settings,confirmed:true})})}catch(e){fail(res,e)}});
  // Retired document endpoints never access stored documents or invoke a provider.
@@ -156,7 +156,9 @@ export function createAIApi(client,{auth,csrf,env=process.env,foundation=client.
  const searchReady=async guildId=>searchService.status?(await searchService.status(guildId)).configured:Object.values({tavily:env.AI_TAVILY_API_KEY,parallel:env.AI_PARALLEL_API_KEY,exa:env.AI_EXA_API_KEY}).some(x=>Boolean(x?.trim()));
  router.get('/support/settings',auth,owner,async(req,res)=>{try{res.json({settings:await smart.support.read()})}catch(e){fail(res,e)}});
  router.patch('/support/settings',auth,owner,csrf,async(req,res)=>{try{res.json({ok:true,settings:await smart.support.save(req.body,req.guild)})}catch(e){fail(res,e)}});
- router.get('/smart',auth,owner,async(req,res)=>{try{res.json({settings:await smart.settings({strict:true}),channels:textChannels(req.guild),languages:LANGUAGES,menus:MESSAGE_MENUS,search:{configured:await searchReady(req.guild.id)},limits:{channels:MAX_SMART_CHANNELS,faqEntries:MAX_FAQ_ENTRIES}})}catch(e){fail(res,e)}});
+ // Translation does not need search provider status or the other smart feature settings.
+ router.get('/smart/translate/settings',auth,owner,async(req,res)=>{try{const {translate}=await smart.settings({strict:true});res.json({settings:{translate},channels:textChannels(req.guild),languages:LANGUAGES,limits:{channels:MAX_SMART_CHANNELS}})}catch(e){fail(res,e)}});
+ router.get('/smart',auth,owner,async(req,res)=>{try{const [settings,configured]=await Promise.all([smart.settings({strict:true}),searchReady(req.guild.id)]);res.json({settings,channels:textChannels(req.guild),languages:LANGUAGES,menus:MESSAGE_MENUS,search:{configured},limits:{channels:MAX_SMART_CHANNELS,faqEntries:MAX_FAQ_ENTRIES}})}catch(e){fail(res,e)}});
  const saveSmart=async(req,res)=>{
   try{
    const section=req.params.section??'faq',before=(await smart.settings({strict:true})).menu;
