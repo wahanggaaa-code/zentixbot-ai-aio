@@ -56,7 +56,7 @@ Isi setidaknya `DISCORD_TOKEN`, `CLIENT_ID` dan `GUILD_ID`. Untuk login dashboar
 
 ## Dashboard & AI
 
-Buka `https://alamat-dashboard/dashboard/` dan masuk memakai token dashboard, atau gunakan login Discord yang sudah dikonfigurasi. Siapa pun yang mengetahui token dashboard dapat menggunakannya; jangan bagikan tautan login bertoken. HTTP publik tidak mengenkripsi token atau sesi.
+Buka `https://alamat-dashboard/dashboard/` dan masuk memakai token dashboard. Login Discord dinonaktifkan, termasuk ketika token belum dikonfigurasi. Siapa pun yang mengetahui token dashboard dapat menggunakannya; jangan bagikan tautan login bertoken. HTTP publik tidak mengenkripsi token atau sesi. Sesi token memeriksa keanggotaan `OWNER_IDS` saat login dan memakai identitas tersebut untuk membuka data tanpa pemeriksaan ulang setiap halaman. Jika keanggotaan dicabut, akses baca sesi token tetap berlaku sampai logout atau sesi berakhir (maksimal 12 jam); tindakan yang mengubah data tetap memeriksa anggota dan izin Discord.
 
 AI diatur melalui **AI Studio**. Untuk mengizinkan anggota membuat gambar, konfigurasi provider gambar dan fondasi AI, lalu aktifkan **Image Studio → Discord**, pilih channel dan role bila diperlukan, serta atur cooldown. Anggota memakai `/gambar` dengan persetujuan. Fitur ini nonaktif secara bawaan; filter konten bergantung provider dan tidak menjamin hasil aman.
 

@@ -56,7 +56,7 @@ Set at least `DISCORD_TOKEN`, `CLIENT_ID` and `GUILD_ID`. For dashboard token lo
 
 ## Dashboard & AI
 
-Open `https://your-dashboard-address/dashboard/` and sign in with the dashboard token, or use a configured Discord login. Anyone who knows the dashboard token can use it; do not share token-bearing login links. Public HTTP does not encrypt tokens or sessions.
+Open `https://your-dashboard-address/dashboard/` and sign in with the dashboard token. Discord login is disabled, even if the token is not configured. Anyone who knows the token can use it; do not share token-bearing login links. Public HTTP does not encrypt tokens or sessions. Token login verifies the first account in `OWNER_IDS` is a member, then reuses that identity for reads without another membership check. If membership is revoked, read access remains until logout or session expiry (at most 12 hours); writes still revalidate membership and perform action-specific Discord permission checks.
 
 AI is configured in **AI Studio**. To let members generate images, configure an image provider and the AI foundation, then enable **Image Studio → Discord**, select channels and optional roles, and set a cooldown. Members use `/gambar` with consent. This feature is off by default; content filtering depends on the provider and does not guarantee safe results.
 

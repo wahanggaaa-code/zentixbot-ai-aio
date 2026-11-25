@@ -71,27 +71,20 @@ export function describeServer({ id, name, connected }) {
         + (others > 0 ? `; ${others} other ${others === 1 ? 'server is' : 'servers are'} ignored` : '');
 }
 
-const DASHBOARD_OFF = {
-    missing: 'DASHBOARD_URL is not set',
-    malformed: 'DASHBOARD_URL must be an address without a path',
-    http_not_allowed: 'DASHBOARD_URL uses http:// and DASHBOARD_ALLOW_HTTP is not true',
-};
-
 const TOKEN_OFF = {
     too_short: 'DASHBOARD_TOKEN is shorter than 12 characters',
     no_owner: 'DASHBOARD_TOKEN needs a Discord user ID in OWNER_IDS',
 };
 
 /**
- * @param {{ origin: string | null, insecure: boolean, reason: string | null, configured: boolean }} status  the Discord login
+ * @param {{ origin: string | null, insecure: boolean, reason: string | null, configured: boolean }} status  resolved dashboard address
  * @param {{ enabled: boolean, reason: string | null }} [token]  the login with DASHBOARD_TOKEN
  */
-export function describeDashboard({ origin, insecure, reason, configured }, token = { enabled: false, reason: 'missing' }) {
+export function describeDashboard({ origin, insecure }, token = { enabled: false, reason: 'missing' }) {
     const address = origin ? `${origin}/dashboard/${insecure ? ' (plain HTTP)' : ''}` : null;
-    if (token.enabled) return `${address ?? '/dashboard/ on the web port'}, login with DASHBOARD_TOKEN${configured ? ' or Discord' : ''}`;
+    if (token.enabled) return `${address ?? '/dashboard/ on the web port'}, login with DASHBOARD_TOKEN`;
     const tokenProblem = TOKEN_OFF[token.reason];
-    if (configured) return address + (tokenProblem ? `; token login off: ${tokenProblem}` : '');
-    return `login off: ${tokenProblem ?? DASHBOARD_OFF[reason] ?? 'CLIENT_ID, DISCORD_CLIENT_SECRET or GUILD_ID is missing'}`;
+    return `login off: ${tokenProblem ?? 'set DASHBOARD_TOKEN and OWNER_IDS'}`;
 }
 
 const RULE = '─'.repeat(60);

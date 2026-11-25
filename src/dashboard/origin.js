@@ -44,7 +44,7 @@ export function notConfiguredMessage(reason, language = 'id') {
     if (language === 'en') {
         if (reason === 'http_not_allowed') return 'Login is not configured: DASHBOARD_URL uses http:// on a public address. Use https://, or set DASHBOARD_ALLOW_HTTP=true if the hosting only provides HTTP (login sessions will not be encrypted).';
         if (reason === 'malformed') return 'Login is not configured: DASHBOARD_URL must be an address only, such as https://bot.example.com or http://203.0.113.5:16954, without a path, query or username.';
-        return 'Login is not configured. The easiest way: set DASHBOARD_TOKEN (at least 12 characters) and OWNER_IDS, then restart the bot. Discord login is also available. Set CLIENT_ID, DISCORD_CLIENT_SECRET, DASHBOARD_URL and GUILD_ID.';
+        return 'Login is not configured. The easiest way: set DASHBOARD_TOKEN (at least 12 characters) and OWNER_IDS, then restart the bot.';
     }
     if (reason === 'http_not_allowed') {
         return 'Login belum dikonfigurasi: DASHBOARD_URL memakai http:// pada alamat publik. Pakai alamat https://, atau atur DASHBOARD_ALLOW_HTTP=true bila hosting hanya menyediakan HTTP (sesi login lalu tidak terenkripsi).';
@@ -52,5 +52,5 @@ export function notConfiguredMessage(reason, language = 'id') {
     if (reason === 'malformed') {
         return 'Login belum dikonfigurasi: DASHBOARD_URL harus berupa alamat saja, misalnya https://bot.example.com atau http://203.0.113.5:16954, tanpa path, tanda tanya atau nama pengguna.';
     }
-    return 'Login belum dikonfigurasi. Cara termudah: isi DASHBOARD_TOKEN (minimal 12 karakter) dan OWNER_IDS, lalu restart bot. Login lewat Discord juga bisa. Atur CLIENT_ID, DISCORD_CLIENT_SECRET, DASHBOARD_URL dan GUILD_ID.';
+    return 'Login belum dikonfigurasi. Cara termudah: isi DASHBOARD_TOKEN (minimal 12 karakter) dan OWNER_IDS, lalu restart bot.';
 }

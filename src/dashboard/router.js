@@ -5,8 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { PermissionFlagsBits } from 'discord.js';
 import { isHomeGuild } from '../utils/singleGuild.js';
 import { logger } from '../utils/logger.js';
-import { dashboardLoginStatus, notConfiguredMessage } from './origin.js';
-import { callbackProblem, loginProblemPage } from './loginProblem.js';
+import { dashboardLoginStatus } from './origin.js';
 import { linkToken, loginFormPage, tokenLoginStatus, tokenMatches, tokenOffMessage, TOKEN_SESSION_MS } from './tokenLogin.js';
 import { noticePage } from './loginPage.js';
 import { createBotApiRouter } from './botApi.js';
@@ -57,10 +56,10 @@ export function mountDashboard(app, client, options) {
 // Sessions are process-local: deployment with multiple workers needs a shared session store.
 export function createDashboardRouter(client, { fetchImpl = globalThis.fetch, env = process.env, systemUsage } = {}) {
   const router = express.Router();
-  const states = new Map(), sessions = new Map();
-  // Login stays disabled until DASHBOARD_URL is usable; see origin.js for what counts as usable.
-  const { origin, insecure, reason, configured } = dashboardLoginStatus(env, client.homeGuildId);
-  // The other way in: DASHBOARD_TOKEN typed into a form. It works without the Discord login above.
+  const sessions = new Map();
+  // Resolve the configured public origin for cookies and request validation.
+  const { origin, insecure } = dashboardLoginStatus(env, client.homeGuildId);
+  // DASHBOARD_TOKEN is the only way to create a dashboard session.
   const tokenLogin = tokenLoginStatus(env);
   if (tokenLogin.enabled && !origin?.startsWith('https:')) logger.warn('Dashboard: token login is on without an https address in DASHBOARD_URL. Over plain HTTP the token and the login session are not encrypted in transit.');
   else if (insecure) logger.warn(`Dashboard is served over plain HTTP at ${origin} (DASHBOARD_ALLOW_HTTP). Login sessions are not encrypted in transit.`);
@@ -94,10 +93,10 @@ export function createDashboardRouter(client, { fetchImpl = globalThis.fetch, en
   const page = (res, status, html) => res.status(status).set('Referrer-Policy', 'same-origin').send(html);
   const language = req => cookie(req, 'zentix_language') === 'en' ? 'en' : 'id';
   const notice = (res, status, message, more) => page(res, status, noticePage(message, { ...more, language: language(res.req) }));
-  const loginForm = (req, res) => (status, error) => page(res, status, loginFormPage({ error, discord: configured, language: language(req), origin, ownerId: tokenLogin.ownerId }));
+  const loginForm = (req, res) => (status, error) => page(res, status, loginFormPage({ error, language: language(req), origin, ownerId: tokenLogin.ownerId }));
   const options = { httpOnly: true, secure: origin?.startsWith('https:') || false, sameSite: 'lax', path: '/dashboard' };
   const clear = (res, name) => res.clearCookie(name, options);
-  const purge = () => { const now = Date.now(); for (const [k,v] of states) if (v < now) states.delete(k); for (const [k,v] of sessions) if (v.expires < now) sessions.delete(k); };
+  const purge = () => { const now = Date.now(); for (const [k,v] of sessions) if (v.expires < now) sessions.delete(k); };
   // `operator` is true for a token login: the holder of DASHBOARD_TOKEN runs the bot, and acts as
   // the account in OWNER_IDS whether or not that account is an administrator of the server.
   async function authorize(userId, operator = false) {
@@ -112,20 +111,8 @@ export function createDashboardRouter(client, { fetchImpl = globalThis.fetch, en
   }
   router.use((req,res,next) => { res.set({'Cache-Control': NO_CACHE, 'X-Content-Type-Options':'nosniff', 'Referrer-Policy':'no-referrer', 'X-Frame-Options':'DENY'}); next(); });
   router.get('/login', (req,res) => {
-    if (tokenLogin.enabled && req.query.via !== 'discord') return loginForm(req, res)(200, '');
-    if (!configured) return notice(res, 503, tokenLogin.reason === 'missing' || tokenLogin.enabled ? notConfiguredMessage(reason, language(req)) : tokenOffMessage(tokenLogin.reason, language(req)), tokenLogin.enabled ? undefined : { href: null });
-    purge();
-    // A browser that opens the login twice (second tab, reload, prefetch) keeps its pending state.
-    // A fresh state each time would overwrite the cookie and make the login begun first fail.
-    const pending = cookie(req, 'zx_state');
-    const state = states.has(pending) ? pending : random();
-    if (state !== pending) {
-      if (states.size >= 5000) return notice(res, 503, 'Terlalu banyak login yang menunggu.');
-      states.set(state, Date.now() + 600000);
-    }
-    res.cookie('zx_state', state, { ...options, maxAge: Math.max(1000, states.get(state) - Date.now()) });
-    const q = new URLSearchParams({ client_id: env.CLIENT_ID, redirect_uri: origin + '/dashboard/callback', response_type: 'code', scope: 'identify', state });
-    res.redirect('https://discord.com/oauth2/authorize?' + q);
+    if (!tokenLogin.enabled) return notice(res, 503, tokenOffMessage(tokenLogin.reason, language(req)), { href: null });
+    return loginForm(req, res)(200, '');
   });
   const WRONG_ADDRESS = `Login hanya diterima dari ${origin}/dashboard/login. Buka alamat itu, atau sesuaikan DASHBOARD_URL dengan alamat yang kamu pakai.`;
   // Opens the session of a token login once the token has been found right; `form` shows the login page with a message.
@@ -138,7 +125,7 @@ export function createDashboardRouter(client, { fetchImpl = globalThis.fetch, en
     }
     if (sessions.size >= 5000) return form(503, 'Terlalu banyak sesi aktif.');
     const person = access.member?.user;
-    const id = random(); sessions.set(id, { user: { id: tokenLogin.ownerId, username: person?.globalName || person?.username || 'Owner' }, csrf: random(), expires: Date.now() + TOKEN_SESSION_MS, operator: true });
+    const id = random(); sessions.set(id, { user: { id: tokenLogin.ownerId, username: person?.globalName || person?.username || 'Owner' }, csrf: random(), expires: Date.now() + TOKEN_SESSION_MS, operator: true, member: access.member });
     res.cookie('zx_session', id, { ...options, maxAge: TOKEN_SESSION_MS });
     logger.info(`Dashboard: token login${how} from ${req.ip}, acting as ${tokenLogin.ownerId}`);
     res.redirect(303, '/dashboard/');
@@ -169,36 +156,9 @@ export function createDashboardRouter(client, { fetchImpl = globalThis.fetch, en
     }
     await openTokenSession(req, res, form, ' by link');
   });
-  router.get('/callback', async (req,res) => {
-    if (!configured) return notice(res, 503, notConfiguredMessage(reason, language(req)), tokenLogin.enabled ? undefined : { href: null });
-    purge(); const state = req.query.state, sent = cookie(req, 'zx_state');
-    const known = typeof state === 'string' && states.has(state);
-    // Only the browser that began a login spends it, and does so whether or not it then succeeds.
-    // A request without that browser's cookie (a link preview, another browser) leaves it pending.
-    if (sent === state) { states.delete(state); clear(res, 'zx_state'); }
-    const problem = callbackProblem({ state, known, sent, code: req.query.code, denied: typeof req.query.error === 'string' });
-    if (problem) {
-      // Reloading the callback after a finished login, or finishing it in a second tab.
-      if (sessions.has(cookie(req, 'zx_session'))) return res.redirect('/dashboard/');
-      return page(res, 400, loginProblemPage(problem, origin, language(req)));
-    }
-    try {
-      const tokenResponse = await fetchImpl('https://discord.com/api/v10/oauth2/token', { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:new URLSearchParams({client_id:env.CLIENT_ID,client_secret:env.DISCORD_CLIENT_SECRET,grant_type:'authorization_code',code:req.query.code,redirect_uri:origin+'/dashboard/callback'}), signal:AbortSignal.timeout(10000) });
-      if (!tokenResponse.ok) throw new Error('token exchange');
-      const token = await tokenResponse.json();
-      if (!token.access_token || !Number.isFinite(token.expires_in) || token.expires_in <= 0) throw new Error('invalid token');
-      const userResponse = await fetchImpl('https://discord.com/api/v10/users/@me', { headers:{Authorization:`Bearer ${token.access_token}`}, signal:AbortSignal.timeout(10000) });
-      if (!userResponse.ok) throw new Error('identity');
-      const user = await userResponse.json();
-      if (!/^\d{17,20}$/.test(user.id || '')) throw new Error('invalid identity');
-      const access = await authorize(user.id);
-      if (access.error) return notice(res, access.status, access.error, { title: 'Login dashboard gagal', label: 'LOGIN GAGAL', action: 'Mulai login lagi' });
-      if (sessions.size >= 5000) return notice(res, 503, 'Terlalu banyak sesi aktif.');
-      const id=random(); sessions.set(id,{ user: {id:user.id, username:user.global_name || user.username || 'Discord'}, csrf:random(), expires:Date.now()+Math.min(token.expires_in*1000,8*3600*1000) });
-      res.cookie('zx_session', id, {...options, maxAge:Math.min(token.expires_in*1000,8*3600*1000)});
-      res.redirect('/dashboard/');
-    } catch { notice(res, 502, 'Login Discord gagal. Coba lagi.', { title: 'Login dashboard gagal', label: 'LOGIN GAGAL', action: 'Mulai login lagi' }); }
-  });
+  router.get('/callback', (req,res) => notice(res, 403, language(req) === 'en'
+    ? 'Discord login is disabled. Use the dashboard token.'
+    : 'Login Discord dinonaktifkan. Gunakan token dashboard.'));
   // Share only an ongoing verification between concurrent reads in one session. Never cache
   // its result or share it with a write: later requests must re-check access with Discord.
   const pendingReadAccess = new WeakMap();
@@ -206,6 +166,17 @@ export function createDashboardRouter(client, { fetchImpl = globalThis.fetch, en
     purge(); const session = sessions.get(cookie(req,'zx_session'));
     if (!session) return res.status(401).json({error:'Silakan login.'});
     const start = process.hrtime.bigint();
+    // A token session represents the operator. Its initial membership was verified at login;
+    // reuse that identity for reads so page navigation does not wait for Discord each time.
+    // This deliberately allows reads after membership changes until logout or expiry. Writes
+    // always go through a fresh authorization and retain their own Discord permission checks.
+    if (session.operator === true && (req.method === 'GET' || req.method === 'HEAD')) {
+      if (!client.isReady?.()) return res.status(503).json({error:'Bot belum siap memverifikasi server.'});
+      const guild = client.guilds.cache.get(client.homeGuildId);
+      if (!guild || !isHomeGuild(client, guild.id) || !session.member) return res.status(503).json({error:'Bot belum tersedia di server yang dikonfigurasi.'});
+      res.set('Server-Timing', `dashboard-auth;dur=${(Number(process.hrtime.bigint() - start) / 1e6).toFixed(1)}`);
+      req.session = session; req.guild = guild; req.member = session.member; return next();
+    }
     let pending = req.method === 'GET' || req.method === 'HEAD' ? pendingReadAccess.get(session) : null;
     if (!pending) {
       pending = authorize(session.user.id, session.operator === true);
@@ -220,6 +191,7 @@ export function createDashboardRouter(client, { fetchImpl = globalThis.fetch, en
     if (sessions.get(cookie(req,'zx_session')) !== session || session.expires <= Date.now()) return res.status(401).json({error:'Silakan login.'});
     if (access.error) { delete session.verifiedAt; return res.status(access.status).json({error:access.error}); }
     session.verifiedAt = Date.now();
+    if (session.operator === true) session.member = access.member;
     req.session = session; req.guild = access.guild; req.member = access.member; next();
   }
   // For a route the page asks every few seconds. `auth` asks Discord about the member on every request;
@@ -259,12 +231,16 @@ export function createDashboardRouter(client, { fetchImpl = globalThis.fetch, en
   // botOwner lets AI Studio say up front that its routes will refuse this account (see `owner` in aiApi.js).
   const botOwners = () => String(env.OWNER_IDS || '').split(',').map((x) => x.trim()).filter((x) => /^\d{17,20}$/.test(x));
   router.get('/api/me', auth, (req,res) => res.json({user:req.session.user, guild:{id:req.guild.id,name:req.guild.name}, csrf:req.session.csrf, botReady:client.isReady(), botOwner:botOwners().includes(req.session.user.id)}));
-  router.post('/api/logout', auth, (req,res) => {
-    if (!fromOwnPage(req) || req.get('x-csrf-token') !== req.session.csrf) return res.status(403).json({error:'Permintaan tidak valid.'});
-    sessions.delete(cookie(req,'zx_session')); clear(res,'zx_session'); res.json({ok:true});
+  // Logging out must remain possible even if Discord is offline or the member has left.
+  // It only removes the caller's own session and still requires the origin and CSRF token.
+  router.post('/api/logout', (req,res) => {
+    purge(); const id = cookie(req,'zx_session'), session = sessions.get(id);
+    if (!session) return res.status(401).json({error:'Silakan login.'});
+    if (!fromOwnPage(req) || req.get('x-csrf-token') !== session.csrf) return res.status(403).json({error:'Permintaan tidak valid.'});
+    sessions.delete(id); clear(res,'zx_session'); res.json({ok:true});
   });
   router.get(['/', '/index.html'], (req,res,next) => {
-    if (!configured && !tokenLogin.enabled) return notice(res, 503, tokenLogin.reason === 'missing' ? notConfiguredMessage(reason, language(req)) : tokenOffMessage(tokenLogin.reason, language(req)), { href: null });
+    if (!tokenLogin.enabled) return notice(res, 503, tokenOffMessage(tokenLogin.reason, language(req)), { href: null });
     purge(); if (!sessions.has(cookie(req,'zx_session'))) return res.redirect('/dashboard/login');
     auth(req,res,() => res.sendFile(path.join(preview,'index.html')));
   });

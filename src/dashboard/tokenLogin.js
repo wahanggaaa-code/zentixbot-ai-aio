@@ -67,9 +67,8 @@ export function tokenOffMessage(reason, language = 'id') {
  * The login page: one field for the token.
  * @param {object} [options]
  * @param {string} [options.error]     shown above the field
- * @param {boolean} [options.discord]  whether the Discord login is configured as well
  */
-export function loginFormPage({ error = '', discord = false, language = 'id', origin = null, ownerId = null } = {}) {
+export function loginFormPage({ error = '', language = 'id', origin = null, ownerId = null } = {}) {
     const english = language === 'en';
     // Only known server-generated messages are translated. Unknown diagnostics stay untouched.
     const messages = new Map([
@@ -97,6 +96,6 @@ export function loginFormPage({ error = '', discord = false, language = 'id', or
             + '<input id="token" name="token" type="password" autocomplete="current-password" required autofocus>'
             + `<button class="primary" type="submit">${english ? 'Log in' : 'Masuk'}</button></form>`
             + (english ? '<p class="help">The token is the value of <code>DASHBOARD_TOKEN</code> in the bot’s <code>.env</code> file.</p></section>' : '<p class="help">Token adalah isi <code>DASHBOARD_TOKEN</code> pada berkas <code>.env</code> bot.</p></section>')
-            + (discord ? (english ? '<p class="alt"><span>OR</span><a href="/dashboard/login?via=discord">Log in with Discord</a></p>' : '<p class="alt"><span>ATAU</span><a href="/dashboard/login?via=discord">Masuk dengan akun Discord</a></p>') : ''),
+,
     });
 }
