@@ -199,10 +199,25 @@ export function createDashboardRouter(client, { fetchImpl = globalThis.fetch, en
       res.redirect('/dashboard/');
     } catch { notice(res, 502, 'Login Discord gagal. Coba lagi.', { title: 'Login dashboard gagal', label: 'LOGIN GAGAL', action: 'Mulai login lagi' }); }
   });
+  // Share only an ongoing verification between concurrent reads in one session. Never cache
+  // its result or share it with a write: later requests must re-check access with Discord.
+  const pendingReadAccess = new WeakMap();
   async function auth(req,res,next) {
     purge(); const session = sessions.get(cookie(req,'zx_session'));
     if (!session) return res.status(401).json({error:'Silakan login.'});
-    const access = await authorize(session.user.id, session.operator === true);
+    const start = process.hrtime.bigint();
+    let pending = req.method === 'GET' || req.method === 'HEAD' ? pendingReadAccess.get(session) : null;
+    if (!pending) {
+      pending = authorize(session.user.id, session.operator === true);
+      if (req.method === 'GET' || req.method === 'HEAD') {
+        pendingReadAccess.set(session, pending);
+        const clearPending = () => { if (pendingReadAccess.get(session) === pending) pendingReadAccess.delete(session); };
+        pending.then(clearPending, clearPending);
+      }
+    }
+    const access = await pending;
+    res.set('Server-Timing', `dashboard-auth;dur=${(Number(process.hrtime.bigint() - start) / 1e6).toFixed(1)}`);
+    if (sessions.get(cookie(req,'zx_session')) !== session || session.expires <= Date.now()) return res.status(401).json({error:'Silakan login.'});
     if (access.error) { delete session.verifiedAt; return res.status(access.status).json({error:access.error}); }
     session.verifiedAt = Date.now();
     req.session = session; req.guild = access.guild; req.member = access.member; next();

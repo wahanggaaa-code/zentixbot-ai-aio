@@ -55,7 +55,7 @@
  }
 
  async function request(path,method='GET',body){
-  const session=await window.ZentixSession;
+  const session=method==='GET'&&!body?null:await window.ZentixSession;
   const response=await fetch('/dashboard/api/bot/giveaway/'+path,{
    method,
    cache:'no-store',

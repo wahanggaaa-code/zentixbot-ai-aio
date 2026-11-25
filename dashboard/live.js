@@ -14,7 +14,7 @@
     ['Pemakaian sistem tidak dapat dibaca.','System usage cannot be read.'],
   ]);
   async function request(path,opts={}) {
-    const session=await window.ZentixSession;
+    const session=(!opts.method || opts.method==='GET')&&!opts.body?null:await window.ZentixSession;
     const res=await fetch('/dashboard/api/bot/'+path,{cache:'no-store',...opts,headers:{...(opts.body?{'Content-Type':'application/json','x-csrf-token':session.csrf}:{}),...opts.headers}});
     const data=await res.json(); const greeting=path==='welcome'||path.startsWith('welcome/')||path.startsWith('greeting-banner/'); const error=greeting ? (window.ZentixI18n?.greetingError?.(data.error) ?? data.error) : path==='system-usage' && window.ZentixI18n?.language==='en' ? (usageErrors.get(data.error) ?? data.error) : data.error; if(!res.ok)throw Object.assign(Error((window.ZentixI18n?.accessError?.(data.error,res.status) ?? error) || tr('Permintaan gagal.','Request failed.')),{status:res.status}); return data;
   }

@@ -1,7 +1,7 @@
 (() => {
  const tr=(id,en)=>window.ZentixI18n?.language==='en'?en:id;
  const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
- async function req(path,opts={}){const s=await window.ZentixSession;const r=await fetch('/dashboard/api/ai/'+path,{cache:'no-store',...opts,headers:opts.body?{'Content-Type':'application/json','x-csrf-token':s.csrf}:{}});const b=await r.json();if(!r.ok){const message=window.ZentixI18n?.activityError?.(path,opts.method||'GET',r.status,b.code,b.error) ?? b.error;throw Error((window.ZentixI18n?.accessError?.(b.error,r.status) ?? window.ZentixI18n?.aiError?.(message) ?? message)||tr('Permintaan gagal','Request failed'));}return b;}
+ async function req(path,opts={}){const s=(!opts.method || opts.method==='GET')&&!opts.body?null:await window.ZentixSession;const r=await fetch('/dashboard/api/ai/'+path,{cache:'no-store',...opts,headers:opts.body?{'Content-Type':'application/json','x-csrf-token':s.csrf}:{}});const b=await r.json();if(!r.ok){const message=window.ZentixI18n?.activityError?.(path,opts.method||'GET',r.status,b.code,b.error) ?? b.error;throw Error((window.ZentixI18n?.accessError?.(b.error,r.status) ?? window.ZentixI18n?.aiError?.(message) ?? message)||tr('Permintaan gagal','Request failed'));}return b;}
  // A gap is stored in minutes and shown in hours when it is a whole number of them.
  const gapMinutes=(value,unit)=>Math.round(Number(value)*(unit==='hours'?60:1));
  const gapText=m=>m%60===0?`${m/60} ${tr('jam',m===60?'hour':'hours')}`:`${m} ${tr('menit',m===1?'minute':'minutes')}`;

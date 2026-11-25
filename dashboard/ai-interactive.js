@@ -29,7 +29,7 @@
   ['Nilai followUpSeconds harus 30–300.','Follow-up duration must be 30–300 seconds.'],
  ]);
  const interactiveError=(message,status,code)=>window.ZentixI18n?.language==='en'&&status===400&&code==='UNAVAILABLE' ? (INTERACTIVE_ERRORS.get(message) ?? message) : message;
- async function req(path,opts={}){const s=await window.ZentixSession;const r=await fetch('/dashboard/api/ai/'+path,{cache:'no-store',...opts,headers:opts.body?{'Content-Type':'application/json','x-csrf-token':s.csrf}:{}});const b=await r.json();if(!r.ok){const method=opts.method||'GET';
+ async function req(path,opts={}){const s=(!opts.method || opts.method==='GET')&&!opts.body?null:await window.ZentixSession;const r=await fetch('/dashboard/api/ai/'+path,{cache:'no-store',...opts,headers:opts.body?{'Content-Type':'application/json','x-csrf-token':s.csrf}:{}});const b=await r.json();if(!r.ok){const method=opts.method||'GET';
   // Stored settings are validated on GET without guild-specific channel checks.
   const guildOnly=['Channel chat: pilih channel teks server.','Channel galeri: pilih channel teks server.'];
   const eligible=path==='interactive'&&(method==='PATCH'||(method==='GET'&&!guildOnly.includes(b.error)));

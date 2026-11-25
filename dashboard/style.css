@@ -47,7 +47,8 @@
 .dock-brand img{display:block;width:30px;height:33px;object-fit:contain;margin:auto}
 
 /* Language menu shares the navigation drawer's glass panel and row treatment. */
-.dock-language{flex:none;min-width:44px;min-height:44px;border:0;background:transparent;color:#edeee6;font:700 22px/1 var(--mono);padding:6px 4px;cursor:pointer}
+.dock-language-brand{display:flex;align-items:center;gap:4px;flex:none}
+.dock-language{flex:none;min-width:44px;min-height:44px;border:0;background:transparent;color:#edeee6;font:700 14px/1 var(--mono);padding:6px 4px;cursor:pointer}
 .dock-language:hover,.dock-language[aria-expanded=true]{color:var(--lime)}
 .dock-language:focus-visible{outline:2px solid var(--lime);outline-offset:2px}
 .language-menu:not([hidden]){display:block;position:absolute;bottom:72px;left:50%;transform:translateX(-50%);width:min(320px,calc(100vw - 40px));padding:14px;background:rgba(41,42,37,.89);border:1px solid #ffffff55;border-radius:15px;box-shadow:0 16px 45px #0005;backdrop-filter:blur(22px);-webkit-backdrop-filter:blur(22px);color:#f5f6ec}

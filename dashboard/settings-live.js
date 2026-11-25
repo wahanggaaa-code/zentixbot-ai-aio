@@ -18,7 +18,7 @@
  const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
  async function request(path,opts={}){
-  const session=await window.ZentixSession;
+  const session=(!opts.method || opts.method==='GET')&&!opts.body?null:await window.ZentixSession;
   const response=await fetch('/dashboard/api/bot/'+path,{cache:'no-store',...opts,headers:opts.body?{'Content-Type':'application/json','x-csrf-token':session.csrf}:{}});
   const data=await response.json();
   if(!response.ok)throw Error((window.ZentixI18n?.accessError?.(data.error,response.status) ?? apiError(data.error))||tr('Permintaan gagal.','Request failed.'));

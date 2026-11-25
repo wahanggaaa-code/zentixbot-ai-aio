@@ -5,7 +5,7 @@
  const field=(title,help,control)=>`<label class="f-field"><span><b>${title}</b><small>${help}</small></span>${control}</label>`;
  const show=text=>{const t=document.getElementById('toast');t.textContent=text;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),4000)};
  async function request(method='GET',body,path=''){
-  const session=await window.ZentixSession;
+  const session=method==='GET'&&!body?null:await window.ZentixSession;
   const response=await fetch('/dashboard/api/bot/goodbye'+path,{method,cache:'no-store',headers:body?{'Content-Type':'application/json','x-csrf-token':session.csrf}:{},...(body?{body:JSON.stringify(body)}:{})});
   const data=await response.json();if(!response.ok)throw Error((window.ZentixI18n?.accessError?.(data.error,response.status) ?? window.ZentixI18n?.greetingError?.(data.error) ?? data.error)||tr('Permintaan gagal.','Request failed.'));return data;
  }

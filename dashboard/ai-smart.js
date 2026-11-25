@@ -108,7 +108,7 @@
   return message;
  }
  async function req(path, opts = {}) {
-  const s = await window.ZentixSession;
+  const s=(!opts.method || opts.method==='GET')&&!opts.body?null:await window.ZentixSession;
   const r = await fetch('/dashboard/api/ai/' + path, { cache: 'no-store', ...opts, headers: opts.body ? { 'Content-Type': 'application/json', 'x-csrf-token': s.csrf } : {} });
   const b = await r.json();
   if (!r.ok) {let message=window.ZentixI18n?.aiDraftError?.(path,r.status,b.code,b.error) ?? b.error;message=supportError(path,opts.method,message,r.status,b.code);if(path.startsWith('smart/'))message=smartError(sendTestError(path,opts.method,r.status,b.code,message),r.status,b.code);if(/^smart\/usage\?days=\d+$/.test(path)&&(!opts.method||opts.method==='GET'))message=window.ZentixI18n?.aiStoredSettingsError?.(r.status,b.code,message) ?? message;throw Error((window.ZentixI18n?.accessError?.(b.error,r.status) ?? window.ZentixI18n?.aiError?.(message) ?? message) || tr('Permintaan gagal','Request failed'));}
