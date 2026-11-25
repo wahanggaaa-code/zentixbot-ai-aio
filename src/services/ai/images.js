@@ -1,5 +1,6 @@
 import {randomInt} from 'node:crypto';
 import {resolveImageProvider} from './extraProviders.js';
+import {createMediaSettingsStore,mediaEnv} from './mediaProviders.js';
 const error=(message,status=400)=>Object.assign(new Error(message),{status});
 const pngSignature=Buffer.from([137,80,78,71,13,10,26,10]);
 const MAX_RESULT_BYTES=8000000;
@@ -92,7 +93,8 @@ export function createImageService({client,foundation=client.aiFoundation,env=pr
   const styles={default:'',illustration:'Illustration style.',photo:'Photorealistic photography style.',pixel:'Pixel art style.'};const styledPrompt=styles[style]?`${styles[style]} ${prompt}`:prompt;
   const image=mode==='edit'?png(imageBase64,1500000):null;if(mode==='create'&&imageBase64!==null)throw error('Gambar input tidak diperlukan.');
   // OpenAI unless AI_IMAGE_PROVIDER names another provider; an unknown name or a missing value keeps the feature off.
-  const provider=resolveImageProvider(env);
+  const saved=client.db?await createMediaSettingsStore(client).read(guildId,'image'):null;
+  const provider=resolveImageProvider(saved?mediaEnv(env,'image',saved.provider,saved.model):env);
   if(provider.unknown)throw error(`AI_IMAGE_PROVIDER tidak dikenal. Pilihan: ${provider.allowed.join(', ')}.`,503);
   if(provider.missing.length)throw error(`Provider gambar atau model belum dikonfigurasi (${provider.label}: ${provider.missing.join(', ')}).`,503);
   if(mode==='edit'&&!provider.canEdit)throw error(`Edit gambar hanya tersedia dengan provider OpenAI. Provider aktif: ${provider.label}.`);

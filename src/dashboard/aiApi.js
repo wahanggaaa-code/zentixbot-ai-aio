@@ -15,6 +15,7 @@ import { createBuilder, PLAN_LIMITS, CHANNEL_TYPES } from '../services/ai/builde
 import { listThemes } from '../services/ai/builderThemes.js';
 import { createManualBuilder, MANUAL_ROLE_PERMISSIONS } from '../services/ai/builderManual.js';
 import { createSearchService } from '../services/ai/search.js';
+import {createMediaSettingsStore,legacySettings,mediaCredentials} from '../services/ai/mediaProviders.js';
 import { createMusicDjSettingsStore, validateMusicDjSettings } from '../services/ai/musicDjSettings.js';
 import { createAIFeatureControlsStore } from '../services/ai/featureControls.js';
 import { createSmart } from '../services/ai/smart.js';
@@ -31,6 +32,8 @@ export function createAIApi(client,{auth,csrf,env=process.env,foundation=client.
  router.patch('/feature-controls/:feature',auth,owner,csrf,async(req,res)=>{try{if(!req.body||Array.isArray(req.body)||!(['ticket-auto','ticket-transfer'].includes(req.params.feature)?Object.keys(req.body).sort().join(',')==='confirmed,enabled'&&req.body.confirmed===true:Object.keys(req.body).join(',')==='enabled'))throw Object.assign(Error('Pengaturan fitur AI tidak valid atau konfirmasi diperlukan.'),{status:400});const settings=await createAIFeatureControlsStore(client).setEnabled(req.guild.id,req.params.feature,req.body.enabled);res.json({ok:true,settings})}catch(e){fail(res,e)}});
  router.get('/music-dj-settings',auth,owner,async(req,res)=>{try{res.json({settings:await createMusicDjSettingsStore(client).read(req.guild.id)})}catch(e){fail(res,e)}});
  router.patch('/music-dj-settings',auth,owner,csrf,async(req,res)=>{try{const {confirmed,...value}=req.body||{};if(confirmed!==true)throw Object.assign(Error('Konfirmasi diperlukan.'),{status:400});const settings=await createMusicDjSettingsStore(client).save(req.guild.id,validateMusicDjSettings(value));res.json({ok:true,settings})}catch(e){fail(res,e)}});
+ router.get('/media-providers/:kind',auth,owner,async(req,res)=>{try{const kind=req.params.kind;if(!['audio','image'].includes(kind))throw Object.assign(Error('Jenis provider tidak valid.'),{status:400});const saved=await createMediaSettingsStore(client).read(req.guild.id,kind);res.json({settings:saved??legacySettings(kind,env),source:saved?'dashboard':'environment',credentials:mediaCredentials(env)[kind]})}catch(e){fail(res,e)}});
+ router.patch('/media-providers/:kind',auth,owner,csrf,async(req,res)=>{try{const kind=req.params.kind;if(!['audio','image'].includes(kind))throw Object.assign(Error('Jenis provider tidak valid.'),{status:400});const settings=await createMediaSettingsStore(client).save(req.guild.id,kind,req.body);res.json({settings})}catch(e){fail(res,e)}});
  router.get('/settings',auth,owner,async(req,res)=>{try{res.json({settings:await foundation.store.read(req.guild.id),credentials:foundation.credentials()})}catch(e){fail(res,e)}});
  // Generate an editable draft only; sending remains a separate Message Studio action.
  router.post('/faq-question-draft',auth,owner,csrf,async(req,res)=>{

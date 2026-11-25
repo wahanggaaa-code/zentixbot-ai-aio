@@ -9,7 +9,7 @@ export default {
   .addBooleanOption(o=>o.setName('consent').setDescription('Agree to send question and selected context to AI providers.'))
   .addBooleanOption(o=>o.setName('memory').setDescription('Opt in: use and store short temporary channel history.'))
   .addAttachmentOption(o=>o.setName('image').setDescription('Optional PNG/JPEG up to 1 MB; sent to AI providers.'))
-  .addAttachmentOption(o=>o.setName('audio').setDescription('Optional audio up to 2 MB; sent to OpenAI or Groq for transcription.'))
+  .addAttachmentOption(o=>o.setName('audio').setDescription('Optional audio up to 2 MB; sent to a transcription provider and possibly a fallback.'))
   .addAttachmentOption(o=>o.setName('file').setDescription('Optional TXT, MD, CSV or JSON; file text is sent to AI.')),
  async execute(interaction,guildConfig,client){
   if(interaction.guildId!==client.homeGuildId||!interaction.inGuild()||interaction.user.bot)return interaction.reply({content:'Command hanya tersedia untuk anggota server.',flags:MessageFlags.Ephemeral});
