@@ -1,4 +1,5 @@
 import express from 'express';
+import {rewriteStudioText,composeStudioDocument,draftStudioFlow} from '../services/ai/studioRewrite.js';
 import {readGreetingBanner, attachGreetingBanner, withoutGreetingImage} from '../services/greetingBanner.js';
 import {getWelcomeConfigForEditing} from '../utils/database.js';
 import {buildWelcomePayload,buildGoodbyePayload} from '../services/welcomePayload.js';
@@ -47,6 +48,9 @@ export function createAIApi(client,{auth,csrf,env=process.env,foundation=client.
    return res.json({ok:true,question:text});
   }catch(e){return fail(res,e)}
  });
+ router.post('/studio-flow',auth,owner,csrf,async(req,res)=>{const b=req.body;if(!b||Array.isArray(b)||Object.keys(b).some(k=>!['confirmed','instructions','target','templateId'].includes(k))||!Object.hasOwn(b,'instructions')||!Object.hasOwn(b,'target')||b.confirmed!==true)return res.status(400).json({error:'Konfirmasi diperlukan.'});try{const flow=await draftStudioFlow({foundation,guildId:req.guild.id,userId:req.session.user.id,instructions:b.instructions,target:b.target,templateId:b.templateId??null});res.json({ok:true,flow})}catch(e){fail(res,e)}});
+ router.post('/studio-compose',auth,owner,csrf,async(req,res)=>{const b=req.body;if(!b||Array.isArray(b)||Object.keys(b).some(k=>!['confirmed','points','interactive','media'].includes(k))||b.confirmed!==true||(b.interactive!==undefined&&typeof b.interactive!=='boolean')||(b.media!==undefined&&typeof b.media!=='boolean'))return res.status(400).json({error:'Konfirmasi atau pilihan tidak valid.'});try{const document=await composeStudioDocument({foundation,guildId:req.guild.id,userId:req.session.user.id,points:b.points,interactive:b.interactive??false,media:b.media??false});res.json({ok:true,document})}catch(e){fail(res,e)}});
+ router.post('/studio-rewrite',auth,owner,csrf,async(req,res)=>{const b=req.body;if(!b||Object.keys(b).sort().join(',')!=='confirmed,text,tone'||b.confirmed!==true)return res.status(400).json({error:'Konfirmasi diperlukan.'});try{const text=await rewriteStudioText({foundation,guildId:req.guild.id,userId:req.session.user.id,text:b.text,tone:b.tone});res.json({ok:true,text})}catch(e){fail(res,e)}});
  router.post('/announcement-draft',auth,owner,csrf,async(req,res)=>{
   const b=req.body;
   if(!b || Object.keys(b).length!==2 || b.confirmed!==true || typeof b.points!=='string' || !b.points.trim() || b.points.length>1200)return res.status(400).json({error:'Konfirmasi dan poin pengumuman (1–1200 karakter) diperlukan.'});
