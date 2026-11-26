@@ -56,3 +56,44 @@
  .ms-ai-link{margin-top:6px;color:#b5bac1;font-size:12px;overflow-wrap:anywhere}
 .ms-ai-flow{margin:18px 0;padding:14px;border:1px solid var(--softline)}
 .ms-ai-flow h3{margin:0 0 8px}.ms-ai-flow-json{white-space:pre-wrap;overflow-wrap:anywhere;font:11px/1.45 var(--mono);margin:6px 0 14px}
+
+/* AI composer: group related controls and keep labels on their own line. */
+.ms-ai-panel{padding:0;background:#c9cac3}
+.ms-ai-panel>summary{padding:15px 16px;font:700 11px/1.4 var(--mono)}
+.ms-ai-content{display:grid;gap:12px;padding:0 16px 16px;min-width:0}
+.ms-ai-intro,.ms-ai-hint,.ms-ai-heading p{margin:0;color:#45473d;font:11px/1.6 var(--mono);overflow-wrap:anywhere}
+.ms-ai-intro{padding:0 0 4px}
+.ms-ai-section{min-width:0;padding:16px;background:#d0d0c9;border:1px solid var(--softline)}
+.ms-ai-section.ms-ai-flow{margin:0}
+.ms-ai-heading{margin-bottom:14px}
+.ms-ai-heading h3{margin:0 0 6px;font:700 17px/1.25 var(--sans);letter-spacing:-.025em}
+.ms-ai-heading p{max-width:80ch}
+.ms-ai-field{display:flex;flex-direction:column;gap:7px;min-width:0;margin-top:14px}
+.ms-ai-field>label,.ms-ai-option-title{color:var(--ink);font:700 11px/1.4 var(--mono)}
+.ms-ai-field textarea,.ms-ai-field select,.ms-ai-field input[type=number]{box-sizing:border-box;width:100%;min-width:0;border:1px solid var(--ink);border-radius:0;background:#e0e0d9;color:var(--ink);padding:10px 11px;font:13px/1.5 var(--mono)}
+.ms-ai-field textarea{min-height:100px;resize:vertical}
+.ms-ai-field select,.ms-ai-field input[type=number]{min-height:44px}
+.ms-ai-flow-fields{display:grid;grid-template-columns:minmax(0,2fr) minmax(160px,1fr);gap:16px}
+.ms-ai-options{display:grid;gap:9px;margin-top:16px}
+.ms-ai-check{display:flex;align-items:flex-start;gap:10px;min-width:0;font:12px/1.45 var(--sans);cursor:pointer}
+.ms-ai-check input{flex:0 0 auto;width:18px;height:18px;margin:0;accent-color:#536f12}
+.ms-ai-check span{min-width:0;overflow-wrap:anywhere}
+.ms-ai-section>.ms-ai-hint{margin-top:12px}
+.ms-ai-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+.ms-ai-actions button{min-height:44px;max-width:100%;white-space:normal;text-align:center;line-height:1.4}
+.ms-ai-json{margin-top:14px}
+.ms-ai-json summary{display:inline-block;padding:7px 0;cursor:pointer}
+.ms-ai-json textarea{display:block;margin-top:6px;box-sizing:border-box}
+.ms-ai-preview:not([hidden]){margin-top:12px}
+.ms-ai-status:not(:empty){margin:14px 0 0;padding:10px 12px;border-left:3px solid #536f12;background:#e0e0d9;color:#30312d;font:11px/1.5 var(--mono);overflow-wrap:anywhere}
+.ms-ai-status:empty{display:none}
+.ms-ai-sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+@media(max-width:650px){
+ .ms-ai-content{padding:0 12px 12px;gap:10px}
+ .ms-ai-panel>summary{padding:14px 12px}
+ .ms-ai-section{padding:14px}
+ .ms-ai-flow-fields{grid-template-columns:minmax(0,1fr);gap:0}
+ .ms-ai-actions{display:grid;grid-template-columns:minmax(0,1fr)}
+ .ms-ai-actions button{width:100%}
+ .ms-ai-field textarea,.ms-ai-field select,.ms-ai-field input[type=number]{font-size:16px}
+}
