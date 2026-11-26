@@ -97,3 +97,32 @@
  .ms-ai-actions button{width:100%}
  .ms-ai-field textarea,.ms-ai-field select,.ms-ai-field input[type=number]{font-size:16px}
 }
+
+/* Compact mobile composer; desktop retains its three-column editor. */
+.ms-mobile-toolbar,.ms-mobile-tree{display:none}
+@media(max-width:720px){
+ .ms-workspace>.ms-tree,.ms-workspace>.ms-inspector,.ms-workspace>.ms-preview{display:none}
+ .ms-workspace>.ms-mobile-toolbar{display:flex;justify-content:flex-end;gap:8px;min-width:0}
+ .ms-mobile-toolbar button{min-height:44px}
+ .ms-mobile-toolbar button[hidden]{display:none}
+ .ms-workspace>.ms-mobile-tree{display:grid;gap:8px;min-width:0}
+ .ms-mobile-container,.ms-mobile-block{min-width:0;border:1px solid var(--softline);background:#c9cac3}
+ .ms-mobile-container-toggle,.ms-mobile-row{display:block;width:100%;min-height:46px;border:0;background:transparent;color:var(--ink);padding:11px 12px;text-align:left;font:700 12px/1.4 var(--sans);cursor:pointer;overflow-wrap:anywhere}
+ .ms-mobile-container-toggle[aria-expanded=true]{border-bottom:1px solid var(--softline)}
+ .ms-mobile-container-toggle::before,.ms-mobile-row::before{content:'+';display:inline-block;width:20px;font-weight:700}
+ .ms-mobile-container-toggle[aria-expanded=true]::before,.ms-mobile-row[aria-expanded=true]::before{content:'-'}
+ .ms-mobile-row.active{background:var(--lime)}
+ .ms-mobile-container-body{display:grid;gap:7px;padding:9px}
+ .ms-mobile-container-body>.ms-mobile-row{border:1px solid var(--softline);font:700 10px/1.4 var(--mono)}
+ .ms-mobile-inline{padding:0 12px 12px;background:#d0d0c9}
+ .ms-mobile-inline .ms-inspector-body{min-height:0;padding:8px 0}
+ .ms-mobile-inline .f-field{display:grid;grid-template-columns:minmax(0,1fr);gap:8px;padding:12px 0}
+ .ms-mobile-inline .f-field input:not([type=checkbox]):not([type=radio]),.ms-mobile-inline .f-field select,.ms-mobile-inline .f-field textarea{width:100%;min-width:0}
+ .ms-mobile-inline .ms-inline-actions{flex-wrap:wrap}
+ .ms-mobile-add{box-sizing:border-box;width:100%;min-width:0;min-height:44px;padding:10px;border:1px solid var(--ink);border-radius:0;background:#d0d0c9;color:var(--ink);font:12px var(--mono)}
+ .ms-workspace.ms-mobile-preview-mode>.ms-mobile-tree{display:none}
+ .ms-workspace.ms-mobile-preview-mode>.ms-preview{display:block;grid-column:auto;position:static}
+}
+
+/* Hide webhook-only fields in the mobile composer when bot mode is selected. */
+@media(max-width:720px){.ms-delivery[hidden]{display:none}}
