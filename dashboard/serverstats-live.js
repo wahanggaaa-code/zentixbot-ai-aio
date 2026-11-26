@@ -333,13 +333,27 @@
       if (notationBox.isConnected) notationBox.innerHTML = '<p id="serverStatsNotationStatus" class="f-muted" role="status"></p>' + notationForm(data);
       if (setupBox.isConnected) setupBox.innerHTML = '<p id="serverStatsSetupStatus" class="f-muted" role="status"></p>' + setupForm(data);
       if (externalBox?.isConnected) externalBox.innerHTML = '<p id="serverStatsExternalStatus" class="f-muted" role="status"></p>' + externalForm(data);
-      list.querySelector('#serverStatsReload').onclick = () => load();
+      let notationDock;
+      const counterDocks=new Map();
+      const untracked=[...root.querySelectorAll('#serverStatsCreateForm,#serverStatsSetupForm,#serverStatsGameForm,#serverStatsSocialForm')];
+      const snapshot=form=>JSON.stringify([...form.querySelectorAll('input[name],select[name],textarea[name]')].map(el=>el.type==='checkbox'||el.type==='radio'?el.checked:el.value));
+      const baselines=new Map(untracked.map(form=>[form,snapshot(form)]));
+      const hasOtherDraft=source=>[...counterDocks].some(([form,dock])=>form!==source&&dock.isDirty())||(notationDock&&source!==notationBox.querySelector('form')&&notationDock.isDirty())||untracked.some(form=>form!==source&&snapshot(form)!==baselines.get(form));
+      list.querySelector('#serverStatsReload').onclick = async () => {
+        if (hasOtherDraft(null)) {
+          const message = tr('Muat ulang? Perubahan counter yang belum disimpan akan hilang.','Reload? Unsaved counter changes will be lost.');
+          if (!(await (window.ZentixDialog ? window.ZentixDialog.confirm(message) : Promise.resolve(window.confirm(message))))) return;
+        }
+        load();
+      };
       const status = list.querySelector('#serverStatsStatus');
       const createStatus = create.querySelector('#serverStatsCreateStatus');
 
       /** Runs one change with every control locked; reloads after success, reports a failure in place. */
-      async function change(where, run, done) {
-        const controls = [...root.querySelectorAll('#serverStatsLive button, #serverStatsLive select')];
+      async function change(where, run, done, source = null) {
+        if(source!==notationBox.querySelector('form')&&notationDock?.isDirty()){where.textContent=tr('Simpan atau batalkan perubahan format angka terlebih dahulu.','Save or cancel number format changes first.');return false;}
+        if(hasOtherDraft(source)){where.textContent=tr('Simpan atau batalkan perubahan counter lain terlebih dahulu.','Save or cancel other counter changes first.');return false;}
+        const controls = [...root.querySelectorAll('#serverStatsLive button, #serverStatsLive select, #serverStatsLive input, #serverStatsLive textarea')];
         const controlStates = controls.map((control) => [control, control.disabled]);
         const restoreControls = () => controlStates.forEach(([control, disabled]) => { control.disabled = disabled; });
         controls.forEach((control) => { control.disabled = true; });
@@ -355,21 +369,30 @@
         }
         if (!list.isConnected) return;
         // The boxes are re-rendered with fresh controls by load(); re-enable whatever is static (e.g. diagnostik).
-        restoreControls();
         const text = done(result);
         say(text);
-        load(text);
+        await load(text);
+        restoreControls();
+        return true;
       }
 
       list.querySelectorAll('form[data-counter]').forEach((form) => {
         const counter = data.counters[Number(form.dataset.counter)];
+        const dock=window.ZentixSaveDock?.attach(form,tr(`Counter ${counter.channelName ?? counter.id} · ID ${counter.id}`,`Counter ${counter.channelName ?? counter.id} · ID ${counter.id}`),null,{showLabel:true});
+        if(dock)counterDocks.set(form,dock);let busy=false;
         form.onsubmit = async (event) => {
           event.preventDefault();
+          if(busy)return;
+          if(hasOtherDraft(form)){status.textContent=tr('Simpan atau batalkan perubahan counter lain terlebih dahulu.','Save or cancel other counter changes first.');return;}
           const type = form.elements.type.value;
           if (type === counter.type) { status.textContent = tr('Jenis tidak berubah.','Type unchanged.'); return; }
-          if (!(await (window.ZentixDialog ? window.ZentixDialog.confirm(tr(`Ubah counter ${counter.channelName ?? counter.id} menjadi "${typeName(type)}"? Nama channel di Discord akan ikut berubah.`,`Change counter ${counter.channelName ?? counter.id} to "${typeName(type)}"? Its Discord channel name will also change.`)) : Promise.resolve(window.confirm(tr(`Ubah counter ${counter.channelName ?? counter.id} menjadi "${typeName(type)}"? Nama channel di Discord akan ikut berubah.`,`Change counter ${counter.channelName ?? counter.id} to "${typeName(type)}"? Its Discord channel name will also change.`)))))) return;
-          change(status, () => request('PATCH', '/counters/' + encodeURIComponent(counter.id), { confirmed: true, revision: data.revision, type }),
-            (result) => `${tr('Jenis counter diubah.','Counter type changed.')} ${refreshText(result.refresh)}`);
+          if(dock&&!dock.start())return;busy=true;const select=form.elements.type,button=form.querySelector('button[type=submit]'),wasDisabled=select.disabled;select.disabled=true;button.disabled=true;let success=false,cancelled=false;
+          try{
+           if (!(await (window.ZentixDialog ? window.ZentixDialog.confirm(tr(`Ubah counter ${counter.channelName ?? counter.id} menjadi "${typeName(type)}"? Nama channel di Discord akan ikut berubah.`,`Change counter ${counter.channelName ?? counter.id} to "${typeName(type)}"? Its Discord channel name will also change.`)) : Promise.resolve(window.confirm(tr(`Ubah counter ${counter.channelName ?? counter.id} menjadi "${typeName(type)}"? Nama channel di Discord akan ikut berubah.`,`Change counter ${counter.channelName ?? counter.id} to "${typeName(type)}"? Its Discord channel name will also change.`)))))){cancelled=true;return;}
+           if(!form.isConnected){cancelled=true;return;}
+           success=await change(status, () => request('PATCH', '/counters/' + encodeURIComponent(counter.id), { confirmed: true, revision: data.revision, type }),
+            (result) => `${tr('Jenis counter diubah.','Counter type changed.')} ${refreshText(result.refresh)}`,form);
+          }finally{select.disabled=wasDisabled;button.disabled=false;busy=false;dock?.finish(success===true,cancelled);}
         };
         form.querySelector('[data-delete]').onclick = async () => {
           const target = counter.channelName === null ? tr('Channel-nya tidak terlihat oleh bot; hanya catatan counter yang dihapus bila channel memang sudah tidak ada.','The channel is not visible to the bot; only the counter record is deleted if the channel no longer exists.')
@@ -384,13 +407,21 @@
       const notationStatus = notationBox.querySelector('#serverStatsNotationStatus');
       const notationFormEl = notationBox.querySelector('#serverStatsNotationForm');
       if (notationFormEl) {
-        notationFormEl.onsubmit = (event) => {
+        const dock = notationDock = window.ZentixSaveDock?.attach(notationFormEl, tr('Format angka','Number format'));
+        notationFormEl.onsubmit = async (event) => {
           event.preventDefault();
           const chosen = notationFormEl.elements.notation.value;
           const chosenOption = NOTATION_OPTIONS.find((option) => option.id === chosen);
           if (!chosenOption) { notationStatus.textContent = tr('Format angka tidak dikenal.','Unknown number format.'); return; }
-          change(notationStatus, () => request('PUT', '/notation', { notation: chosen }),
-            () => `${tr('Format angka disimpan:','Number format saved:')} ${chosenOption.label}.`);
+          if (dock && !dock.start()) return;
+          const radios = [...notationFormEl.querySelectorAll('input[type=radio]')];
+          const states = radios.map(input => input.disabled);
+          radios.forEach(input => { input.disabled = true; });
+          try {
+            const success = await change(notationStatus, () => request('PUT', '/notation', { notation: chosen }),
+              () => `${tr('Format angka disimpan:','Number format saved:')} ${chosenOption.label}.`, notationFormEl);
+            dock?.finish(success === true);
+          } finally { radios.forEach((input, i) => { input.disabled = states[i]; }); }
         };
       }
 
@@ -404,7 +435,7 @@
           const category = data.categories.find((entry) => entry.id === body.categoryId);
           if (!(await (window.ZentixDialog ? window.ZentixDialog.confirm(tr(`Buat bundle counter standar di kategori "${category?.name ?? body.categoryId}${!category||data.categories.filter(c=>c.name===category.name).length>1?` (ID ${body.categoryId})`: ''}"? Jenis yang sudah ada dilewati.`,`Create the standard counter bundle in category "${category?.name ?? body.categoryId}${!category||data.categories.filter(c=>c.name===category.name).length>1?` (ID ${body.categoryId})`: ''}"? Existing types are skipped.`)) : Promise.resolve(window.confirm(tr(`Buat bundle counter standar di kategori "${category?.name ?? body.categoryId}${!category||data.categories.filter(c=>c.name===category.name).length>1?` (ID ${body.categoryId})`: ''}"? Jenis yang sudah ada dilewati.`,`Create the standard counter bundle in category "${category?.name ?? body.categoryId}${!category||data.categories.filter(c=>c.name===category.name).length>1?` (ID ${body.categoryId})`: ''}"? Existing types are skipped.`)))))) return;
           change(setupStatus, () => request('POST', '/setup', body),
-            (result) => tr(`Setup selesai: ${result.created} dibuat, ${result.skipped} sudah ada, ${result.failed} gagal. Muat ulang untuk hasilnya.`,`Setup finished: ${result.created} created, ${result.skipped} already existed, ${result.failed} failed. Reload for results.`));
+            (result) => tr(`Setup selesai: ${result.created} dibuat, ${result.skipped} sudah ada, ${result.failed} gagal. Muat ulang untuk hasilnya.`,`Setup finished: ${result.created} created, ${result.skipped} already existed, ${result.failed} failed. Reload for results.`),setupFormEl);
         };
       }
 
@@ -444,7 +475,7 @@
           const category = data.categories.find((entry) => entry.id === body.categoryId);
           if (!(await (window.ZentixDialog ? window.ZentixDialog.confirm(tr(`Buat ${KIND_NAMES[body.channelType].toLowerCase()} baru di kategori "${category?.name ?? body.categoryId}${!category||data.categories.filter(c=>c.name===category.name).length>1?` (ID ${body.categoryId})`: ''}" untuk counter ${confirmType}?`,`Create a new ${KIND_NAMES[body.channelType].toLowerCase()} in category "${category?.name ?? body.categoryId}${!category||data.categories.filter(c=>c.name===category.name).length>1?` (ID ${body.categoryId})`: ''}" for counter ${confirmType}?`)) : Promise.resolve(window.confirm(tr(`Buat ${KIND_NAMES[body.channelType].toLowerCase()} baru di kategori "${category?.name ?? body.categoryId}${!category||data.categories.filter(c=>c.name===category.name).length>1?` (ID ${body.categoryId})`: ''}" untuk counter ${confirmType}?`,`Create a new ${KIND_NAMES[body.channelType].toLowerCase()} in category "${category?.name ?? body.categoryId}${!category||data.categories.filter(c=>c.name===category.name).length>1?` (ID ${body.categoryId})`: ''}" for counter ${confirmType}?`)))))) return;
           change(createStatus, () => request('POST', '/counters', body),
-            (result) => `${tr('Counter dibuat: channel','Counter created: channel')} "${result.channelName}".${result.count === null ? tr(' Angkanya ditambahkan setelah daftar anggota terbaca.',' The count will be added when the member list is readable.') : ''}`);
+            (result) => `${tr('Counter dibuat: channel','Counter created: channel')} "${result.channelName}".${result.count === null ? tr(' Angkanya ditambahkan setelah daftar anggota terbaca.',' The count will be added when the member list is readable.') : ''}`,form);
         };
       }
 
@@ -478,7 +509,7 @@
           const category = data.categories.find((entry) => entry.id === body.categoryId);
           if (!(await (window.ZentixDialog ? window.ZentixDialog.confirm(tr(`Buat ${KIND_NAMES[body.channelType].toLowerCase()} untuk counter game "${body.label}" di kategori "${category?.name ?? body.categoryId}${!category||data.categories.filter(c=>c.name===category.name).length>1?` (ID ${body.categoryId})`: ''}"?`,`Create a ${KIND_NAMES[body.channelType].toLowerCase()} for game counter "${body.label}" in category "${category?.name ?? body.categoryId}${!category||data.categories.filter(c=>c.name===category.name).length>1?` (ID ${body.categoryId})`: ''}"?`)) : Promise.resolve(window.confirm(tr(`Buat ${KIND_NAMES[body.channelType].toLowerCase()} untuk counter game "${body.label}" di kategori "${category?.name ?? body.categoryId}${!category||data.categories.filter(c=>c.name===category.name).length>1?` (ID ${body.categoryId})`: ''}"?`,`Create a ${KIND_NAMES[body.channelType].toLowerCase()} for game counter "${body.label}" in category "${category?.name ?? body.categoryId}${!category||data.categories.filter(c=>c.name===category.name).length>1?` (ID ${body.categoryId})`: ''}"?`)))))) return;
           change(externalStatus, () => request('POST', '/counters', body),
-            (result) => `${tr('Counter game dibuat: channel','Game counter created: channel')} "${result.channelName}".${result.count === null ? tr(' Angkanya menyusul saat sumbernya menjawab.',' The count will follow when the source responds.') : ''}`);
+            (result) => `${tr('Counter game dibuat: channel','Game counter created: channel')} "${result.channelName}".${result.count === null ? tr(' Angkanya menyusul saat sumbernya menjawab.',' The count will follow when the source responds.') : ''}`,gameFormEl);
         };
       }
       const socialFormEl = externalBox?.querySelector('#serverStatsSocialForm');
@@ -509,7 +540,7 @@
           const category = data.categories.find((entry) => entry.id === body.categoryId);
           if (!(await (window.ZentixDialog ? window.ZentixDialog.confirm(tr(`Buat ${KIND_NAMES[body.channelType].toLowerCase()} untuk counter sosial "${body.label}" di kategori "${category?.name ?? body.categoryId}${!category||data.categories.filter(c=>c.name===category.name).length>1?` (ID ${body.categoryId})`: ''}"?`,`Create a ${KIND_NAMES[body.channelType].toLowerCase()} for social counter "${body.label}" in category "${category?.name ?? body.categoryId}${!category||data.categories.filter(c=>c.name===category.name).length>1?` (ID ${body.categoryId})`: ''}"?`)) : Promise.resolve(window.confirm(tr(`Buat ${KIND_NAMES[body.channelType].toLowerCase()} untuk counter sosial "${body.label}" di kategori "${category?.name ?? body.categoryId}${!category||data.categories.filter(c=>c.name===category.name).length>1?` (ID ${body.categoryId})`: ''}"?`,`Create a ${KIND_NAMES[body.channelType].toLowerCase()} for social counter "${body.label}" in category "${category?.name ?? body.categoryId}${!category||data.categories.filter(c=>c.name===category.name).length>1?` (ID ${body.categoryId})`: ''}"?`)))))) return;
           change(externalStatus, () => request('POST', '/counters', body),
-            (result) => `${tr('Counter sosial dibuat: channel','Social counter created: channel')} "${result.channelName}".${result.count === null ? tr(' Angkanya menyusul saat sumbernya menjawab.',' The count will follow when the source responds.') : ''}`);
+            (result) => `${tr('Counter sosial dibuat: channel','Social counter created: channel')} "${result.channelName}".${result.count === null ? tr(' Angkanya menyusul saat sumbernya menjawab.',' The count will follow when the source responds.') : ''}`,socialFormEl);
         };
       }
     }

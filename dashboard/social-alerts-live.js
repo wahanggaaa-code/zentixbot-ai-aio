@@ -140,7 +140,8 @@
   }
 
   function bind(root) {
-    const state = { data: null, editingId: null };
+    const state = { data: null, editingId: null, saving: false };
+    let dock = null;
     const $ = (id) => root.querySelector(id);
     const form = $('#saForm');
     if (!form) return;
@@ -247,6 +248,7 @@
     }
 
     function resetForm() {
+      dock?.dispose(); dock = null;
       state.editingId = null;
       state.editingPlatform = null;
       $('#saFormTitle').textContent = tr('Tambah feed','Add feed');
@@ -282,6 +284,7 @@
     }
 
     function fillForEdit(alert) {
+      dock?.dispose(); dock = null;
       state.editingId = alert.id;
       state.editingPlatform = alert.platform;
       $('#saFormTitle').textContent = `Edit feed — ${alert.label}`;
@@ -305,6 +308,7 @@
       for (const box of form.querySelectorAll('input[name=notifyTypes]')) box.checked = alert.notifyTypes.includes(box.value);
       syncNotifyFieldsets();
       paintPreview();
+      dock = window.ZentixSaveDock?.attach(form, 'Social Alerts', () => { window.ZentixGreetingColor?.set(form, form.elements.accentColor.value); paintPreview(); });
       root.querySelector('#saFormTitle')?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' });
     }
 
@@ -318,6 +322,7 @@
     // ---------- events ----------
     $('#saMasterToggle').addEventListener('change', async (event) => {
       const enabled = event.target.checked;
+      if (state.saving) { event.target.checked = !enabled; return; }
       event.target.disabled = true;
       try {
         await request('POST', '/settings', { confirmed: true, enabled });
@@ -333,14 +338,20 @@
 
     $('#saList').addEventListener('click', async (event) => {
       const button = event.target.closest('button[data-action]');
-      if (!button) return;
+      if (!button || state.saving) return;
       const card = button.closest('[data-feed]');
       const alert = findFeed(card?.dataset.feed);
       if (!alert) return;
       const action = button.dataset.action;
       button.disabled = true;
       try {
-        if (action === 'edit') { fillForEdit(alert); return; }
+        if (action === 'edit') {
+          if (dock?.isDirty()) {
+            const message = tr('Ganti feed? Perubahan yang belum disimpan akan hilang.','Switch feeds? Unsaved changes will be lost.');
+            if (!(await (window.ZentixDialog ? window.ZentixDialog.confirm(message) : Promise.resolve(window.confirm(message))))) return;
+          }
+          fillForEdit(alert); return;
+        }
         if (action === 'toggle') {
           await request('PATCH', `/${encodeURIComponent(alert.id)}`, { confirmed: true, enabled: !alert.enabled });
           notify(alert.enabled ? tr('Feed dijeda.','Feed paused.') : tr('Feed diaktifkan.','Feed enabled.'));
@@ -348,6 +359,7 @@
           const answer = await act(`/${encodeURIComponent(alert.id)}/test`, {}, tr(`Kirim pesan TES ke #${alert.channelName ?? alert.targetChannelId}${!alert.channelName||(state.data?.channels||[]).filter(c=>c.name===alert.channelName).length>1?` (ID ${alert.targetChannelId})`:''}? Pesan sungguhan (tanpa mention) akan tampil di channel itu.`,`Send a TEST message to #${alert.channelName ?? alert.targetChannelId}${!alert.channelName||(state.data?.channels||[]).filter(c=>c.name===alert.channelName).length>1?` (ID ${alert.targetChannelId})`:''}? A real message without mentions will appear there.`));
           if (answer) notify(tr('Pesan tes terkirim.','Test message sent.'));
         } else if (action === 'delete') {
+          if (state.editingId === alert.id && dock?.isDirty()) { notify(tr('Simpan atau batalkan perubahan feed terlebih dahulu.','Save or cancel feed changes first.')); return; }
           if ((await (window.ZentixDialog ? window.ZentixDialog.confirm(tr(`Hapus feed "${alert.label}"? Feed berhenti mengirim; pesan lama di Discord tidak dihapus.`,`Delete feed "${alert.label}"? It will stop sending; old Discord messages will not be deleted.`)) : Promise.resolve(window.confirm(tr(`Hapus feed "${alert.label}"? Feed berhenti mengirim; pesan lama di Discord tidak dihapus.`,`Delete feed "${alert.label}"? It will stop sending; old Discord messages will not be deleted.`)))))) {
             await request('DELETE', `/${encodeURIComponent(alert.id)}`, { confirmed: true });
             notify(tr('Feed dihapus.','Feed deleted.'));
@@ -367,11 +379,19 @@
       const field = $('#saCustom');
       const [start, end] = [field.selectionStart ?? field.value.length, field.selectionEnd ?? field.value.length];
       field.setRangeText(button.dataset.var, start, end, 'end');
+      field.dispatchEvent(new Event('input',{bubbles:true}));
       field.focus();
       paintPreview();
     });
 
-    $('#saCancelEdit').addEventListener('click', resetForm);
+    $('#saCancelEdit').addEventListener('click', async () => {
+      if (state.saving) return;
+      if (dock?.isDirty()) {
+        const message=tr('Keluar dari edit? Perubahan yang belum disimpan akan hilang.','Leave editing? Unsaved changes will be lost.');
+        if (!(await (window.ZentixDialog ? window.ZentixDialog.confirm(message) : Promise.resolve(window.confirm(message))))) return;
+      }
+      resetForm();
+    });
     form.addEventListener('input', paintPreview);
     form.addEventListener('change', () => { if (!state.editingId) syncNotifyFieldsets(); paintPreview(); });
     form.elements.platform.addEventListener('change', syncNotifyFieldsets);
@@ -384,7 +404,14 @@
       if (!notifyTypes.length) { notify(tr('Pilih minimal satu tipe konten.','Select at least one content type.')); return; }
       if (x.targetChannelId.selectedOptions[0]?.dataset.unavailable === '1') { notify(tr('Channel tersimpan tidak tersedia. Pilih channel yang tersedia sebelum menyimpan.','The saved channel is unavailable. Choose an available channel before saving.')); return; }
       if (x.mentionRoleId.selectedOptions[0]?.dataset.unavailable === '1') { notify(tr('Role tersimpan tidak tersedia. Pilih role yang tersedia atau tanpa ping sebelum menyimpan.','The saved role is unavailable. Choose an available role or no ping before saving.')); return; }
+      if (state.saving || (dock && !dock.start())) return;
+      const editing = !!state.editingId;
+      const locked = editing ? [...form.querySelectorAll('input,select,textarea,button')].map(control => [control, control.disabled]) : [];
+      locked.forEach(([control]) => { control.disabled = true; });
+      if (editing) form.inert = true;
+      state.saving = true;
       button.disabled = true;
+      let saved = false;
       try {
         if (state.editingId) {
           await request('PATCH', `/${encodeURIComponent(state.editingId)}`, {
@@ -396,6 +423,10 @@
             accentColor: x.accentColor.value || null,
             aiSummaryEnabled: x.aiSummaryEnabled.checked,
           });
+          saved = true;
+          locked.forEach(([control, disabled]) => { control.disabled = disabled; });
+          form.inert = false;
+          dock?.finish(true);
           notify(tr('Perubahan tersimpan.','Changes saved.'));
           resetForm();
         } else {
@@ -418,6 +449,12 @@
       } catch (error) {
         notify(error.message);
       } finally {
+        if (editing && !saved) {
+          locked.forEach(([control, disabled]) => { control.disabled = disabled; });
+          form.inert = false;
+          dock?.finish(false);
+        }
+        state.saving = false;
         button.disabled = false;
       }
     });

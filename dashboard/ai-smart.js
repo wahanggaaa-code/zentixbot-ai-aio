@@ -191,18 +191,21 @@
  }
 
  /** Wires a form: checks the pickers, sends `body()` as PATCH smart/<section>, reports the outcome. */
- function wire(form, section, body, notify, done) {
+ function wire(form, section, body, notify, done, canStart=()=>true) {
+  const labels={facts:tr('Fakta hari ini','Facts today'),menu:tr('Menu pesan','Message menu'),digest:tr('Koran hari ini','Daily newspaper'),usage:tr('Pemakaian AI','AI usage'),faq:'FAQ',cache:tr('Cache jawaban','Answer cache')};
+  const dock=form.saveDock=labels[section]?window.ZentixSaveDock?.attach(form,labels[section],null,{showLabel:true,canSave:canStart}):null;
   const picked = (name) => [...form.querySelectorAll(`input[name="${name}"]:checked`)].map((x) => x.value);
   form.onsubmit = async (e) => {
    e.preventDefault();
    for (const set of form.querySelectorAll('[data-picker]')) {
     if (picked(set.dataset.picker).length > Number(set.dataset.max)) { notify(`${set.querySelector('b').textContent}: ${tr(`paling banyak ${set.dataset.max} channel.`,`maximum ${set.dataset.max} ${Number(set.dataset.max)===1?'channel':'channels'}.`)}`); return; }
    }
+   if(!canStart()||(dock&&!dock.start()))return;
    const btn = form.querySelector('button[type=submit]');
-   btn.disabled = true;
-   try { const out = await req('smart/' + section, { method: 'PATCH', body: JSON.stringify(body(form.elements, picked)) }); done(out); }
+   btn.disabled = true;let success=false;
+   try { const out = await req('smart/' + section, { method: 'PATCH', body: JSON.stringify(body(form.elements, picked)) }); success=true;done(out); }
    catch (err) { notify(err.message); }
-   finally { btn.disabled = false; }
+   finally { btn.disabled = false;dock?.finish(success); }
   };
  }
 
@@ -230,11 +233,12 @@
   faq(slot, data, notify, initialSupport) {
    let { faq, cache } = data.settings;
    const max = data.limits.faqEntries;
+   let faqActionBusy=false;
    const draw = () => {
     slot.innerHTML = `<form id="aiFaqForm" class="f-form">${toggle('enabled', tr('Aktifkan FAQ','Enable FAQ'), tr('Pertanyaan yang cocok dijawab dari daftar. Jika pencocokan kata gagal, AI mencoba memilih FAQ dan menggunakan kuota.','Matching questions are answered from the list. If word matching fails, AI attempts to select an FAQ and uses quota.'), faq.enabled)}${toggle('varyWithAI', tr('Variasikan jawaban dengan AI','Vary answers with AI'), tr('Opsional: jawaban acuan dikirim ke provider dan memakai kuota. AI bisa keliru; jawaban acuan tetap ditampilkan. Jika gagal, gunakan jawaban asli.','Optional: the reference answer is sent to the provider and uses quota. AI may be wrong; the reference answer is still shown. On failure, use the original answer.'), faq.varyWithAI)}${toggle('autoAnswer', tr('Jawab otomatis tanpa dipanggil','Answer automatically without being called'), tr('Di channel pilihan, pertanyaan anggota dapat dikirim ke provider AI untuk dicocokkan dengan FAQ dan memakai kuota, walau bot tidak dipanggil.','In selected channels, member questions may be sent to the AI provider to match FAQs and use quota, even when the bot is not called.'), faq.autoAnswer)}${channelPicker('channelIds', tr('Channel jawab otomatis','Automatic-answer channels'), tr('Tempat bot menjawab FAQ tanpa dipanggil.','Where the bot answers FAQs without being called.'), data.channels, faq.channelIds, data.limits.channels, 'faqChannels')}${actions(tr('BERLAKU PADA PESAN BERIKUTNYA','APPLIES TO FUTURE MESSAGES'))}</form>
      <details class="faq-import"><summary>${tr('Asisten troubleshooting otomatis','Automatic troubleshooting assistant')}</summary><p class="f-muted">${tr('Opsional untuk channel bantuan yang dipilih. Pertanyaan terkait masalah bot dapat dikirim ke provider AI dan memakai kuota tanpa mention. Beri tahu anggota. Jangan bagikan token, API key, password, isi .env, URL database atau webhook; penyaringan rahasia tidak sempurna. Konteks pertanyaan awal disimpan sementara di memori hingga 10 menit untuk balasan ke bot dan hilang saat restart. AI bisa salah; FAQ acuan didahulukan.','Optional for selected support channels. Bot troubleshooting questions may be sent to the AI provider and use quota without a mention. Inform members. Do not share tokens, API keys, passwords, .env contents, database URLs or webhooks; secret filtering is imperfect. Initial question context is kept in memory for up to 10 minutes for replies to the bot and is cleared on restart. AI replies are requested in Indonesian and can be wrong; reference FAQs take priority.')}</p><div id="supportSettings">${tr('Memuat…','Loading…')}</div></details>
-     <h3 class="s-head">${tr('Daftar FAQ ','FAQ list ')}<small>${faq.entries.length} ${tr('dari','of')} ${max}</small></h3>
-     <div class="s-list">${faq.entries.length ? faq.entries.map((entry, index) => `<div class="s-item"><div><b>${esc(entry.question)}</b><p>${esc(entry.answer)}</p></div><button type="button" class="f-outline" aria-label="${esc(`${tr('Hapus FAQ','Remove FAQ')} ${index + 1}: ${entry.question}`)}" data-faq-remove="${esc(entry.id)}">${tr('HAPUS','REMOVE')}</button></div>`).join('') : `<p class="f-muted">${tr('Belum ada entri. Tambahkan pertanyaan yang sering muncul di server Anda.','No entries yet. Add frequently asked questions from your server.')}</p>`}</div>
+     <h3 class="s-head" id="faqListHeading">${tr('Daftar FAQ ','FAQ list ')}<small>${faq.entries.length} ${tr('dari','of')} ${max}</small></h3>
+     <div class="s-list" id="faqList">${faq.entries.length ? faq.entries.map((entry, index) => `<div class="s-item"><div><b>${esc(entry.question)}</b><p>${esc(entry.answer)}</p></div><button type="button" class="f-outline" aria-label="${esc(`${tr('Hapus FAQ','Remove FAQ')} ${index + 1}: ${entry.question}`)}" data-faq-remove="${esc(entry.id)}">${tr('HAPUS','REMOVE')}</button></div>`).join('') : `<p class="f-muted">${tr('Belum ada entri. Tambahkan pertanyaan yang sering muncul di server Anda.','No entries yet. Add frequently asked questions from your server.')}</p>`}</div>
      <details class="faq-import"><summary>${tr('Saran FAQ dari pertanyaan pilihan','FAQ suggestions from selected questions')}</summary><p class="f-muted">${tr('Pilih pesan secara manual dari Discord, sensor data pribadi atau rahasia, lalu tempel di sini. Tidak ada pengumpulan otomatis. Pertanyaan dikirim ke provider AI dan memakai kuota. Periksa dan sunting hasil; tulis jawaban sendiri sebelum menyimpan.','Manually select a Discord message, redact private data or secrets, then paste it here. There is no automatic collection. The question is sent to an AI provider and uses quota. The suggestion is requested in Indonesian. Review and edit the result; write your own answer before saving.')}</p><label class="f-field"><span><b>${tr('Pertanyaan yang dipilih','Selected question')}</b></span><textarea id="faqCandidate" rows="3" maxlength="600"></textarea></label><div class="f-inline"><button type="button" class="f-outline" id="faqSuggest">${tr('BUAT SARAN','CREATE SUGGESTION')}</button></div><p class="f-muted" id="faqSuggestStatus" role="status"></p></details>
      <form id="aiFaqAddForm" class="f-form">${row(tr('Pertanyaan','Question'), tr('Tulis seperti anggota bertanya, 3–150 karakter. Kata-kata pentingnya yang dicocokkan.','Write it as a member would ask, 3–150 characters. Important words are matched.'), tr('<input name="question" type="text" minlength="3" maxlength="150" required placeholder="mis. Bagaimana cara dapat role member?">','<input name="question" type="text" minlength="3" maxlength="150" required placeholder="e.g. How do I get the member role?">'))}${row(tr('Jawaban','Answer'), tr('Dikirim apa adanya, 1–800 karakter. Mention di dalamnya tidak memanggil siapa pun.','Sent as written, 1–800 characters. Mentions do not ping anyone.'), '<textarea name="answer" rows="3" maxlength="800" required></textarea>')}<div class="f-form-actions"><span>${tr('LANGSUNG TERSIMPAN','SAVED IMMEDIATELY')}</span><button class="f-primary" type="submit" ${faq.entries.length >= max ? 'disabled' : ''}>${tr('TAMBAH ENTRI','ADD ENTRY')}</button></div></form>
      <details class="faq-import"><summary>${tr('Impor FAQ dari JSON / TXT','Import FAQ from JSON / TXT')}</summary><p class="f-muted">${tr('Pilih file atau tempel JSON berupa array dengan','Choose a file or paste a JSON array with')} <code>question</code> ${tr('dan','and')} <code>answer</code>, ${tr('atau TXT dengan pasangan','or TXT with')} <code>Q:</code> ${tr('dan','and')} <code>A:</code> ${tr('dipisah satu baris kosong. Pratinjau dulu; entri baru ditambahkan, FAQ lama dan pengaturan tetap ada. Maksimal','pairs separated by a blank line. Preview first; new entries are added and existing FAQs and settings remain. Maximum')} ${max} ${tr('entri total, file maksimal 64 KB.','entries total; file maximum 64 KB.')}</p><p class="f-muted">${tr('Contoh:','Example:')} ${tr('<code>[{"question":"Bagaimana cara bergabung?","answer":"Baca panduan server."}]</code>','<code>[{"question":"How do I join?","answer":"Read the server guide."}]</code>')}</p><p class="f-muted">${tr('Contoh TXT:','TXT example:')} <code>${tr('Q: Bagaimana cara bergabung?','Q: How do I join?')}</code> ${tr('lalu di baris berikutnya','then on the next line')} <code>${tr('A: Baca panduan server.','A: Read the server guide.')}</code> ${tr('Pisahkan pasangan dengan baris kosong. Jawaban boleh beberapa baris.','Separate pairs with a blank line. Answers can span multiple lines.')}</p><label class="f-field"><span><b>${tr('File JSON / TXT','JSON / TXT file')}</b><small>${tr('Pilih file UTF-8 .json atau .txt.','Choose a UTF-8 .json or .txt file.')}</small></span><input type="file" id="faqImportFile" accept=".json,.txt,application/json,text/plain"></label><label class="f-field"><span><b>${tr('Atau tempel JSON / TXT','Or paste JSON / TXT')}</b><small>${tr('Data hanya dipakai untuk membuat FAQ, bukan dokumen rujukan AI.','Data is used only to create FAQs, not as AI reference documents.')}</small></span><textarea id="faqImportText" rows="5" spellcheck="false" placeholder="${tr('Tempel JSON atau TXT FAQ di sini','Paste FAQ JSON or TXT here')}"></textarea></label><div class="f-inline"><button class="f-outline" type="button" id="faqImportPreview">${tr('PRATINJAU','PREVIEW')}</button><button class="f-primary" type="button" id="faqImportSave" disabled>${tr('IMPOR FAQ','IMPORT FAQ')}</button></div><p class="f-muted" id="faqImportStatus" role="status"></p><div id="faqImportResult"></div></details>
@@ -246,13 +250,22 @@
     supportRequest.then(({settings:s})=>{
      if(!supportSlot.isConnected)return;
      supportSlot.innerHTML=`<form id="supportForm" class="f-form">${toggle('enabled',tr('Aktifkan asisten bantuan','Enable support assistant'),tr('AI dapat membaca pertanyaan masalah di channel pilihan dan mengirimnya ke provider.','AI can read troubleshooting questions in selected channels and send them to the provider.'),s.enabled)}${channelPicker('channelIds',tr('Channel bantuan','Support channels'),tr('Pilih hanya channel yang diberi tahu tentang penggunaan AI.','Select only channels informed about AI use.'),data.channels,s.channelIds,data.limits.channels,'supportChannels')}<div class="f-form-actions"><button type="submit" class="f-primary">${tr('SIMPAN BANTUAN','SAVE SUPPORT')}</button></div></form>`;
-     const form=supportSlot.querySelector('#supportForm');form.onsubmit=async e=>{e.preventDefault();const button=form.querySelector('button');button.disabled=true;try{const channelIds=[...form.querySelectorAll('input[name="channelIds"]:checked')].map(x=>x.value);await req('support/settings',{method:'PATCH',body:JSON.stringify({enabled:form.elements.enabled.checked,channelIds})});notify(tr('Pengaturan bantuan disimpan.','Support settings saved.'))}catch(e){notify(e.message)}finally{button.disabled=false}};
+     const form=supportSlot.querySelector('#supportForm'),dock=window.ZentixSaveDock?.attach(form,tr('Asisten bantuan','Support assistant'),null,{showLabel:true,dockToBody:true});form.onsubmit=async e=>{e.preventDefault();if(dock&&!dock.start())return;const button=form.querySelector('button');button.disabled=true;let success=false;try{const channelIds=[...form.querySelectorAll('input[name="channelIds"]:checked')].map(x=>x.value);await req('support/settings',{method:'PATCH',body:JSON.stringify({enabled:form.elements.enabled.checked,channelIds})});success=true;notify(tr('Pengaturan bantuan disimpan.','Support settings saved.'))}catch(e){notify(e.message)}finally{button.disabled=false;dock?.finish(success)}};
     }).catch(()=>{if(supportSlot.isConnected)supportSlot.textContent=tr('Pengaturan bantuan tidak tersedia.','Support settings unavailable.')});
-    const saveFaq = async (next, message) => {
-     try { faq = (await req('smart/faq', { method: 'PATCH', body: JSON.stringify(next) })).settings.faq; notify(message); draw(); }
-     catch (err) { notify(err.message); }
+    const faqForm=slot.querySelector('#aiFaqForm');
+    const beginFaqAction=()=>{if(faqActionBusy||faqForm.saveDock?.isDirty()||faqForm.saveDock?.isBusy()){notify(tr('Simpan atau batalkan pengaturan FAQ terlebih dahulu.','Save or cancel FAQ settings first.'));return false}faqActionBusy=true;faqForm.dispatchEvent(new Event('change',{bubbles:true}));return true};
+    const endFaqAction=()=>{faqActionBusy=false;faqForm.dispatchEvent(new Event('change',{bubbles:true}))};
+    const refreshFaqList=()=>{
+     slot.querySelector('#faqListHeading small').textContent=`${faq.entries.length} ${tr('dari','of')} ${max}`;
+     slot.querySelector('#faqList').innerHTML=faq.entries.length?faq.entries.map((entry,index)=>`<div class="s-item"><div><b>${esc(entry.question)}</b><p>${esc(entry.answer)}</p></div><button type="button" class="f-outline" aria-label="${esc(`${tr('Hapus FAQ','Remove FAQ')} ${index+1}: ${entry.question}`)}" data-faq-remove="${esc(entry.id)}">${tr('HAPUS','REMOVE')}</button></div>`).join(''):`<p class="f-muted">${tr('Belum ada entri. Tambahkan pertanyaan yang sering muncul di server Anda.','No entries yet. Add frequently asked questions from your server.')}</p>`;
+     slot.querySelector('#aiFaqAddForm button[type=submit]').disabled=faq.entries.length>=max;
     };
-    wire(slot.querySelector('#aiFaqForm'), 'faq', (x, picked) => ({ enabled: x.enabled.checked, autoAnswer: x.autoAnswer.checked, varyWithAI: x.varyWithAI.checked, channelIds: picked('channelIds'), entries: faq.entries }), notify, (out) => { faq = out.settings.faq; notify(tr('Pengaturan FAQ disimpan.','FAQ settings saved.')); });
+    const saveFaq = async (next, message, after) => {
+     if(!beginFaqAction())return;
+     try { faq = (await req('smart/faq', { method: 'PATCH', body: JSON.stringify(next) })).settings.faq; notify(message); refreshFaqList();after?.(); }
+     catch (err) { notify(err.message); } finally {endFaqAction()}
+    };
+    wire(slot.querySelector('#aiFaqForm'), 'faq', (x, picked) => ({ enabled: x.enabled.checked, autoAnswer: x.autoAnswer.checked, varyWithAI: x.varyWithAI.checked, channelIds: picked('channelIds'), entries: faq.entries }), notify, (out) => { faq = out.settings.faq; notify(tr('Pengaturan FAQ disimpan.','FAQ settings saved.')); },()=>!faqActionBusy);
     slot.querySelector('#faqSuggest').onclick=async()=>{
      const candidate=slot.querySelector('#faqCandidate').value.trim(),status=slot.querySelector('#faqSuggestStatus'),button=slot.querySelector('#faqSuggest'),form=slot.querySelector('#aiFaqAddForm');
      if(candidate.length<3){status.textContent=tr('Tempel pertanyaan pilihan (minimal 3 karakter).','Paste the selected question (at least 3 characters).');return;}
@@ -268,9 +281,9 @@
      const x = e.target.elements, question = x.question.value.trim(), answer = x.answer.value.trim();
      if (question.length < 3 || !answer) { notify(tr('Isi pertanyaan (minimal 3 karakter) dan jawabannya.','Enter a question (at least 3 characters) and its answer.')); return; }
      if (faq.entries.length >= max) { notify(`${tr('FAQ paling banyak','Maximum FAQ entries:')} ${max}.`); return; }
-     saveFaq({ ...faq, entries: [...faq.entries, { id: entryId(question, new Set(faq.entries.map((entry) => entry.id))), question, answer }] }, tr('Entri FAQ ditambahkan.','FAQ entry added.'));
+     saveFaq({ ...faq, entries: [...faq.entries, { id: entryId(question, new Set(faq.entries.map((entry) => entry.id))), question, answer }] }, tr('Entri FAQ ditambahkan.','FAQ entry added.'),()=>{if(x.question.value.trim()===question&&x.answer.value.trim()===answer){x.question.value='';x.answer.value=''}});
     };
-    slot.querySelectorAll('[data-faq-remove]').forEach((button) => button.addEventListener('click', () => saveFaq({ ...faq, entries: faq.entries.filter((entry) => entry.id !== button.dataset.faqRemove) }, tr('Entri FAQ dihapus.','FAQ entry removed.'))));
+    slot.querySelector('#faqList').addEventListener('click',event=>{const button=event.target.closest('[data-faq-remove]');if(button)saveFaq({ ...faq, entries: faq.entries.filter((entry) => entry.id !== button.dataset.faqRemove) }, tr('Entri FAQ dihapus.','FAQ entry removed.'))});
     const file=slot.querySelector('#faqImportFile'), text=slot.querySelector('#faqImportText'), preview=slot.querySelector('#faqImportResult'), importStatus=slot.querySelector('#faqImportStatus'), importButton=slot.querySelector('#faqImportSave');
     let draft=null, revision=0;
     const resetImport=()=>{revision++;draft=null;importButton.disabled=true;preview.replaceChildren();importStatus.textContent='';};
@@ -302,9 +315,9 @@
      if(!draft)return;const current=draft,stamp=revision;importButton.disabled=true;
      try{
       const ok=await (window.ZentixDialog?window.ZentixDialog.confirm(`${tr('Tambahkan','Add')} ${current.entries.length} FAQ? ${tr('Entri dan pengaturan yang sudah ada tidak dihapus.','Existing entries and settings will not be deleted.')}`):Promise.resolve(window.confirm(`${tr('Tambahkan','Add')} ${current.entries.length} FAQ? ${tr('Entri dan pengaturan yang sudah ada tidak dihapus.','Existing entries and settings will not be deleted.')}`)));
-      if(!ok||revision!==stamp||!slot.isConnected)return;
-      const out=await req('smart/faq/import',{method:'POST',body:JSON.stringify({confirmed:true,entries:current.entries,expected:current.expected})});
-      faq=out.settings.faq;notify(`${current.entries.length} ${tr('FAQ berhasil diimpor.','FAQs imported successfully.')}`);draw();
+      if(!ok||revision!==stamp||!slot.isConnected||!beginFaqAction())return;
+      let out;try{out=await req('smart/faq/import',{method:'POST',body:JSON.stringify({confirmed:true,entries:current.entries,expected:current.expected})});
+      faq=out.settings.faq;notify(`${current.entries.length} ${tr('FAQ berhasil diimpor.','FAQs imported successfully.')}`);refreshFaqList();if(revision===stamp){text.value='';resetImport()}}finally{endFaqAction()}
      }catch(error){importStatus.textContent=error.message;notify(error.message);}
      finally{if(draft===current&&slot.isConnected)importButton.disabled=false;}
     });
@@ -362,21 +375,24 @@
    const addRow = () => {
       if (rowsBox.querySelectorAll('.ai-reverse-row').length >= 5) { notify(tr('Paling banyak 5 pasangan dua arah.','At most 5 bidirectional pairs.')); return; }
       rowsBox.insertAdjacentHTML('beforeend', revRow(null));
-      labelReverseRows();
+      labelReverseRows();rowsBox.dispatchEvent(new Event('change',{bubbles:true}));
    };
    slot.querySelector('#aiReverseAdd').onclick = addRow;
    slot.addEventListener('click', (event) => {
       const btn = event.target.closest('[data-rev-remove]');
-      if (btn) { btn.closest('.ai-reverse-row')?.remove(); labelReverseRows(); }
+      if (btn) { btn.closest('.ai-reverse-row')?.remove(); labelReverseRows(); rowsBox.dispatchEvent(new Event('change',{bubbles:true})); }
    });
    const form = slot.querySelector('#aiTranslateForm');
+   const captureRows=()=>[...rowsBox.querySelectorAll('.ai-reverse-row')].map(row=>({channelId:row.querySelector('[name=rvChannel]').value,langA:row.querySelector('[name=rvA]').value,langB:row.querySelector('[name=rvB]').value}));
+   const dock=window.ZentixSaveDock?.attach(form,tr('Terjemahan otomatis','Automatic translation'),null,{controlsSelector:'input[name],select[name]:not([name=rvChannel]):not([name=rvA]):not([name=rvB]),textarea[name]',extraCapture:captureRows,extraRestore:rows=>{rowsBox.innerHTML=rows.map(revRow).join('');labelReverseRows()}});
    const pickedIds = () => [...form.querySelectorAll('input[name="channelIds"]:checked')].map((x) => x.value);
    form.onsubmit = async (e) => {
     e.preventDefault();
     for (const set of form.querySelectorAll('[data-picker]')) {
      if (pickedIds().length > Number(set.dataset.max)) { notify(`${set.querySelector('b').textContent}: ${tr(`paling banyak ${set.dataset.max} channel.`,`maximum ${set.dataset.max} ${Number(set.dataset.max)===1?'channel':'channels'}.`)}`); return; }
     }
-    const btn = form.querySelector('button[type=submit]'); btn.disabled = true;
+    if(dock&&!dock.start())return;
+    const btn = form.querySelector('button[type=submit]'); btn.disabled = true;let success=false;
     try {
      const channelIds = pickedIds();
      const channelLanguages = {};
@@ -392,8 +408,8 @@
        channelLanguages,
        reverse,
      }) });
-     notify(tr('Pengaturan terjemahan otomatis disimpan.','Automatic translation settings saved.'));
-    } catch (err) { notify(err.message); } finally { btn.disabled = false; }
+     success=true;notify(tr('Pengaturan terjemahan otomatis disimpan.','Automatic translation settings saved.'));
+    } catch (err) { notify(err.message); } finally { btn.disabled = false;dock?.finish(success); }
    };
   },
 

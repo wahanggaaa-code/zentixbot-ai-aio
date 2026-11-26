@@ -394,14 +394,26 @@
         : `<p class="f-muted">${tr('Belum ada panel.','No panels yet.')}</p>`)
         + `<div class="f-form-actions"><button type="button" class="f-outline" id="selfRolesReload">${tr('MUAT ULANG ↻','RELOAD ↻')}</button></div>`;
       create.innerHTML = '<p id="selfRolesCreateStatus" class="f-muted" role="status"></p>' + createForm(data);
-      list.querySelector('#selfRolesReload').onclick = () => load();
+      const docks=new Map();
+      const createDraft=create.querySelector('#selfRolesCreateForm');
+      const fileIds=new WeakMap();let nextFileId=0;
+      const fileId=file=>{if(!file)return null;if(!fileIds.has(file))fileIds.set(file,++nextFileId);return fileIds.get(file)};
+      const snapshotCreate=()=>createDraft?JSON.stringify([...createDraft.querySelectorAll('input[name],select[name],textarea[name]')].map(el=>el.type==='file'?fileId(el.files?.[0]):el.type==='checkbox'||el.type==='radio'?el.checked:el.value)):'';
+      let initialCreate=snapshotCreate();
+      const hasOtherDraft=source=>[...docks].some(([form,dock])=>form!==source&&dock.isDirty())||(createDraft&&createDraft!==source&&snapshotCreate()!==initialCreate);
+      const warnDraft=where=>{where.textContent=tr('Simpan atau batalkan perubahan panel lain atau kosongkan draft panel baru terlebih dahulu.','Save or cancel other panel edits or clear the new panel draft first.');};
+      list.querySelector('#selfRolesReload').onclick = async () => {
+        if(hasOtherDraft(null)){const message=tr('Muat ulang? Semua draft panel yang belum disimpan akan hilang.','Reload? All unsaved panel drafts will be lost.');if(!(await (window.ZentixDialog?window.ZentixDialog.confirm(message):Promise.resolve(window.confirm(message)))))return;}
+        load();
+      };
       const status = list.querySelector('#selfRolesStatus');
       const createStatus = create.querySelector('#selfRolesCreateStatus');
       syncDropdownOnly(root);
       root.querySelectorAll('select[name="interactionType"]').forEach((select) => select.addEventListener('change', () => syncDropdownOnly(root)));
 
       /** Runs one change with every control locked; reloads after success, reports a failure in place. */
-      async function change(where, run, done) {
+      async function change(where, run, done, source=null) {
+        if(hasOtherDraft(source)){warnDraft(where);return false;}
         const controls = [...root.querySelectorAll('#selfRolesLive button, #selfRolesLive select, #selfRolesLive input, #selfRolesLive textarea')].filter((control) => !control.disabled);
         controls.forEach((control) => { control.disabled = true; });
         where.textContent = tr('Memproses…','Processing…');
@@ -417,7 +429,8 @@
         if (!list.isConnected) return;
         const text = done(result);
         say(text);
-        load(text);
+        await load(text);
+        return true;
       }
 
       /** The banner file of a form, decoded to `{ name, mime, base64 }`, or null when none is chosen. */
@@ -436,8 +449,16 @@
 
         const text = block.querySelector('form[data-text]');
         window.ZentixGreetingColor?.bind(text);
+        const textDock=window.ZentixSaveDock?.attach(text,tr(`Panel ${label} · ID ${panel.messageId}`,`Panel ${label} · ID ${panel.messageId}`),()=>{window.ZentixGreetingColor?.set(text,text.elements.accentColor.value);syncDropdownOnly(text);paintPreview(block,panel.roles);},{showLabel:true,extraCapture:()=>fileId(text.elements.bannerFile?.files?.[0]),extraRestore:()=>{if(text.elements.bannerFile)text.elements.bannerFile.value=''}});
+        if(textDock)docks.set(text,textDock);
+        let textBusy=false;
         text.onsubmit = async (event) => {
           event.preventDefault();
+          if(textBusy)return;if(hasOtherDraft(text)){warnDraft(status);return;}
+          if(textDock&&!textDock.start())return;textBusy=true;
+          const state=[...text.querySelectorAll('input,select,textarea,button')].map(el=>[el,el.disabled]);
+          state.forEach(([el])=>{el.disabled=true});text.inert=true;let saved=false,cancelled=false;
+          try {
           const form = text;
           const title = form.elements.title.value.trim();
           const description = form.elements.description.value.trim();
@@ -454,8 +475,8 @@
           let bannerFile = null;
           try {
             bannerFile = await bannerUpload(form.elements.bannerFile);
-          } catch (error) { status.textContent = error.message; return; }
-          if (!title || !description) { status.textContent = tr('Judul dan deskripsi wajib diisi.','Title and description are required.'); return; }
+          } catch (error) { status.textContent = error.message; cancelled=true; return; }
+          if (!title || !description) { status.textContent = tr('Judul dan deskripsi wajib diisi.','Title and description are required.'); cancelled=true; return; }
           const originalBannerUrl = storedUpload ? '' : (panel.bannerUrl || '');
           const unchanged = title === (panel.title ?? '') && description === (panel.description ?? '')
             && bannerUrl === originalBannerUrl && accentColor === (panel.accentColor ? '#' + panel.accentColor : '')
@@ -463,9 +484,10 @@
             && dropdownPlaceholder === (panel.dropdownPlaceholder ?? '') && maxSelect === (panel.maxSelect ?? 1)
             && (requiredRoleId || '') === (panel.requiredRoleId ?? '')
             && !bannerFile && !bannerClear;
-          if (unchanged) { status.textContent = tr('Tidak ada yang berubah.','Nothing changed.'); return; }
-          if (!(await (window.ZentixDialog ? window.ZentixDialog.confirm(tr(`Ubah pengaturan panel "${label}"? Pesannya di Discord ikut diubah.`,`Change settings for panel "${label}"? Its Discord message will also be changed.`)) : Promise.resolve(window.confirm(tr(`Ubah pengaturan panel "${label}"? Pesannya di Discord ikut diubah.`,`Change settings for panel "${label}"? Its Discord message will also be changed.`)))))) return;
-          change(status, () => request('PATCH', path, {
+          if (unchanged) { status.textContent = tr('Tidak ada yang berubah.','Nothing changed.'); cancelled=true; return; }
+          if (!(await (window.ZentixDialog ? window.ZentixDialog.confirm(tr(`Ubah pengaturan panel "${label}"? Pesannya di Discord ikut diubah.`,`Change settings for panel "${label}"? Its Discord message will also be changed.`)) : Promise.resolve(window.confirm(tr(`Ubah pengaturan panel "${label}"? Pesannya di Discord ikut diubah.`,`Change settings for panel "${label}"? Its Discord message will also be changed.`)))))) {cancelled=true;return;}
+          if(!text.isConnected){cancelled=true;return;}
+          saved=await change(status, () => request('PATCH', path, {
             confirmed: true, revision: panel.revision, title, description,
             ...(sendingBannerUrl !== undefined ? { bannerUrl: sendingBannerUrl } : {}),
             accentColor: accentColor || '',
@@ -476,7 +498,8 @@
             ...(bannerFile ? { bannerFile } : {}),
             ...(bannerClear ? { bannerClear: true } : {}),
           }),
-          (result) => `${tr('Pengaturan panel disimpan.','Panel settings saved.')} ${redrawText(result.message)}`);
+          (result) => `${tr('Pengaturan panel disimpan.','Panel settings saved.')} ${redrawText(result.message)}`,text);
+          } finally {state.forEach(([el,disabled])=>{el.disabled=disabled});text.inert=false;textBusy=false;textDock?.finish(saved,cancelled);}
         };
 
         block.__storedBannerUpload = typeof panel.bannerUrl === 'string' && panel.bannerUrl.startsWith('attachment://');
@@ -486,6 +509,9 @@
         block.addEventListener('change', repaintPanel);
         repaintPanel();
         const itemsForm = block.querySelector('form[data-items]');
+        const itemRows=itemsForm.querySelector('[data-itemrows]');
+        const itemsDock=window.ZentixSaveDock?.attach(itemsForm,tr(`Item ${label} · ID ${panel.messageId}`,`Items ${label} · ID ${panel.messageId}`),()=>paintPreview(block,panel.roles),{showLabel:true,extraCapture:()=>[...itemRows.children].map(row=>row.dataset.item),extraRestore:order=>{for(const id of order){const row=[...itemRows.children].find(node=>node.dataset.item===id);if(row)itemRows.append(row)}}});
+        if(itemsDock)docks.set(itemsForm,itemsDock);let itemsBusy=false;
         itemsForm.querySelectorAll('[data-move]').forEach((button) => {
           button.onclick = () => {
             const row = button.closest('[data-item]');
@@ -493,6 +519,7 @@
             const rows = row.parentNode;
             if (button.dataset.move === 'up' && row.previousElementSibling) rows.insertBefore(row, row.previousElementSibling);
             if (button.dataset.move === 'down' && row.nextElementSibling) rows.insertBefore(row.nextElementSibling, row);
+            itemsForm.dispatchEvent(new Event('change',{bubbles:true}));
           };
         });
         itemsForm.onsubmit = async (event) => {
@@ -505,9 +532,14 @@
             buttonStyle: row.querySelector('select[name="buttonStyle"]').value,
           }));
           if (!items.length) { status.textContent = tr('Panel harus memuat minimal satu role.','The panel must contain at least one role.'); return; }
-          if (!(await (window.ZentixDialog ? window.ZentixDialog.confirm(tr(`Simpan item panel "${label}"? Pesannya di Discord ikut diubah.`,`Save items for panel "${label}"? Its Discord message will also be changed.`)) : Promise.resolve(window.confirm(tr(`Simpan item panel "${label}"? Pesannya di Discord ikut diubah.`,`Save items for panel "${label}"? Its Discord message will also be changed.`)))))) return;
-          change(status, () => request('PUT', path + '/items', { confirmed: true, revision: panel.revision, items }),
-            (result) => `${tr('Item panel disimpan.','Panel items saved.')} ${redrawText(result.message)}`);
+          if(itemsBusy)return;if(hasOtherDraft(itemsForm)){warnDraft(status);return;}if(itemsDock&&!itemsDock.start())return;itemsBusy=true;
+          const states=[...itemsForm.querySelectorAll('input,select,button')].map(el=>[el,el.disabled]);states.forEach(([el])=>{el.disabled=true});itemsForm.inert=true;let saved=false,cancelled=false;
+          try {
+           if (!(await (window.ZentixDialog ? window.ZentixDialog.confirm(tr(`Simpan item panel "${label}"? Pesannya di Discord ikut diubah.`,`Save items for panel "${label}"? Its Discord message will also be changed.`)) : Promise.resolve(window.confirm(tr(`Simpan item panel "${label}"? Pesannya di Discord ikut diubah.`,`Save items for panel "${label}"? Its Discord message will also be changed.`)))))){cancelled=true;return;}
+           if(!itemsForm.isConnected){cancelled=true;return;}
+           saved=await change(status, () => request('PUT', path + '/items', { confirmed: true, revision: panel.revision, items }),
+            (result) => `${tr('Item panel disimpan.','Panel items saved.')} ${redrawText(result.message)}`,itemsForm);
+          } finally {states.forEach(([el,disabled])=>{el.disabled=disabled});itemsForm.inert=false;itemsBusy=false;itemsDock?.finish(saved,cancelled);}
         };
 
         const add = block.querySelector('form[data-add]');
@@ -570,6 +602,7 @@
         form.addEventListener('input', repaintCreate);
         form.addEventListener('change', repaintCreate);
         repaintCreate();
+        initialCreate=snapshotCreate();
         form.onsubmit = async (event) => {
           event.preventDefault();
           const checked = [...form.querySelectorAll('input[name="roleIds"]:checked')].map((box) => box.value);
@@ -622,7 +655,7 @@
           change(createStatus, () => request('POST', '/panels', body),
             (result) => (result.reactionFailures?.length
               ? tr('Panel dibuat, tetapi sebagian emoji reaksi gagal ditempel. Tambahkan reaksi secara manual atau buat ulang panel.','Panel created, but some reactions could not be added. Add them manually or recreate the panel.')
-              : tr('Panel dibuat dan dikirim ke Discord.','Panel created and sent to Discord.')));
+              : tr('Panel dibuat dan dikirim ke Discord.','Panel created and sent to Discord.')),form);
         };
       }
     }

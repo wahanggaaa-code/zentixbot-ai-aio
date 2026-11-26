@@ -99,40 +99,67 @@
         + (data.triggers.length ? data.triggers.map((trigger, index) => triggerForm(trigger, index, data)).join('') : setupForm(data))
         + `<p><button type="button" class="f-outline" id="jtcSettingsReload">${tr('MUAT ULANG ↻','RELOAD ↻')}</button></p>`;
       const status = slot.querySelector('#jtcSettingsStatus');
-      slot.querySelector('#jtcSettingsReload').onclick = () => load();
+      const docks = new Map();
+      const dirtyOther = (form) => [...docks].some(([other,dock]) => other !== form && dock?.isDirty());
+      const pendingMessage = () => { status.textContent=tr('Simpan atau batalkan perubahan pada trigger lain terlebih dahulu.','Save or cancel changes to the other trigger first.'); };
+      slot.querySelector('#jtcSettingsReload').onclick = async () => {
+        if (dirtyOther(null)) {
+          const message=tr('Muat ulang? Perubahan trigger yang belum disimpan akan hilang.','Reload? Unsaved trigger changes will be lost.');
+          if (!(await (window.ZentixDialog ? window.ZentixDialog.confirm(message) : Promise.resolve(window.confirm(message))))) return;
+        }
+        load();
+      };
 
-      const lock = (locked) => slot.querySelectorAll('button,input,select').forEach((element) => { element.disabled = locked; });
       async function send(method, path, body, done) {
-        lock(true);
+        const states=[...slot.querySelectorAll('button,input,select')].map(element=>[element,element.disabled]);
+        states.forEach(([element])=>{element.disabled=true});
         status.textContent = tr('Menyimpan…','Saving…');
         try {
           await request(method, path, body);
         } catch (error) {
           // Keep what was typed; the administrator decides whether to reload.
-          lock(false);
+          states.forEach(([element,disabled])=>{element.disabled=disabled});
           status.textContent = `${error.message} ${tr('Bila hasilnya tidak jelas, muat ulang sebelum mencoba lagi.','If the result is unclear, reload before trying again.')}`;
-          return;
+          return false;
         }
         if (onChanged) onChanged();
         await load(done);
+        return true;
       }
 
       slot.querySelectorAll('form[data-trigger]').forEach((form) => {
         const trigger = data.triggers[Number(form.dataset.trigger)];
+        const name=trigger.channelName ?? tr('Trigger tidak tersedia','Unavailable trigger');
+        const dock=window.ZentixSaveDock?.attach(form, `${name} · ID ${trigger.channelId}`, null, {showLabel:true});
+        if(dock)docks.set(form,dock);
+        let confirming=false;
         form.onsubmit = async (event) => {
           event.preventDefault();
-          const { values, error } = readFields(form);
+          if(confirming)return;
+          if(dirtyOther(form)){pendingMessage();return;}
+          let { values, error } = readFields(form);
           if (error) { status.textContent = error; return; }
           // Send only what changed, so untouched settings are never rewritten.
           const patch = {};
           for (const key of ['nameTemplate', 'userLimit', 'bitrate']) if (values[key] !== trigger[key]) patch[key] = values[key];
           if (!Object.keys(patch).length) { status.textContent = tr('Tidak ada perubahan.','No changes.'); return; }
-          if (!(await (window.ZentixDialog ? window.ZentixDialog.confirm(tr('Simpan pengaturan trigger ini? Berlaku untuk channel sementara berikutnya.','Save these trigger settings? They apply to future temporary channels.')) : Promise.resolve(window.confirm(tr('Simpan pengaturan trigger ini? Berlaku untuk channel sementara berikutnya.','Save these trigger settings? They apply to future temporary channels.')))))) return;
-          send('PATCH', `/triggers/${trigger.channelId}`, { ...patch, revision: data.configRevision, confirmed: true }, tr('Pengaturan disimpan.','Settings saved.'));
+          confirming=true;
+          let approved;
+          try { approved=await (window.ZentixDialog ? window.ZentixDialog.confirm(tr('Simpan pengaturan trigger ini? Berlaku untuk channel sementara berikutnya.','Save these trigger settings? They apply to future temporary channels.')) : Promise.resolve(window.confirm(tr('Simpan pengaturan trigger ini? Berlaku untuk channel sementara berikutnya.','Save these trigger settings? They apply to future temporary channels.')))); } finally { confirming=false; }
+          if (!approved || !form.isConnected) return;
+          if(dirtyOther(form)){pendingMessage();return;}
+          ({values,error}=readFields(form));if(error){status.textContent=error;return;}
+          for (const key of ['nameTemplate','userLimit','bitrate']) { if(values[key] !== trigger[key]) patch[key]=values[key]; else delete patch[key]; }
+          if(!Object.keys(patch).length){status.textContent=tr('Tidak ada perubahan.','No changes.');return;}
+          if(dock&&!dock.start())return;
+          const success=await send('PATCH', `/triggers/${trigger.channelId}`, { ...patch, revision: data.configRevision, confirmed: true }, tr('Pengaturan disimpan.','Settings saved.'));
+          dock?.finish(success);
         };
         form.querySelector('[data-remove]').onclick = async () => {
+          if(dirtyOther(null)){pendingMessage();return;}
           const message = tr('Lepas trigger ini? Join to Create berhenti membuat channel baru. Channel di Discord tidak dihapus, dan channel sementara yang masih ada tetap dihapus saat kosong.','Remove this trigger? Join to Create will stop creating new channels. The Discord channel is not deleted, and existing temporary channels are still deleted when empty.');
           if (!(await (window.ZentixDialog ? window.ZentixDialog.confirm(message) : Promise.resolve(window.confirm(message))))) return;
+          if(dirtyOther(null)){pendingMessage();return;}
           send('DELETE', `/triggers/${trigger.channelId}`, { revision: data.configRevision, confirmed: true }, tr('Trigger dilepas. Channel di Discord tidak dihapus.','Trigger removed. The Discord channel was not deleted.'));
         };
       });
