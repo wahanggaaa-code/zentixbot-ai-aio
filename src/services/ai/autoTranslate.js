@@ -1,3 +1,4 @@
+import { createChannelBudget } from './channelBudget.js';
 // Automatic translation in chosen channels: a message that is not in the target language gets a reply
 // with its translation. Off until the owner switches it on in the dashboard and picks the channels.
 //
@@ -119,22 +120,20 @@ const guildGateIds = (client, message) => `guild=${JSON.stringify(homeGuildIdOf(
 export function createAutoTranslate({ client, settings, foundation = () => client.aiFoundation, now = Date.now, logger = defaultLogger, schedule = defaultSchedule } = {}) {
     const isHomeMessage = (message) => Boolean(message && client?.homeGuildId && homeGuildIdOf(message) === client.homeGuildId);
     const cache = new Map();     // target|text -> { text | null, at }
-    const sentAt = new Map();    // channelId -> [timestamps of the last hour]: AI requests and translations from memory
     const lastFor = new Map();   // userId -> timestamp of that member's last request or translation
     const busy = new Set();      // channelIds with a translation under way
+    const channelBudget = createChannelBudget({ now, isBusy: id => busy.has(id) });
     let warnedAt = -Infinity;
 
     /** Counts one use against the channel's hourly limit and starts the member's short pause. */
     function spent(channelId, userId) {
-        sentAt.set(channelId, [...(sentAt.get(channelId) ?? []), now()]);
+        channelBudget.record(channelId);
         if (lastFor.size > 5000) lastFor.clear();
         lastFor.set(userId, now());
     }
 
     function underLimit(channelId, limit) {
-        const list = (sentAt.get(channelId) ?? []).filter((at) => at > now() - 3600000);
-        sentAt.set(channelId, list);
-        return list.length < limit;
+        return channelBudget.underLimit(channelId, limit);
     }
 
     /** The shared core: `text` is ready to translate, the preflight is done. Resolves to true when a translation was posted.

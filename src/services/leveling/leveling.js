@@ -97,44 +97,43 @@ export async function getLeaderboard(client, guildId, limit = 10) {
       );
     }
 
-    if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
-      limit = Math.min(Math.max(limit, 1), 100);
-    }
+    limit = Number.isInteger(limit) ? Math.min(Math.max(limit, 1), 100) : 10;
 
     const guild = client.guilds.cache.get(guildId);
     if (!guild) {
       logger.warn(`Guild ${guildId} not found in cache`);
       return [];
     }
-    
-    const members = await guild.members.fetch().catch(error => {
-      logger.error(`Failed to fetch members for guild ${guildId}:`, error);
-      return new Map();
-    });
 
+    // Discord REST lists members in snowflake order, at most 1000 at a time.
+    // Do not cache pages: guild.members.fetch() requests and retains the entire
+    // guild, including members without XP. Keep only the requested top ranks.
     const leaderboard = [];
-    
-    for (const [userId, member] of members) {
-      if (member.user.bot) continue;
-      
-      const data = await getUserLevelData(client, guildId, userId);
-      if (data && (data.totalXp > 0 || data.level > 0)) {
-        leaderboard.push({
-          userId,
-          username: member.user.username,
-          discriminator: member.user.discriminator,
-          ...data
-        });
+    const pageSize = 1000;
+    let after;
+    while (true) {
+      const members = await guild.members.list({ limit: pageSize, ...(after ? { after } : {}), cache: false });
+      if (!members || typeof members.entries !== 'function' || !Number.isInteger(members.size) || members.size > pageSize) throw new Error('Invalid member page');
+      if (!members.size) break;
+      let previous = after;
+      for (const [userId, member] of members.entries()) {
+        if (!/^\d{1,20}$/.test(userId) || (previous && BigInt(userId) <= BigInt(previous))) throw new Error('Invalid member page order');
+        previous = userId;
+        if (member.user.bot) continue;
+        const data = await getUserLevelData(client, guildId, userId);
+        if (data && (data.totalXp > 0 || data.level > 0)) {
+          const candidate = { userId, username: member.user.username, discriminator: member.user.discriminator, ...data };
+          // A stable sort keeps earlier members first when XP is tied.
+          leaderboard.push(candidate);
+          leaderboard.sort((a, b) => b.totalXp - a.totalXp);
+          if (leaderboard.length > limit) leaderboard.pop();
+        }
       }
+      after = previous;
+      if (members.size < pageSize) break;
     }
-    
-    leaderboard.sort((a, b) => b.totalXp - a.totalXp);
-    
-    leaderboard.forEach((entry, index) => {
-      entry.rank = index + 1;
-    });
-    
-    return leaderboard.slice(0, limit);
+    leaderboard.forEach((entry, index) => { entry.rank = index + 1; });
+    return leaderboard;
     
   } catch (error) {
     logger.error('Error getting leaderboard:', error);

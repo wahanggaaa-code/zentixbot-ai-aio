@@ -45,7 +45,7 @@ function decodeBase64(data){
 async function openai({provider,mode,prompt,size,image,fetchImpl}){
  let body,headers={Authorization:`Bearer ${provider.key}`};let url='https://api.openai.com/v1/images/generations';
  if(mode==='create'){headers['Content-Type']='application/json';body=JSON.stringify({model:provider.model,prompt,n:1,size,output_format:'png'});}else{url='https://api.openai.com/v1/images/edits';body=new FormData();body.append('model',provider.model);body.append('prompt',prompt);body.append('n','1');body.append('size',size);body.append('output_format','png');body.append('image',new Blob([image],{type:'image/png'}),'image.png');}
- const response=await fetchImpl(url,{method:'POST',headers,body,redirect:'error',signal:AbortSignal.timeout(120000)});if(!response.ok)throw error('Provider gambar menolak atau gagal memproses permintaan.',502);
+ const response=await fetchImpl(url,{method:'POST',headers,body,redirect:'error',signal:AbortSignal.timeout(120000)});if(!response.ok){await response.body?.cancel().catch(()=>{});throw error('Provider gambar menolak atau gagal memproses permintaan.',502);}
  const data=await bounded(response);return png(data?.data?.[0]?.b64_json,MAX_RESULT_BYTES);
 }
 

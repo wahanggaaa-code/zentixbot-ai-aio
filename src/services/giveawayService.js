@@ -285,7 +285,7 @@ export function isUserRateLimited(userId, giveawayId) {
 }
 
 export async function recordUserInteraction(userId, giveawayId) {
-    await checkRateLimit(
+    return checkRateLimit(
         getGiveawayInteractionKey(userId, giveawayId),
         1,
         GIVEAWAY_INTERACTION_COOLDOWN,

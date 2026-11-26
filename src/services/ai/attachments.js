@@ -7,7 +7,7 @@ export async function readDiscordAttachment(attachment,maxBytes,fetchImpl=global
  if(url.protocol!=='https:'||url.hostname!=='cdn.discordapp.com'||url.port||url.username||url.password||url.hash||!/^\/(?:attachments|ephemeral-attachments)\/\d{17,20}\/\d{17,20}\//.test(url.pathname))throw error('Hanya lampiran Discord yang didukung.');
  if(active>=2)throw error('Pemrosesan lampiran sedang sibuk.',429);active++;
  try{
-  const response=await fetchImpl(url.toString(),{redirect:'error',signal:AbortSignal.timeout(10000)});if(!response.ok||!response.body)throw error('Lampiran tidak dapat diunduh.');
+  const response=await fetchImpl(url.toString(),{redirect:'error',signal:AbortSignal.timeout(10000)});if(!response.ok){await response.body?.cancel().catch(()=>{});throw error('Lampiran tidak dapat diunduh.');}if(!response.body)throw error('Lampiran tidak dapat diunduh.');
   const declared=Number(response.headers.get('content-length'));if(declared>maxBytes){await response.body.cancel().catch(()=>{});throw error('Lampiran terlalu besar.');}
   const reader=response.body.getReader(),chunks=[];let length=0;try{while(true){const {done,value}=await reader.read();if(done)break;length+=value.length;if(length>maxBytes)throw error('Lampiran terlalu besar.');chunks.push(Buffer.from(value));}}finally{await reader.cancel().catch(()=>{});}
   const data=Buffer.concat(chunks);if(data.length!==attachment.size)throw error('Ukuran lampiran tidak cocok.');return data;

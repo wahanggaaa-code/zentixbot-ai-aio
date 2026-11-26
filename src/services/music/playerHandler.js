@@ -66,6 +66,7 @@ function startUpdateInterval(client, guildId) {
     guildData.updateInterval = setInterval(() => {
         refreshPlayerMessage(client, guildId);
     }, UPDATE_INTERVAL_MS);
+    guildData.updateInterval.unref?.();
 }
 
 export function setupPlayerHandler(client) {

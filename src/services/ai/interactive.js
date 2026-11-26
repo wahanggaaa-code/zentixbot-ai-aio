@@ -14,6 +14,7 @@ import { readDiscordImage } from './attachments.js';
 import { readGalleryVideo, findGalleryAnimation } from './galleryVideo.js';
 import { logger as defaultLogger } from '../../utils/logger.js';
 import { detectTool, firstLink } from './interactiveTools.js';
+import { createChannelBudget } from './channelBudget.js';
 import { fetchPublicText } from './linkSummary.js';
 
 export const MAX_CHAT_CHANNELS = 10;
@@ -327,7 +328,8 @@ export async function readMessageImage(message, fetchImpl = globalThis.fetch) {
         url.searchParams.set('format', 'jpeg');
         url.hash = '';
         const response = await fetchImpl(url.toString(), { redirect: 'error', signal: AbortSignal.timeout(10000) });
-        if (!response.ok || !response.body) return null;
+        if (!response.ok) { await response.body?.cancel().catch(() => {}); return null; }
+        if (!response.body) return null;
         const reader = response.body.getReader();
         const chunks = [];
         let length = 0;
@@ -370,10 +372,10 @@ export function createInteractive({
 } = {}) {
     const history = new Map();       // channelId -> [{ name, text, at, own }]
     const idleNudges = new Map();    // channelId -> recent successfully sent nudges, in memory only
-    const sentAt = new Map();        // channelId -> [timestamp of each bot message in the last hour]
     const lastJoin = new Map();      // channelId -> timestamp of the last uninvited answer
     const lastAnswer = new Map();    // userId -> timestamp of the last answer to that member
     const working = new Map();       // channelId -> { chain: Promise, waiting: number }
+    const channelBudget = createChannelBudget({ now, isBusy: id => working.has(id) });
     const nudged = new Map();        // channelId -> true while the bot's own nudge is the last word
     const noticed = new Map();       // userId -> timestamp of the last "quota used up" notice
     const warned = new Map();        // code -> timestamp of the last warning in the log
@@ -383,6 +385,24 @@ export function createInteractive({
     let idleDay = { day: '', count: 0 };
     let idleRetryAt = -Infinity;     // after a failed attempt, the next one waits
     let cached = { at: -Infinity, value: null };
+    let nextStateSweep = -Infinity;
+
+    // Expiry uses the longest possible lifetime of each kind of state so a
+    // configuration change cannot accidentally shorten an active cooldown.
+    function sweepStaleState() {
+        const time = now();
+        if (time < nextStateSweep) return;
+        nextStateSweep = time + 60000;
+        for (const [id, lines] of history) if (!lines.length || lines.at(-1).at < time - HISTORY_MAX_AGE_MS) history.delete(id);
+        for (const [id, lines] of speakers) if (!lines.length || lines.at(-1).at <= time - CONVERSATION_MS) speakers.delete(id);
+        for (const [id, at] of lastJoin) if (at <= time - 3600000) lastJoin.delete(id);
+    }
+    function rememberLastWord(id, ours) {
+        // On eviction lastWordIsOurs checks Discord again before an idle nudge.
+        nudged.delete(id);
+        if (nudged.size >= 2000) nudged.delete(nudged.keys().next().value);
+        nudged.set(id, ours);
+    }
 
     const getFoundation = () => (typeof foundation === 'function' ? foundation() : foundation);
     const getSmart = () => (typeof smart === 'function' ? smart() : smart) ?? null;
@@ -401,6 +421,7 @@ export function createInteractive({
     }
 
     async function settings() {
+        sweepStaleState();
         if (now() - cached.at < SETTINGS_TTL_MS) return cached.value;
         let value = null;
         try { value = await store.read(client.homeGuildId); } catch (error) { warnOnce('SETTINGS', `settings could not be read (${error.message})`); }
@@ -438,11 +459,9 @@ export function createInteractive({
     const recent = (channelId) => (history.get(channelId) ?? []).filter((item) => item.at >= now() - HISTORY_MAX_AGE_MS);
 
     function underHourlyLimit(channelId, cfg) {
-        const list = (sentAt.get(channelId) ?? []).filter((at) => at > now() - 3600000);
-        sentAt.set(channelId, list);
-        return list.length < cfg.hourlyLimit;
+        return channelBudget.underLimit(channelId, cfg.hourlyLimit);
     }
-    const countSent = (channelId) => sentAt.set(channelId, [...(sentAt.get(channelId) ?? []), now()]);
+    const countSent = (channelId) => channelBudget.record(channelId);
 
     function canWrite(channel, needHistory = false) {
         const me = channel.guild?.members?.me;
@@ -774,7 +793,8 @@ export function createInteractive({
             if (inChat) {
                 const lately = (speakers.get(channelId) ?? []).filter((entry) => entry.at > now() - CONVERSATION_MS);
                 othersTalking = lately.some((entry) => entry.userId !== message.author.id);
-                speakers.set(channelId, [...lately.filter((entry) => entry.userId !== message.author.id), { userId: message.author.id, at: now() }]);
+                // Two most recent distinct speakers suffice to tell whether someone else spoke.
+                speakers.set(channelId, [...lately.filter((entry) => entry.userId !== message.author.id), { userId: message.author.id, at: now() }].slice(-2));
             }
             // Prefix commands are for the command handler, not for the conversation.
             const commandPrefix = await prefixFor(message);
@@ -783,7 +803,7 @@ export function createInteractive({
             const who = nameOf(message, cfg);
             const text = describeMessage(message, { botId: client.user.id, useNames: cfg.useNames, max: HISTORY_LINE_CHARS });
             if (inChat) {
-                nudged.set(channelId, false);
+                rememberLastWord(channelId, false);
                 if (text) remember(channelId, { id: message.id, name: who, text, own: false });
             }
 
@@ -807,7 +827,7 @@ export function createInteractive({
             const newest = await channel.messages.fetch({ limit: 1 });
             const message = newest?.first?.() ?? null;
             const ours = message ? message.author?.id === client.user.id : true;
-            nudged.set(channel.id, ours);
+            rememberLastWord(channel.id, ours);
             return ours;
         } catch (error) {
             // Stay quiet this minute, but do not latch the failure: a passing Discord hiccup must
@@ -846,7 +866,7 @@ export function createInteractive({
                         const message = newest?.first?.() ?? null;
                         if (message?.id) {
                             channel.lastMessageId = message.id;
-                            if (message.author?.id) nudged.set(channel.id, message.author.id === client.user.id);
+                            if (message.author?.id) rememberLastWord(channel.id, message.author.id === client.user.id);
                         }
                     } catch (error) {
                         warnOnce('IDLE_LOOKUP', `could not read the newest message in #${channel.name ?? channel.id} (${error?.message ?? error}); the nudge waits`);
@@ -860,6 +880,9 @@ export function createInteractive({
 
                 let wrote = false;
                 await enqueue(channelId, async () => {
+                    // The preflight above can await Discord; reacquire the budget
+                    // inside the queued job before anything is sent.
+                    if (!underHourlyLimit(channelId, cfg)) return;
                     let result;
                     const prior = idleNudges.get(channelId) ?? { count: 0, texts: [] };
                     const approaches = ['pertanyaan ringan tentang keseharian', 'ajakan berbagi rekomendasi', 'pilihan sederhana antara dua hal', 'pertanyaan imajinatif yang santai', 'topik hobi atau kreativitas', 'obrolan ringan yang relevan dengan konteks'];
@@ -884,7 +907,7 @@ export function createInteractive({
                     if (!idleNudges.has(channelId) && idleNudges.size >= 100) idleNudges.delete(idleNudges.keys().next().value);
                     idleNudges.set(channelId, { count: prior.count + 1, texts: [...prior.texts, content].slice(-4) });
                     countSent(channelId);
-                    nudged.set(channelId, true);
+                    rememberLastWord(channelId, true);
                     idleDay.count += 1;
                     remember(channelId, { name: safeName(client.user.username), text: oneLine(content, HISTORY_LINE_CHARS), own: true });
                     wrote = true;

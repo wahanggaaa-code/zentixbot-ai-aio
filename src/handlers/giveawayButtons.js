@@ -30,7 +30,9 @@ export const giveawayJoinHandler = {
             }
 
             if(isPostgresGiveawayBackend(client)&&!await InteractionHelper.safeDefer(interaction,{flags:MessageFlags.Ephemeral}))return;
-            await recordUserInteraction(interaction.user.id, interaction.message.id);
+            if (!await recordUserInteraction(interaction.user.id, interaction.message.id)) {
+                return replyUserError(interaction, { type: ErrorTypes.RATE_LIMIT, message: 'Please wait a moment before interacting with this giveaway again.' });
+            }
 
             if(isPostgresGiveawayBackend(client)){
                 if(!interaction.inGuild())throw new ZentixBotError('Invalid guild',ErrorTypes.VALIDATION,'This button must be used in the server.');

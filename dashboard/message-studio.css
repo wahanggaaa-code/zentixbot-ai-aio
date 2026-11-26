@@ -102,9 +102,10 @@
 .ms-mobile-toolbar,.ms-mobile-tree{display:none}
 @media(max-width:720px){
  .ms-workspace>.ms-tree,.ms-workspace>.ms-inspector,.ms-workspace>.ms-preview{display:none}
- .ms-workspace>.ms-mobile-toolbar{display:flex;justify-content:flex-end;gap:8px;min-width:0}
- .ms-mobile-toolbar button{min-height:44px}
- .ms-mobile-toolbar button[hidden]{display:none}
+ .ms-workspace>.ms-mobile-toolbar{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));min-width:0;border-bottom:1px solid var(--ink)}
+ .ms-mobile-toolbar button{min-height:44px;border:0;border-bottom:3px solid transparent;background:transparent;color:var(--ink);font:700 11px var(--mono);cursor:pointer}
+ .ms-mobile-toolbar button[aria-selected=true]{border-bottom-color:var(--ink)}
+ .ms-mobile-toolbar button:focus-visible{outline:2px solid var(--ink);outline-offset:-3px}
  .ms-workspace>.ms-mobile-tree{display:grid;gap:8px;min-width:0}
  .ms-mobile-container,.ms-mobile-block{min-width:0;border:1px solid var(--softline);background:#c9cac3}
  .ms-mobile-container-toggle,.ms-mobile-row{display:block;width:100%;min-height:46px;border:0;background:transparent;color:var(--ink);padding:11px 12px;text-align:left;font:700 12px/1.4 var(--sans);cursor:pointer;overflow-wrap:anywhere}

@@ -36,7 +36,49 @@ const RISKY_COMMAND_NAMES = new Set([
   'reactroles'
 ]);
 
-const blockedAttemptStore = new Map();
+// Detection history is separate from enforcement: saturation may reduce anomaly
+// reporting, but must never make a blocked command succeed.
+export function createBlockedAttemptTracker({ maxEntries = 50_000, now = Date.now } = {}) {
+  if (!Number.isSafeInteger(maxEntries) || maxEntries < 1) throw new RangeError('maxEntries must be a positive integer');
+  const entries = new Map();
+  let nextCapacitySweep = 0;
+  function sweep() {
+    const time = now();
+    nextCapacitySweep = time + 1000;
+    let removed = 0;
+    for (const [key, entry] of entries) {
+      if (time - entry.windowStart > entry.retentionMs) { entries.delete(key); removed++; }
+    }
+    return removed;
+  }
+  function record(key, { threshold, windowMs }) {
+    const time = now();
+    let entry = entries.get(key);
+    if (!entry || time - entry.windowStart > windowMs) {
+      if (!entry && entries.size >= maxEntries) {
+        if (time >= nextCapacitySweep) sweep();
+        if (entries.size >= maxEntries) return { saturated: true, reached: false };
+      }
+      entries.set(key, { count: 1, windowStart: time, retentionMs: windowMs, thresholdReachedAt: null });
+      return { saturated: false, reached: false };
+    }
+    entry.retentionMs = Math.max(entry.retentionMs, windowMs);
+    entry.count++;
+    if (entry.count >= threshold && entry.thresholdReachedAt === null) {
+      entry.thresholdReachedAt = time;
+      return { saturated: false, reached: true, count: entry.count };
+    }
+    return { saturated: false, reached: false };
+  }
+  return { record, sweep, clear: () => entries.clear(), get size() { return entries.size; } };
+}
+
+const ANOMALY_MAX_ENTRIES = 50_000;
+const blockedAttemptStore = createBlockedAttemptTracker({ maxEntries: ANOMALY_MAX_ENTRIES });
+export function getAbuseTrackerMemoryStats() { return { size: blockedAttemptStore.size, maxEntries: ANOMALY_MAX_ENTRIES }; }
+const anomalySweepTimer = setInterval(() => blockedAttemptStore.sweep(), 60_000);
+anomalySweepTimer.unref?.();
+let lastSaturationWarning = 0;
 
 function normalizeCommandCategory(command) {
   return String(command?.category || '').trim().toLowerCase();
@@ -77,29 +119,21 @@ function getProtectionKey(interaction, commandName) {
 }
 
 function recordBlockedAttempt(key, commandName, interaction, command, remainingMs) {
-  const now = Date.now();
   const anomalyPolicy = getAnomalyPolicy(command);
-  const current = blockedAttemptStore.get(key);
-
-  if (!current || now - current.windowStart > anomalyPolicy.windowMs) {
-    blockedAttemptStore.set(key, {
-      count: 1,
-      windowStart: now,
-      thresholdReachedAt: null
+  const result = blockedAttemptStore.record(key, anomalyPolicy);
+  if (result.saturated && Date.now() - lastSaturationWarning >= 60_000) {
+    lastSaturationWarning = Date.now();
+    logger.warn('Abuse anomaly tracking is full; new anomaly histories are temporarily not recorded. Cooldown enforcement remains active.', {
+      event: 'interaction.command.abuse_tracking_full'
     });
-    return;
   }
-
-  current.count += 1;
-
-  if (current.count >= anomalyPolicy.threshold && !current.thresholdReachedAt) {
-    current.thresholdReachedAt = now;
+  if (result.reached) {
     logger.warn('Abuse anomaly detected for risky command cooldown breaches', {
       event: 'interaction.command.abuse_anomaly',
       guildId: interaction.guildId,
       userId: interaction.user?.id,
       command: normalizeCommandName(commandName),
-      anomalyCount: current.count,
+      anomalyCount: result.count,
       anomalyWindowMs: anomalyPolicy.windowMs,
       cooldownRemainingMs: remainingMs
     });
@@ -194,5 +228,6 @@ export async function enforceAbuseProtection(interaction, command, commandName) 
 
 export function resetAbuseProtectionState() {
   blockedAttemptStore.clear();
+  lastSaturationWarning = 0;
   clearAllRateLimits();
 }

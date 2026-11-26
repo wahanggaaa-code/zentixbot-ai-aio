@@ -10,6 +10,8 @@
 import express from 'express';
 import { createSystemUsage } from '../services/systemUsage.js';
 import { botOwnerIds, hostingConfigured } from './settingsApi.js';
+import { getRateLimiterMemoryStats } from '../utils/rateLimiter.js';
+import { getAbuseTrackerMemoryStats } from '../utils/abuseProtection.js';
 
 export const PANEL_REFRESH_MS = 15 * 1000;
 
@@ -42,6 +44,17 @@ export function createSystemUsageApi({ auth, env = process.env, usage = createSy
         }
         return panel;
     }
+
+    // On-demand, owner-only diagnostics; no keys, message contents or identifiers.
+    router.get('/memory-diagnostics', auth, (req, res) => {
+        if (!botOwnerIds(env).includes(req.session.user.id)) return res.status(403).json({ error: 'Pemakaian sistem hanya untuk owner bot.' });
+        const memory = process.memoryUsage();
+        res.set('Cache-Control', 'no-store').json({
+            sampledAt: now(), uptimeSeconds: Math.floor(process.uptime()),
+            processBytes: { rss: memory.rss, heapUsed: memory.heapUsed, heapTotal: memory.heapTotal, external: memory.external, arrayBuffers: memory.arrayBuffers },
+            trackedStores: { rateLimiter: getRateLimiterMemoryStats(), abuseAnomalies: getAbuseTrackerMemoryStats() }
+        });
+    });
 
     router.get('/system-usage', auth, async (req, res) => {
         if (!botOwnerIds(env).includes(req.session.user.id)) return res.status(403).json({ error: 'Pemakaian sistem hanya untuk owner bot.' });

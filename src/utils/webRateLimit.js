@@ -37,20 +37,27 @@ export function webRateLimitBucket(path) {
  * Counts requests per key in fixed windows: the first request of a key opens a window, and once
  * `max` requests were let through, further ones are refused until the window ends. Refused
  * requests do not prolong the wait. Keys whose window has ended are dropped once per window, so
- * memory is bounded by the number of distinct keys seen within two windows.
+ * At capacity, new addresses are rejected rather than evicting active limits.
  */
-export function createFixedWindowCounter({ windowMs, max, now = Date.now }) {
+export function createFixedWindowCounter({ windowMs, max, now = Date.now, maxEntries = 50_000 }) {
+    if (!Number.isSafeInteger(maxEntries) || maxEntries < 1) throw new RangeError('maxEntries must be a positive integer');
     const windows = new Map();
-    let nextSweep = now() + windowMs;
+    let nextSweep = now() + windowMs, nextCapacitySweep = 0;
+    function sweep(time) {
+        for (const [key, window] of windows) if (window.resetAt <= time) windows.delete(key);
+        nextSweep = time + windowMs;
+        nextCapacitySweep = time + 1000;
+    }
     return {
         hit(key) {
             const time = now();
-            if (time >= nextSweep) {
-                for (const [k, w] of windows) if (w.resetAt <= time) windows.delete(k);
-                nextSweep = time + windowMs;
-            }
+            if (time >= nextSweep) sweep(time);
             let window = windows.get(key);
             if (!window || window.resetAt <= time) {
+                if (!window && windows.size >= maxEntries) {
+                    if (time >= nextCapacitySweep) sweep(time);
+                    if (windows.size >= maxEntries) return { allowed: false, retryAfterSeconds: 1 };
+                }
                 window = { count: 0, resetAt: time + windowMs };
                 windows.set(key, window);
             }
