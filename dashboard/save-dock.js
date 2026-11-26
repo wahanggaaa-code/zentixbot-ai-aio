@@ -14,7 +14,7 @@
   }
   if(doc.body)doc.body.classList.toggle('automod-save-active',!!current||!!doc.querySelector('.automod-save-dock:not([hidden])'));
  }
- function attach(form, label, onRestore, {showLabel=false,controlsSelector='input[name],select[name],textarea[name]',submit=null,extraCapture=null,extraRestore=null,canSave=()=>true,dockToBody=false}={}) {
+ function attach(form, label, onRestore, {showLabel=false,controlsSelector='input[name],select[name],textarea[name]',submit=null,extraCapture=null,extraRestore=null,canSave=()=>true,dockToBody=false,hideOriginal=false,originalButton=null}={}) {
   const tr=(id,en)=>window.ZentixI18n?.language==='en'?en:id;
   const doc=form.ownerDocument;
   const controls=[...form.querySelectorAll(controlsSelector)].filter(el=>el.type!=='file');
@@ -25,14 +25,16 @@
   const cancel=doc.createElement('button');cancel.type='button';cancel.className='automod-dock-cancel';cancel.textContent=tr('BATALKAN','CANCEL');
   const save=doc.createElement('button');save.type='button';save.className='automod-dock-save';save.textContent=tr('SIMPAN','SAVE');
   const status=doc.createElement('span');status.className='automod-dock-status';status.setAttribute('role','status');status.setAttribute('aria-live','polite');bar.append(cancel,status,save);if(form.tagName==='DETAILS'||dockToBody)doc.body.append(bar);else form.append(bar);
-  const bottom=form.querySelector('.f-form-actions button[type=submit],.f-form-actions button:not([type])') || form.querySelector('button[type=submit]');
+  const bottom=originalButton || form.querySelector('.f-form-actions button[type=submit],.f-form-actions button:not([type])') || form.querySelector('button[type=submit]');
+  const wasHidden=bottom?.hidden;
+  if(hideOriginal&&bottom){bottom.dataset.saveDockOriginal='';bottom.hidden=true;}
   const entry={doc,form,bar,cancel,save,status,label,showLabel,canSave,order:++sequence,dirty:()=>JSON.stringify(capture())!==JSON.stringify(baseline),pending:()=>!!pending,message:()=>message,multiple:n=>tr(`${label} · ${n} formulir diubah`,`${label} · ${n} forms changed`)};
   entries.add(entry);
   const changed=()=>{if(!pending)message='';entry.order=++sequence;refresh(doc)};
   form.addEventListener('input',changed);form.addEventListener('change',changed);
   cancel.addEventListener('click',()=>{if(pending)return;controls.forEach((el,i)=>{if(el.type==='checkbox'||el.type==='radio')el.checked=baseline[i];else el.value=baseline[i]});if(extraRestore)extraRestore(baseline[controls.length]);onRestore?.();message='';refresh(doc)});
   save.addEventListener('click',()=>{if(!pending&&canSave()){if(submit)submit();else form.requestSubmit(bottom)}});
-  function dispose(){observer.disconnect();entries.delete(entry);form.removeEventListener('input',changed);form.removeEventListener('change',changed);bar.remove();refresh(doc)}
+  function dispose(){observer.disconnect();entries.delete(entry);form.removeEventListener('input',changed);form.removeEventListener('change',changed);bar.remove();if(hideOriginal&&bottom){delete bottom.dataset.saveDockOriginal;bottom.hidden=wasHidden}refresh(doc)}
   const observer=new MutationObserver(()=>{if(!form.isConnected)dispose()});observer.observe(doc.body,{childList:true,subtree:true});refresh(doc);
   return {
    isDirty:entry.dirty,

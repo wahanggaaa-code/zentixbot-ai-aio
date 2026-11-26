@@ -193,7 +193,7 @@
  /** Wires a form: checks the pickers, sends `body()` as PATCH smart/<section>, reports the outcome. */
  function wire(form, section, body, notify, done, canStart=()=>true) {
   const labels={facts:tr('Fakta hari ini','Facts today'),menu:tr('Menu pesan','Message menu'),digest:tr('Koran hari ini','Daily newspaper'),usage:tr('Pemakaian AI','AI usage'),faq:'FAQ',cache:tr('Cache jawaban','Answer cache')};
-  const dock=form.saveDock=labels[section]?window.ZentixSaveDock?.attach(form,labels[section],null,{showLabel:true,canSave:canStart}):null;
+  const dock=form.saveDock=labels[section]?window.ZentixSaveDock?.attach(form,labels[section],null,{showLabel:true,hideOriginal:true,canSave:canStart}):null;
   const picked = (name) => [...form.querySelectorAll(`input[name="${name}"]:checked`)].map((x) => x.value);
   form.onsubmit = async (e) => {
    e.preventDefault();
@@ -250,7 +250,7 @@
     supportRequest.then(({settings:s})=>{
      if(!supportSlot.isConnected)return;
      supportSlot.innerHTML=`<form id="supportForm" class="f-form">${toggle('enabled',tr('Aktifkan asisten bantuan','Enable support assistant'),tr('AI dapat membaca pertanyaan masalah di channel pilihan dan mengirimnya ke provider.','AI can read troubleshooting questions in selected channels and send them to the provider.'),s.enabled)}${channelPicker('channelIds',tr('Channel bantuan','Support channels'),tr('Pilih hanya channel yang diberi tahu tentang penggunaan AI.','Select only channels informed about AI use.'),data.channels,s.channelIds,data.limits.channels,'supportChannels')}<div class="f-form-actions"><button type="submit" class="f-primary">${tr('SIMPAN BANTUAN','SAVE SUPPORT')}</button></div></form>`;
-     const form=supportSlot.querySelector('#supportForm'),dock=window.ZentixSaveDock?.attach(form,tr('Asisten bantuan','Support assistant'),null,{showLabel:true,dockToBody:true});form.onsubmit=async e=>{e.preventDefault();if(dock&&!dock.start())return;const button=form.querySelector('button');button.disabled=true;let success=false;try{const channelIds=[...form.querySelectorAll('input[name="channelIds"]:checked')].map(x=>x.value);await req('support/settings',{method:'PATCH',body:JSON.stringify({enabled:form.elements.enabled.checked,channelIds})});success=true;notify(tr('Pengaturan bantuan disimpan.','Support settings saved.'))}catch(e){notify(e.message)}finally{button.disabled=false;dock?.finish(success)}};
+     const form=supportSlot.querySelector('#supportForm'),dock=window.ZentixSaveDock?.attach(form,tr('Asisten bantuan','Support assistant'),null,{showLabel:true,hideOriginal:true,dockToBody:true});form.onsubmit=async e=>{e.preventDefault();if(dock&&!dock.start())return;const button=form.querySelector('button');button.disabled=true;let success=false;try{const channelIds=[...form.querySelectorAll('input[name="channelIds"]:checked')].map(x=>x.value);await req('support/settings',{method:'PATCH',body:JSON.stringify({enabled:form.elements.enabled.checked,channelIds})});success=true;notify(tr('Pengaturan bantuan disimpan.','Support settings saved.'))}catch(e){notify(e.message)}finally{button.disabled=false;dock?.finish(success)}};
     }).catch(()=>{if(supportSlot.isConnected)supportSlot.textContent=tr('Pengaturan bantuan tidak tersedia.','Support settings unavailable.')});
     const faqForm=slot.querySelector('#aiFaqForm');
     const beginFaqAction=()=>{if(faqActionBusy||faqForm.saveDock?.isDirty()||faqForm.saveDock?.isBusy()){notify(tr('Simpan atau batalkan pengaturan FAQ terlebih dahulu.','Save or cancel FAQ settings first.'));return false}faqActionBusy=true;faqForm.dispatchEvent(new Event('change',{bubbles:true}));return true};
@@ -384,7 +384,7 @@
    });
    const form = slot.querySelector('#aiTranslateForm');
    const captureRows=()=>[...rowsBox.querySelectorAll('.ai-reverse-row')].map(row=>({channelId:row.querySelector('[name=rvChannel]').value,langA:row.querySelector('[name=rvA]').value,langB:row.querySelector('[name=rvB]').value}));
-   const dock=window.ZentixSaveDock?.attach(form,tr('Terjemahan otomatis','Automatic translation'),null,{controlsSelector:'input[name],select[name]:not([name=rvChannel]):not([name=rvA]):not([name=rvB]),textarea[name]',extraCapture:captureRows,extraRestore:rows=>{rowsBox.innerHTML=rows.map(revRow).join('');labelReverseRows()}});
+   const dock=window.ZentixSaveDock?.attach(form,tr('Terjemahan otomatis','Automatic translation'),null,{hideOriginal:true,controlsSelector:'input[name],select[name]:not([name=rvChannel]):not([name=rvA]):not([name=rvB]),textarea[name]',extraCapture:captureRows,extraRestore:rows=>{rowsBox.innerHTML=rows.map(revRow).join('');labelReverseRows()}});
    const pickedIds = () => [...form.querySelectorAll('input[name="channelIds"]:checked')].map((x) => x.value);
    form.onsubmit = async (e) => {
     e.preventDefault();

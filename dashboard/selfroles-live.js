@@ -449,7 +449,7 @@
 
         const text = block.querySelector('form[data-text]');
         window.ZentixGreetingColor?.bind(text);
-        const textDock=window.ZentixSaveDock?.attach(text,tr(`Panel ${label} · ID ${panel.messageId}`,`Panel ${label} · ID ${panel.messageId}`),()=>{window.ZentixGreetingColor?.set(text,text.elements.accentColor.value);syncDropdownOnly(text);paintPreview(block,panel.roles);},{showLabel:true,extraCapture:()=>fileId(text.elements.bannerFile?.files?.[0]),extraRestore:()=>{if(text.elements.bannerFile)text.elements.bannerFile.value=''}});
+        const textDock=window.ZentixSaveDock?.attach(text,tr(`Panel ${label} · ID ${panel.messageId}`,`Panel ${label} · ID ${panel.messageId}`),()=>{window.ZentixGreetingColor?.set(text,text.elements.accentColor.value);syncDropdownOnly(text);paintPreview(block,panel.roles);},{showLabel:true,hideOriginal:true,extraCapture:()=>fileId(text.elements.bannerFile?.files?.[0]),extraRestore:()=>{if(text.elements.bannerFile)text.elements.bannerFile.value=''}});
         if(textDock)docks.set(text,textDock);
         let textBusy=false;
         text.onsubmit = async (event) => {
@@ -510,7 +510,7 @@
         repaintPanel();
         const itemsForm = block.querySelector('form[data-items]');
         const itemRows=itemsForm.querySelector('[data-itemrows]');
-        const itemsDock=window.ZentixSaveDock?.attach(itemsForm,tr(`Item ${label} · ID ${panel.messageId}`,`Items ${label} · ID ${panel.messageId}`),()=>paintPreview(block,panel.roles),{showLabel:true,extraCapture:()=>[...itemRows.children].map(row=>row.dataset.item),extraRestore:order=>{for(const id of order){const row=[...itemRows.children].find(node=>node.dataset.item===id);if(row)itemRows.append(row)}}});
+        const itemsDock=window.ZentixSaveDock?.attach(itemsForm,tr(`Item ${label} · ID ${panel.messageId}`,`Items ${label} · ID ${panel.messageId}`),()=>paintPreview(block,panel.roles),{showLabel:true,hideOriginal:true,extraCapture:()=>[...itemRows.children].map(row=>row.dataset.item),extraRestore:order=>{for(const id of order){const row=[...itemRows.children].find(node=>node.dataset.item===id);if(row)itemRows.append(row)}}});
         if(itemsDock)docks.set(itemsForm,itemsDock);let itemsBusy=false;
         itemsForm.querySelectorAll('[data-move]').forEach((button) => {
           button.onclick = () => {

@@ -58,6 +58,7 @@ main :is(input:not([type=checkbox]):not([type=radio]):not([type=range]):not([typ
 
 /* AutoMod dirty-state actions flank the navigation dock without blocking it. */
 .automod-save-dock[hidden]{display:none}
+[data-save-dock-original][hidden]{display:none !important}
 .automod-save-dock{position:fixed;z-index:9;bottom:22px;left:50%;transform:translateX(-50%);width:min(1100px,calc(100vw - 20px));display:flex;justify-content:space-between;align-items:center;pointer-events:none}
 .automod-save-dock button{pointer-events:auto;min-height:44px;padding:10px 14px;border:1px solid var(--ink);border-radius:9px;box-shadow:0 6px 18px #0003;font:700 10px var(--mono);cursor:pointer}
 .automod-save-dock button:disabled{opacity:.6;cursor:wait}

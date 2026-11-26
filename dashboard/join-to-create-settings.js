@@ -130,7 +130,7 @@
       slot.querySelectorAll('form[data-trigger]').forEach((form) => {
         const trigger = data.triggers[Number(form.dataset.trigger)];
         const name=trigger.channelName ?? tr('Trigger tidak tersedia','Unavailable trigger');
-        const dock=window.ZentixSaveDock?.attach(form, `${name} · ID ${trigger.channelId}`, null, {showLabel:true});
+        const dock=window.ZentixSaveDock?.attach(form, `${name} · ID ${trigger.channelId}`, null, {showLabel:true,hideOriginal:true});
         if(dock)docks.set(form,dock);
         let confirming=false;
         form.onsubmit = async (event) => {

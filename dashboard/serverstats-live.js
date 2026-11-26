@@ -378,7 +378,7 @@
 
       list.querySelectorAll('form[data-counter]').forEach((form) => {
         const counter = data.counters[Number(form.dataset.counter)];
-        const dock=window.ZentixSaveDock?.attach(form,tr(`Counter ${counter.channelName ?? counter.id} · ID ${counter.id}`,`Counter ${counter.channelName ?? counter.id} · ID ${counter.id}`),null,{showLabel:true});
+        const dock=window.ZentixSaveDock?.attach(form,tr(`Counter ${counter.channelName ?? counter.id} · ID ${counter.id}`,`Counter ${counter.channelName ?? counter.id} · ID ${counter.id}`),null,{showLabel:true,hideOriginal:true});
         if(dock)counterDocks.set(form,dock);let busy=false;
         form.onsubmit = async (event) => {
           event.preventDefault();
@@ -407,7 +407,7 @@
       const notationStatus = notationBox.querySelector('#serverStatsNotationStatus');
       const notationFormEl = notationBox.querySelector('#serverStatsNotationForm');
       if (notationFormEl) {
-        const dock = notationDock = window.ZentixSaveDock?.attach(notationFormEl, tr('Format angka','Number format'));
+        const dock = notationDock = window.ZentixSaveDock?.attach(notationFormEl, tr('Format angka','Number format'),null,{hideOriginal:true});
         notationFormEl.onsubmit = async (event) => {
           event.preventDefault();
           const chosen = notationFormEl.elements.notation.value;

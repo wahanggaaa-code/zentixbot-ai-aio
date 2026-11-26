@@ -308,7 +308,7 @@
       for (const box of form.querySelectorAll('input[name=notifyTypes]')) box.checked = alert.notifyTypes.includes(box.value);
       syncNotifyFieldsets();
       paintPreview();
-      dock = window.ZentixSaveDock?.attach(form, 'Social Alerts', () => { window.ZentixGreetingColor?.set(form, form.elements.accentColor.value); paintPreview(); });
+      dock = window.ZentixSaveDock?.attach(form, 'Social Alerts', () => { window.ZentixGreetingColor?.set(form, form.elements.accentColor.value); paintPreview(); },{hideOriginal:true});
       root.querySelector('#saFormTitle')?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' });
     }
 

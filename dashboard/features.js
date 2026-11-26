@@ -112,7 +112,7 @@
         const extra=document.createElement('div');extra.id='musicDjSettings';extra.textContent=tr('Memuat pengaturan AI DJ…','Loading AI DJ settings…');slot.append(extra);
         const djReq=async(opts={})=>{const session=opts.method?await window.ZentixSession:null;const response=await fetch('/dashboard/api/ai/music-dj-settings',{cache:'no-store',...opts,headers:opts.method?{'Content-Type':'application/json','x-csrf-token':session.csrf}:{}});const result=await response.json();if(!response.ok)throw Error(result.error||tr('Pengaturan tidak tersedia.','Settings unavailable.'));return result};
         djReq().then(({settings:s})=>{if(!extra.isConnected)return;extra.innerHTML=`<form class="f-form" id="musicDjOptions"><label class="f-field"><span><b>${tr('Jumlah lagu','Number of tracks')}</b><small>${tr('Maksimal rekomendasi per permintaan, 1–5.','Maximum recommendations per request, 1–5.')}</small></span><input name="songCount" type="number" min="1" max="5" required value="${Number(s.songCount)}"></label><label class="f-field"><span><b>${tr('Cooldown AI DJ (detik)','AI DJ cooldown (seconds)')}</b><small>${tr('30–3600 detik, berlaku per server untuk permintaan manual dan otomatis.','30–3600 seconds, shared per server by manual and automatic requests.')}</small></span><input name="cooldownSeconds" type="number" min="30" max="3600" required value="${Number(s.cooldownSeconds)}"></label>${check('smartAutoplay',tr('Smart Autoplay','Smart Autoplay'),tr('Saat antrean habis, gunakan riwayat lagu sesi untuk rekomendasi AI.','When the queue ends, use session track history for AI recommendations.'),s.smartAutoplay)}<p class="f-muted">${tr('Default mati. Judul dan artis hingga 10 lagu terbaru dikirim otomatis ke provider AI saat ada pendengar. Beri tahu anggota. AI DJ harus aktif; bisa berbiaya dan hasil tidak dijamin. Stop menghentikan sesi.','Off by default. Titles and artists of up to 10 recent tracks are automatically sent to the AI provider when listeners are present. Inform members. AI DJ must be enabled; costs may apply and results are not guaranteed. Stop ends the session.')}</p><button class="f-primary" type="submit">${tr('SIMPAN PENGATURAN AI DJ','SAVE AI DJ SETTINGS')}</button></form>`;
-         const f=extra.querySelector('form'),dock=window.ZentixSaveDock?.attach(f,tr('Pengaturan AI DJ','AI DJ settings'),null,{showLabel:true});let busy=false;
+         const f=extra.querySelector('form'),dock=window.ZentixSaveDock?.attach(f,tr('Pengaturan AI DJ','AI DJ settings'),null,{showLabel:true,hideOriginal:true});let busy=false;
          f.addEventListener('submit',async e=>{
           e.preventDefault();if(busy||(dock&&!dock.start()))return;busy=true;
           const payload={songCount:Number(f.elements.songCount.value),cooldownSeconds:Number(f.elements.cooldownSeconds.value),smartAutoplay:f.elements.smartAutoplay.checked,confirmed:true};
@@ -127,7 +127,7 @@
       }
       function bindToggle(form,label,path,successText,confirmation){
         if(!form)return;
-        const dock=window.ZentixSaveDock?.attach(form,label,null,{showLabel:true});let busy=false;
+        const dock=window.ZentixSaveDock?.attach(form,label,null,{showLabel:true,hideOriginal:true});let busy=false;
         form.addEventListener('submit',async event=>{
           event.preventDefault();if(busy || (dock&&!dock.start()))return;busy=true;
           const enabled=form.elements.enabled.checked,button=form.querySelector('.f-form-actions button');button.disabled=true;

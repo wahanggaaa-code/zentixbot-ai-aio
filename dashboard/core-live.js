@@ -126,7 +126,7 @@
     const updateCount=()=>{const n=boxes.filter(b=>b.checked).length;count.textContent=`${tr('Terpilih:','Selected:')} ${n} / ${data.limits.roles}`;save.disabled=n>data.limits.roles};
     updateCount();boxes.forEach(b=>b.addEventListener('change',updateCount));
     search.oninput=()=>{const q=search.value.toLowerCase().trim();restricted.querySelectorAll('[data-role-row]').forEach(row=>{row.hidden=Boolean(q)&&!row.textContent.toLowerCase().includes(q)})};
-    const dock=window.ZentixSaveDock?.attach(restricted,tr('Akses command terbatas','Restricted command access'),updateCount,{showLabel:true,controlsSelector:'input[name=roleIds]',submit:()=>save.click(),canSave:()=>boxes.filter(b=>b.checked).length<=data.limits.roles});let busy=false;
+    const dock=window.ZentixSaveDock?.attach(restricted,tr('Akses command terbatas','Restricted command access'),updateCount,{showLabel:true,hideOriginal:true,originalButton:save,controlsSelector:'input[name=roleIds]',submit:()=>save.click(),canSave:()=>boxes.filter(b=>b.checked).length<=data.limits.roles});let busy=false;
     save.onclick=async()=>{
      if(busy||boxes.filter(b=>b.checked).length>data.limits.roles||(dock&&!dock.start()))return;
      busy=true;save.disabled=true;const roleIds=boxes.filter(b=>b.checked).map(b=>b.value);let success=false,cancelled=false;
