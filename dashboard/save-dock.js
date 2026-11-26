@@ -1,6 +1,6 @@
 /* Dirty-state actions for saved settings forms. Individual pages own validation and requests. */
 (() => {
- const entries=new Set();
+ const entries=new Set(), win=window, doc=window.document;
  let sequence=0;
  function refresh(doc){
   const candidates=[...entries].filter(entry=>entry.doc===doc&&entry.form.isConnected&&(entry.dirty()||entry.pending()));
@@ -13,6 +13,7 @@
    if(entry.status.textContent!==text)entry.status.textContent=text;
   }
   if(doc.body)doc.body.classList.toggle('automod-save-active',!!current||!!doc.querySelector('.automod-save-dock:not([hidden])'));
+  updateBeforeUnload();
  }
  function attach(form, label, onRestore, {showLabel=false,controlsSelector='input[name],select[name],textarea[name]',submit=null,extraCapture=null,extraRestore=null,canSave=()=>true,dockToBody=false,hideOriginal=false,originalButton=null}={}) {
   const tr=(id,en)=>window.ZentixI18n?.language==='en'?en:id;
@@ -45,5 +46,31 @@
    finish(success,cancelled=false){if(success)baseline=pending;pending=null;message=success||cancelled?'':tr('Gagal menyimpan','Save failed');refresh(doc)}
   };
  }
- window.ZentixSaveDock={attach};
+ // Navigation is guarded only for tracked settings. Message Studio and one-off
+ // action forms intentionally remain outside this registry.
+ let skipUnload=false,unloadRegistered=false;
+ function navigationState(){
+  const live=[...entries].filter(entry=>entry.form.isConnected);
+  const standalone=[...doc.querySelectorAll('.automod-save-dock:not([hidden])')].filter(bar=>![...entries].some(entry=>entry.bar===bar));
+  return {dirty:live.some(entry=>entry.dirty()||entry.pending())||standalone.length>0,
+   busy:live.some(entry=>entry.pending())||standalone.some(bar=>bar.dataset.saving==='true')};
+ }
+ function confirmNavigation(){
+  const state=navigationState();if(!state.dirty)return true;
+  const tr=(id,en)=>window.ZentixI18n?.language==='en'?en:id;
+  if(state.busy){window.alert(tr('Penyimpanan masih berlangsung. Tunggu sampai selesai sebelum berpindah.','A save is in progress. Wait until it finishes before leaving.'));return false}
+  return window.confirm(tr('Ada perubahan yang belum disimpan. Tinggalkan halaman dan buang perubahan?','You have unsaved changes. Leave and discard them?'));
+ }
+ function suppressNextUnload(){skipUnload=true;setTimeout(()=>{skipUnload=false},1000)}
+ function beforeUnload(event){
+  if(skipUnload){skipUnload=false;return}
+  if(!navigationState().dirty)return;
+  event.preventDefault();event.returnValue='';
+ }
+ function updateBeforeUnload(){
+  const dirty=navigationState().dirty;
+  if(dirty&&!unloadRegistered){win.addEventListener('beforeunload',beforeUnload);unloadRegistered=true}
+  else if(!dirty&&unloadRegistered){win.removeEventListener('beforeunload',beforeUnload);unloadRegistered=false}
+ }
+ window.ZentixSaveDock={attach,navigationState,confirmNavigation,suppressNextUnload,updateBeforeUnload};
 })();

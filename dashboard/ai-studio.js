@@ -73,7 +73,7 @@
   if(id==='image' && window.ZentixLive?.enabled)window.ZentixAIImages?.bind(root,tabs[id]||'create');
   if(id==='builder' && window.ZentixLive?.enabled)window.ZentixAIBuilder?.bind(root);
   if(id==='translate' && window.ZentixLive?.enabled)window.ZentixAISmart?.bind(root,tabs[id]||'translate',notify);
-  root.querySelectorAll('[data-ai-tab]').forEach(btn=>btn.addEventListener('click',()=>{if(root.ownerDocument.querySelector('.automod-save-dock:not([hidden])')){notify(tr('Simpan atau batalkan perubahan sebelum berpindah tab.','Save or cancel changes before switching tabs.'));return}tabs[id]=btn.dataset.aiTab;rerender(false)}));
+  root.querySelectorAll('[data-ai-tab]').forEach(btn=>btn.addEventListener('click',()=>{if(window.ZentixSaveDock?.confirmNavigation()===false)return;tabs[id]=btn.dataset.aiTab;rerender(false)}));
   // The tab strip scrolls sideways on a phone and is drawn again on every tab change: bring the open tab back into view.
   const strip=root.querySelector('.f-tabs'),open=strip?.querySelector('button.active');
   if(strip&&open){const a=strip.getBoundingClientRect(),b=open.getBoundingClientRect();if(b.left<a.left||b.right>a.right)strip.scrollLeft+=b.left-a.left-(a.width-b.width)/2;}

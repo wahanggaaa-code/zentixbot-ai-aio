@@ -303,7 +303,8 @@
    button.addEventListener('click',()=>{
     const next=button.dataset.language;close();if(next===lang){trigger.focus();return}
     if(!window.confirm(t('confirm'))){trigger.focus();return}
-    try{localStorage.setItem(key,next)}catch{}syncLoginLanguage(next);window.location.reload();
+    if(window.ZentixSaveDock?.confirmNavigation()===false){trigger.focus();return}
+    try{localStorage.setItem(key,next)}catch{}syncLoginLanguage(next);window.ZentixSaveDock?.suppressNextUnload();window.location.reload();
    });
   });
   trigger.addEventListener('click',()=>{
