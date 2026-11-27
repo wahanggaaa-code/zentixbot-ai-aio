@@ -35,8 +35,8 @@ export const JTC_LIMITS = Object.freeze({
 });
 
 const TOKEN_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
-const CONFIG_FIELDS = ['enabled', 'triggerChannels', 'categoryId', 'channelNameTemplate', 'userLimit', 'bitrate', 'channelOptions'];
-const PATCH_FIELDS = ['nameTemplate', 'userLimit', 'bitrate'];
+export const JOIN_TO_CREATE_CONFIG_FIELDS = Object.freeze(['enabled', 'triggerChannels', 'categoryId', 'channelNameTemplate', 'userLimit', 'bitrate', 'channelOptions']);
+export const JOIN_TO_CREATE_PATCH_FIELDS = Object.freeze(['nameTemplate', 'userLimit', 'bitrate']);
 
 const isId = (value) => typeof value === 'string' && /^\d{17,20}$/.test(value);
 const isPlainObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -47,11 +47,13 @@ const isValidDate = (value) => Number.isSafeInteger(value) && value >= 0 && !Num
 const isUserLimit = (value) => Number.isInteger(value) && value >= 0 && value <= 99;
 const isBitrate = (value) => Number.isInteger(value) && value >= 8000 && value <= 384000;
 
+export const DEFAULT_JOIN_TO_CREATE_NAME_TEMPLATE = "{username}'s Room";
+
 const defaults = () => ({
     enabled: false,
     triggerChannels: [],
     categoryId: null,
-    channelNameTemplate: "{username}'s Room",
+    channelNameTemplate: DEFAULT_JOIN_TO_CREATE_NAME_TEMPLATE,
     userLimit: 0,
     bitrate: 64000,
     temporaryChannels: {},
@@ -70,7 +72,7 @@ function canonicalJson(value) {
 
 /** Revision of the administrator-editable configuration only (not channels or pending). */
 function configRevisionOf(data) {
-    return sha256(canonicalJson(Object.fromEntries(CONFIG_FIELDS.map((field) => [field, data[field]]))));
+    return sha256(canonicalJson(Object.fromEntries(JOIN_TO_CREATE_CONFIG_FIELDS.map((field) => [field, data[field]]))));
 }
 
 /** The SQLite store when the bot runs on SQLite, null on PostgreSQL. Same scope rule as getPool. */
@@ -219,7 +221,7 @@ function requireOptionalRevision(value) {
 }
 
 function validatePatch(patch) {
-    if (!isPlainObject(patch) || !Object.keys(patch).length || Object.keys(patch).some((key) => !PATCH_FIELDS.includes(key))) throw invalid();
+    if (!isPlainObject(patch) || !Object.keys(patch).length || Object.keys(patch).some((key) => !JOIN_TO_CREATE_PATCH_FIELDS.includes(key))) throw invalid();
     if (Object.hasOwn(patch, 'nameTemplate')) {
         const template = patch.nameTemplate;
         if (typeof template !== 'string' || !template.trim() || template.length > JTC_LIMITS.templateLength || /[\x00-\x1f\x7f]/.test(template)) throw invalid();
@@ -355,6 +357,14 @@ export async function inspectJoinToCreate(client, guildId) {
             revision,
             configRevision,
             enabled: d.enabled,
+            // Safe aggregate defaults and orphaned options, captured in the same transaction.
+            storedDefaults: {
+                userLimit: d.userLimit,
+                bitrate: d.bitrate,
+                nameTemplateDiffersFromDefault: d.channelNameTemplate !== DEFAULT_JOIN_TO_CREATE_NAME_TEMPLATE,
+                categoryConfigured: d.categoryId !== null,
+            },
+            retainedOptionCount: Object.keys(d.channelOptions).filter(id => !d.triggerChannels.includes(id)).length,
             triggerChannels: [...d.triggerChannels],
             // Effective settings per trigger, read in the same transaction
             // as configRevision so an editor never pairs old values with a

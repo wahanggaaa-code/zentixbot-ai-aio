@@ -183,10 +183,8 @@ function decodeRows(rows, guildId) {
     const byMessage = new Map();
     let rejected = 0;
     // Canonical keys sort after legacy ones here so that they win when both exist.
-    const ordered = [...rows].sort((a, b) => 
-        Number(a.key.startsWith('guild:')) - Number(b.key.startsWith('guild:')) +
-        (a.key.startsWith('guild:') && b.key.startsWith('guild:') ? (a.key.startsWith('guild:self_role:') ? 1 : -1) : 0)
-    );
+    const priority = key => key.startsWith(canonicalPrefix(guildId)) ? 2 : key.startsWith(legacyReactionPrefix(guildId)) ? 1 : 0;
+    const ordered = [...rows].sort((a, b) => priority(a.key) - priority(b.key) || a.key.localeCompare(b.key));
     for (const row of ordered) {
         const messageId = row.key.slice(row.key.lastIndexOf(':') + 1);
         const panel = decodePanel(row.value, guildId, messageId);

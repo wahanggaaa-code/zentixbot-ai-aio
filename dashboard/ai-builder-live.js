@@ -416,6 +416,7 @@
   const check=root.querySelector('#aiBuilderPreflight'), checkStatus=root.querySelector('#aiBuilderPreflightStatus'), saveDraft=root.querySelector('#aiBuilderSaveDraft'), restore=root.querySelector('#aiBuilderRestoreDraft'), deleteDraft=root.querySelector('#aiBuilderDeleteDraft');
   const counter=root.querySelector('#aiBuilderCharCount'), description=form.elements.description, editState=root.querySelector('#aiBuilderEditState');
   const setEditState = (text) => { editState.hidden=!text; editState.textContent=text; };
+  window.ZentixPromptAssistant?.offer(root,'builder',description);
   const updateCount=()=>{counter.textContent=`${description.value.length} / 1000 ${tr('karakter','characters')}`};description.addEventListener('input',updateCount);updateCount();
   read('roles').then(r=>{existingRoles=list(r.roles);if(planId && !jsonDirty){try {drawPlan(preview,JSON.parse(out.value),editAccess,editStructure,existingRoles)}catch{}}}).catch(()=>{existingRoles=[];checkStatus.textContent=tr('Daftar role server tidak dapat dimuat; pilihan role yang sudah ada tidak tersedia.','Could not load server roles; existing roles cannot be selected.')});
 

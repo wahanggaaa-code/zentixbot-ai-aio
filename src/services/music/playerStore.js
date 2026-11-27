@@ -37,6 +37,11 @@ export function getGuildMusicData(guildId) {
     return guildStore.get(guildId);
 }
 
+// Read without creating a session as a side effect (e.g. Config Assistant preview).
+export function peekGuildMusicData(guildId) {
+    return guildStore.get(guildId) ?? null;
+}
+
 export function deleteGuildMusicData(guildId) {
     const guildData = guildStore.get(guildId);
     if (guildData) {

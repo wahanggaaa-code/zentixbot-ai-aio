@@ -16,7 +16,7 @@ const protectedMember=member=>[PermissionFlagsBits.Administrator,PermissionFlags
 export const DEFAULT_AUTOMOD=Object.freeze({enabled:false,spamEnabled:false,spamCount:6,spamSeconds:10,mentionsEnabled:false,mentionCount:5,wordsEnabled:false,wholeWords:[],partialWords:[],wildcardWords:[],regexWords:[],spamAction:'log',mentionsAction:'log',wordsAction:'log',spamDeleteAfter:false,mentionsDeleteAfter:false,wordsDeleteAfter:false,linksEnabled:false,blockInvites:true,allowedDomains:[],linksAction:'log',linksDeleteAfter:false,repeatEnabled:false,repeatCount:3,repeatSeconds:10,repeatAction:'log',repeatDeleteAfter:false,capsEnabled:false,capsMinimum:12,capsPercent:75,capsAction:'log',capsDeleteAfter:false,raidEnabled:false,raidCount:10,raidSeconds:30,raidLockEnabled:false,raidLockChannels:[],aiReviewEnabled:false,aiVisionEnabled:false,aiReviewChannels:[],escalationEnabled:false,escalationThreshold:3,escalationMinutes:60,ruleChannels:{spam:[],mentions:[],words:[],links:[],repeat:[],caps:[]},channelOverrides:{},temporaryBanMinutes:0,timeoutMinutes:10,logChannelId:null,ignoredChannels:[],ignoredRoles:[]});
 const key=guild=>`automod:settings:${guild}`;
 function pool(client){const db=client?.db;if(!db||db.getStatus?.().isDegraded||!db.isAvailable?.()||!db.db?.isAvailable?.()||!db.db.pool)throw bad('Database tidak tersedia.',503);return db.db.pool}
-const overrideKeys=['spamCount','spamSeconds','mentionCount','repeatCount','repeatSeconds','capsMinimum','capsPercent','wholeWords','partialWords','wildcardWords','regexWords','allowedDomains','blockInvites'];
+export const AUTOMOD_OVERRIDE_KEYS=Object.freeze(['spamCount','spamSeconds','mentionCount','repeatCount','repeatSeconds','capsMinimum','capsPercent','wholeWords','partialWords','wildcardWords','regexWords','allowedDomains','blockInvites']);
 const regexCache=new Map();
 function compilePattern(pattern){let re=regexCache.get(pattern);if(!re){re=new RE2(pattern,'iu');if(regexCache.size>=256)regexCache.delete(regexCache.keys().next().value);regexCache.set(pattern,re)}return re;}
 // Shared by AutoMod and the draft-only copilot; keep exactly the production rules.
@@ -38,7 +38,7 @@ export function validateAutomod(value,guild,internal=false){
  validateAutomodRegex(value.regexWords);
  if(!value.channelOverrides||typeof value.channelOverrides!=='object'||Array.isArray(value.channelOverrides)||Object.keys(value.channelOverrides).length>10)throw bad('Pengaturan khusus channel tidak valid.');
  if(!internal)for(const [channelId,override] of Object.entries(value.channelOverrides)){
-  if(!id.test(channelId)||!override||typeof override!=='object'||Array.isArray(override)||Object.keys(override).length!==overrideKeys.length||overrideKeys.some(k=>!Object.hasOwn(override,k)))throw bad('Pengaturan khusus channel tidak valid.');
+  if(!id.test(channelId)||!override||typeof override!=='object'||Array.isArray(override)||Object.keys(override).length!==AUTOMOD_OVERRIDE_KEYS.length||AUTOMOD_OVERRIDE_KEYS.some(k=>!Object.hasOwn(override,k)))throw bad('Pengaturan khusus channel tidak valid.');
   validateAutomod({...value,...override,channelOverrides:{}},null,true);
  }
  for(const k of ['wholeWords','partialWords','wildcardWords'])if(!Array.isArray(value[k])||value[k].length>50||value[k].some(word=>typeof word!=='string'||word.trim().length<2||word.length>40||/[\r\n\u0000-\u001f]/.test(word))||new Set(value[k].map(word=>word.trim().normalize('NFKC').toLocaleLowerCase())).size!==value[k].length)throw bad('Daftar filter kata tidak valid: maksimal 50 entri per mode, 2–40 karakter.');
