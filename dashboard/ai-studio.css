@@ -197,3 +197,5 @@ main :is(.discord-demo,.main-card,.ai-index-intro,.ai-quiz,.music-player) :is(p,
 .image-discord-picker input{flex:none;margin:2px 0 0;accent-color:#536f12}
 .image-discord-picker label span{min-width:0;overflow-wrap:anywhere}
 .image-discord-picker p{margin:0;font:11px/1.5 var(--mono)}
+/* Schedule-specific fields must remain hidden despite the shared .f-field display rule. */
+#schedulePreviewForm [hidden]{display:none!important}
