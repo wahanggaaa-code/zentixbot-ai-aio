@@ -19,6 +19,12 @@ function pool(client){const db=client?.db;if(!db||db.getStatus?.().isDegraded||!
 const overrideKeys=['spamCount','spamSeconds','mentionCount','repeatCount','repeatSeconds','capsMinimum','capsPercent','wholeWords','partialWords','wildcardWords','regexWords','allowedDomains','blockInvites'];
 const regexCache=new Map();
 function compilePattern(pattern){let re=regexCache.get(pattern);if(!re){re=new RE2(pattern,'iu');if(regexCache.size>=256)regexCache.delete(regexCache.keys().next().value);regexCache.set(pattern,re)}return re;}
+// Shared by AutoMod and the draft-only copilot; keep exactly the production rules.
+export function validateAutomodRegex(patterns){
+ if(!Array.isArray(patterns)||patterns.length>20||new Set(patterns).size!==patterns.length||patterns.some(p=>typeof p!=='string'||!p.trim()||p.length>80||/[\r\n\u0000-\u001f]/.test(p)))throw bad('Pola regex tidak valid: maksimal 20 pola, 1–80 karakter.');
+ try{for(const pattern of patterns){if(compilePattern(pattern).test(''))throw Error('empty match')}}catch{throw bad('Pola regex tidak valid, tidak didukung RE2, atau cocok dengan teks kosong.');}
+ return patterns;
+}
 export function validateAutomod(value,guild,internal=false){
  const keys=Object.keys(DEFAULT_AUTOMOD);if(!value||typeof value!=='object'||Array.isArray(value)||Object.keys(value).length!==keys.length||keys.some(k=>!Object.hasOwn(value,k)))throw bad('Pengaturan AutoMod tidak valid.');
  if(['enabled','spamEnabled','mentionsEnabled','wordsEnabled','spamDeleteAfter','mentionsDeleteAfter','wordsDeleteAfter','linksEnabled','blockInvites','linksDeleteAfter','repeatEnabled','repeatDeleteAfter','capsEnabled','capsDeleteAfter','raidEnabled','raidLockEnabled','escalationEnabled','aiReviewEnabled','aiVisionEnabled'].some(k=>typeof value[k]!=='boolean')||!Number.isInteger(value.spamCount)||value.spamCount<3||value.spamCount>20||!Number.isInteger(value.spamSeconds)||value.spamSeconds<3||value.spamSeconds>120||!Number.isInteger(value.mentionCount)||value.mentionCount<2||value.mentionCount>20)throw bad('Batas AutoMod tidak valid.');
@@ -29,8 +35,7 @@ export function validateAutomod(value,guild,internal=false){
  if(!Number.isInteger(value.escalationThreshold)||value.escalationThreshold<2||value.escalationThreshold>20||!Number.isInteger(value.escalationMinutes)||value.escalationMinutes<1||value.escalationMinutes>40320)throw bad('Batas eskalasi warning tidak valid.');
  if(!Number.isInteger(value.raidCount)||value.raidCount<3||value.raidCount>100||!Number.isInteger(value.raidSeconds)||value.raidSeconds<5||value.raidSeconds>300)throw bad('Batas anti-raid tidak valid.');
  const ruleNames=['spam','mentions','words','links','repeat','caps'];if(!value.ruleChannels||typeof value.ruleChannels!=='object'||Array.isArray(value.ruleChannels)||Object.keys(value.ruleChannels).length!==ruleNames.length||ruleNames.some(k=>!Array.isArray(value.ruleChannels[k])||value.ruleChannels[k].length>50||new Set(value.ruleChannels[k]).size!==value.ruleChannels[k].length||value.ruleChannels[k].some(x=>typeof x!=='string'||!id.test(x))))throw bad('Channel per aturan tidak valid.');
- if(!Array.isArray(value.regexWords)||value.regexWords.length>20||new Set(value.regexWords).size!==value.regexWords.length||value.regexWords.some(p=>typeof p!=='string'||!p.trim()||p.length>80||/[\r\n\u0000-\u001f]/.test(p)))throw bad('Pola regex tidak valid: maksimal 20 pola, 1–80 karakter.');
- try{for(const pattern of value.regexWords){if(compilePattern(pattern).test(''))throw Error('empty match')}}catch{throw bad('Pola regex tidak valid, tidak didukung RE2, atau cocok dengan teks kosong.');}
+ validateAutomodRegex(value.regexWords);
  if(!value.channelOverrides||typeof value.channelOverrides!=='object'||Array.isArray(value.channelOverrides)||Object.keys(value.channelOverrides).length>10)throw bad('Pengaturan khusus channel tidak valid.');
  if(!internal)for(const [channelId,override] of Object.entries(value.channelOverrides)){
   if(!id.test(channelId)||!override||typeof override!=='object'||Array.isArray(override)||Object.keys(override).length!==overrideKeys.length||overrideKeys.some(k=>!Object.hasOwn(override,k)))throw bad('Pengaturan khusus channel tidak valid.');

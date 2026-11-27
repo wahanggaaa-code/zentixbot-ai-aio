@@ -1,4 +1,5 @@
 import express from 'express';
+import {generateRegexDraft,testRegexDraft,explainRegex} from '../services/ai/regexCopilot.js';
 import {rewriteStudioText,composeStudioDocument,draftStudioFlow} from '../services/ai/studioRewrite.js';
 import {readGreetingBanner, attachGreetingBanner, withoutGreetingImage} from '../services/greetingBanner.js';
 import {getWelcomeConfigForEditing} from '../utils/database.js';
@@ -36,6 +37,10 @@ export function createAIApi(client,{auth,csrf,env=process.env,foundation=client.
  router.get('/media-providers/:kind',auth,owner,async(req,res)=>{try{const kind=req.params.kind;if(!['audio','image'].includes(kind))throw Object.assign(Error('Jenis provider tidak valid.'),{status:400});const saved=await createMediaSettingsStore(client).read(req.guild.id,kind);res.json({settings:saved??legacySettings(kind,env),source:saved?'dashboard':'environment',credentials:mediaCredentials(env)[kind]})}catch(e){fail(res,e)}});
  router.patch('/media-providers/:kind',auth,owner,csrf,async(req,res)=>{try{const kind=req.params.kind;if(!['audio','image'].includes(kind))throw Object.assign(Error('Jenis provider tidak valid.'),{status:400});const settings=await createMediaSettingsStore(client).save(req.guild.id,kind,req.body);res.json({settings})}catch(e){fail(res,e)}});
  router.get('/settings',auth,owner,async(req,res)=>{try{res.json({settings:await foundation.store.read(req.guild.id),credentials:foundation.credentials()})}catch(e){fail(res,e)}});
+ // Draft and RE2 test only: these endpoints never modify AutoMod settings.
+ router.post('/regex-copilot/draft',auth,owner,csrf,async(req,res)=>{const b=req.body;if(!b||Array.isArray(b)||Object.keys(b).sort().join(',')!=='confirmed,instructions'||b.confirmed!==true)return res.status(400).json({error:'Konfirmasi diperlukan.'});try{const draft=await generateRegexDraft({foundation,guildId:req.guild.id,userId:req.session.user.id,instructions:b.instructions});res.set('Cache-Control','no-store');res.json({draft})}catch(e){fail(res,e)}});
+ router.post('/regex-copilot/explain',auth,owner,csrf,async(req,res)=>{const b=req.body;if(!b||Array.isArray(b)||Object.keys(b).sort().join(',')!=='confirmed,pattern'||b.confirmed!==true)return res.status(400).json({error:'Konfirmasi diperlukan.'});try{const explanation=await explainRegex({foundation,guildId:req.guild.id,userId:req.session.user.id,pattern:b.pattern});res.set('Cache-Control','no-store');res.json({explanation})}catch(e){fail(res,e)}});
+ router.post('/regex-copilot/test',auth,owner,csrf,(req,res)=>{const b=req.body;if(!b||Array.isArray(b)||Object.keys(b).sort().join(',')!=='examples,pattern')return res.status(400).json({error:'Pola dan contoh diperlukan.'});try{const results=testRegexDraft(b.pattern,b.examples);res.set('Cache-Control','no-store');res.json({results})}catch(e){fail(res,e)}});
  // Generate an editable draft only; sending remains a separate Message Studio action.
  router.post('/faq-question-draft',auth,owner,csrf,async(req,res)=>{
   const b=req.body;
