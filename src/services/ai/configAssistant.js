@@ -34,7 +34,7 @@ import {botConfig} from '../../config/bot.js';
 import {readGiveawayInventory} from './giveawayInventory.js';
 import {createDiscordImageStore} from './discordImages.js';
 import {EVENT_TYPES,isEventEnabled} from '../loggingService.js';
-import {readGreetingBanner} from '../greetingBanner.js';
+import {readStoredGreetingBanner as readGreetingBanner} from '../greetingBanner.js';
 import {createBuilderHistory,ITEM_TYPES,BUILD_SOURCES,MAX_BUILDS} from './builderHistory.js';
 
 const bad=(message,status=400)=>Object.assign(new Error(message),{status});
@@ -232,7 +232,7 @@ export function createConfigAssistant({client,foundation,env=process.env,automod
    context={...pickBool(cfg,['enabled','dmEnabled','audioEnabled','fileEnabled','proactiveEnabled']),legacyKnowledgeEnabled:pickBool(cfg,['knowledgeEnabled']).knowledgeEnabled,knowledgeDocumentFeatureAvailable:false,personaDiffersFromDefault:cfg.persona!==DEFAULT_CHAT.persona,channelConfigured:!!cfg.channelId,proactiveTime:clock(cfg.proactiveTime),proactiveZone:pickEnum(cfg,'proactiveZone',['WIB','WITA','WIT'])};
   }else if(scope==='interactive'){
    const cfg=await createInteractiveStore(client).read(guildId);
-   context={...pickBool(cfg,['enabled','replyEnabled','replyAnywhere','joinEnabled','idleEnabled','imagesEnabled','galleryVideoEnabled','galleryReactionEnabled','galleryThreadEnabled','useNames','etiquetteEnabled','nicknameEnabled','followUpEnabled','linkSummaryEnabled','newsSearchEnabled','recapEnabled']),...pickNumber(cfg,['joinChance','joinCooldownSeconds','idleMinutes','idleDailyMax','hourlyLimit','followUpSeconds']),personaDiffersFromDefault:cfg.persona!==DEFAULT_INTERACTIVE.persona,channelCount:count(cfg.channelIds),galleryChannelCount:count(cfg.galleryChannelIds),nicknameCount:count(cfg.nicknames),idleStart:clock(cfg.idleStart),idleEnd:clock(cfg.idleEnd),zone:pickEnum(cfg,'zone',['WIB','WITA','WIT'])};
+   context={...pickBool(cfg,['enabled','replyEnabled','replyAnywhere','joinEnabled','idleEnabled','imagesEnabled','galleryVideoEnabled','galleryReactionEnabled','galleryThreadEnabled','useNames','etiquetteEnabled','nicknameEnabled','followUpEnabled','intentRouterEnabled','linkSummaryEnabled','newsSearchEnabled','recapEnabled']),...pickNumber(cfg,['joinChance','joinCooldownSeconds','idleMinutes','idleDailyMax','hourlyLimit','followUpSeconds']),personaDiffersFromDefault:cfg.persona!==DEFAULT_INTERACTIVE.persona,channelCount:count(cfg.channelIds),galleryChannelCount:count(cfg.galleryChannelIds),nicknameCount:count(cfg.nicknames),idleStart:clock(cfg.idleStart),idleEnd:clock(cfg.idleEnd),zone:pickEnum(cfg,'zone',['WIB','WITA','WIT'])};
   }else if(scope==='greetings'){
    const [welcome,goodbye]=await Promise.all([createAIWelcomeStore(client,'welcome').read(guildId),createAIWelcomeStore(client,'goodbye').read(guildId)]);
    const legacy=welcome.shared||goodbye.shared?await readStoredGreeting(client,guildId):null;

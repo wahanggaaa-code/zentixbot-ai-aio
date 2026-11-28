@@ -2,6 +2,7 @@
 
 import { createV2Container, v2Message } from './componentsV2.js';
 import { logger } from './logger.js';
+import { MessageFlags, MessageFlagsBitField } from 'discord.js';
 
 function getCommandJson(commandData) {
   return commandData?.toJSON ? commandData.toJSON() : commandData;
@@ -30,9 +31,12 @@ export function buildPrefixUsage(prefix, commandData, validation) {
 }
 
 export class ResponseCoordinator {
-  constructor(interaction, { message = null } = {}) {
+  constructor(interaction, { message = null, allowedMentions = null, destination = null } = {}) {
     this.interaction = interaction;
     this.message = message;
+    this.allowedMentions = allowedMentions;
+    this.destination = destination ?? message?.channel ?? null;
+    this.privateDestination = destination != null;
     this._replyMessage = null;
     this._finalized = false;
     this._finalizedReason = null;
@@ -81,12 +85,24 @@ export class ResponseCoordinator {
     return Boolean(this.interaction._isPrefixCommand || this.message?.channel);
   }
 
+  safePayload(payload) {
+    if (!this.message || !payload || typeof payload !== 'object') return payload;
+    const result = this.allowedMentions ? { ...payload, allowedMentions: this.allowedMentions } : { ...payload };
+    // Ephemeral is an interaction-only flag. A private DM must not include it, but retains V2 flags.
+    if (this.privateDestination) {
+      delete result.ephemeral;
+      if (result.flags != null) result.flags = MessageFlagsBitField.resolve(result.flags) & ~MessageFlags.Ephemeral;
+    }
+    return result;
+  }
+
   async sendPrefixPayload(payload) {
-    if (!this.message?.channel) {
+    payload = this.safePayload(payload);
+    if (!this.destination) {
       return null;
     }
 
-    const sentMessage = await this.message.channel.send(payload);
+    const sentMessage = await this.destination.send(payload);
     this.setReplyMessage(sentMessage);
     return sentMessage;
   }
@@ -97,6 +113,7 @@ export class ResponseCoordinator {
   }
 
   async respond(payload) {
+    payload = this.safePayload(payload);
     if (this.isUsageFinalized()) {
       return this.getReplyMessage();
     }
@@ -109,7 +126,7 @@ export class ResponseCoordinator {
     this.interaction.replied = true;
 
     if (this.message?.channel) {
-      const sentMessage = await this.message.channel.send(payload);
+      const sentMessage = await this.destination.send(payload);
       this.setReplyMessage(sentMessage);
       return sentMessage;
     }
@@ -124,7 +141,7 @@ export class ResponseCoordinator {
 
     if (this.interaction.replied) {
       if (this.message?.channel) {
-        return this.message.channel.send(payload);
+        return this.destination.send(payload);
       }
       await this.interaction.followUp(payload);
       return null;
@@ -139,6 +156,7 @@ export class ResponseCoordinator {
   }
 
   async edit(payload) {
+    payload = this.safePayload(payload);
     if (this.isUsageFinalized()) {
       return this.getReplyMessage();
     }
@@ -150,7 +168,7 @@ export class ResponseCoordinator {
       } catch (error) {
         logger.debug(`ResponseCoordinator edit failed: ${error.message}`);
         if (this.message?.channel) {
-          const sentMessage = await this.message.channel.send(payload);
+          const sentMessage = await this.destination.send(payload);
           this.setReplyMessage(sentMessage);
           return sentMessage;
         }
@@ -171,8 +189,9 @@ export class ResponseCoordinator {
   }
 
   async followUp(payload) {
+    payload = this.safePayload(payload);
     if (this.message?.channel) {
-      return this.message.channel.send(payload);
+      return this.destination.send(payload);
     }
 
     return this.interaction.followUp(payload);

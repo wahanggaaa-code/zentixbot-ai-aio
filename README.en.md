@@ -1,9 +1,15 @@
 <p align="center">
-  <img src="assets/zentix-banner.gif" alt="ZentixBot" width="800">
+  <img src="assets/zentix-digital-vortex-animated.gif" alt="Zentix Digital Vortex" width="800">
 </p>
 
-<h1 align="center">ZentixBot</h1>
-<p align="center">A self-hosted Discord bot for communities, with a dashboard and AI features.</p>
+<p align="center">An AI-powered Discord bot for your community.</p>
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/zentix-title-dark.svg">
+    <img src="assets/zentix-title-light.svg" alt="ZentixBot" width="210" height="48">
+  </picture>
+</p>
 <p align="center">
   <img alt="discord.js v14" src="https://img.shields.io/badge/discord.js-v14-5865F2?logo=discord&logoColor=white">
   <img alt="Node.js 22.13 or newer" src="https://img.shields.io/badge/Node.js-%E2%89%A5%2022.13-339933?logo=node.js&logoColor=white">
@@ -56,13 +62,11 @@ Set at least `DISCORD_TOKEN`, `CLIENT_ID` and `GUILD_ID`. For dashboard token lo
 
 ## Dashboard & AI
 
-Open `https://your-dashboard-address/dashboard/` and sign in with the dashboard token. Discord login is disabled, even if the token is not configured. Anyone who knows the token can use it; do not share token-bearing login links. Public HTTP does not encrypt tokens or sessions. Token login verifies the first account in `OWNER_IDS` is a member, then reuses that identity for reads without another membership check. If membership is revoked, read access remains until logout or session expiry (at most 12 hours); writes still revalidate membership and perform action-specific Discord permission checks.
+- **Dashboard:** open `https://your-dashboard-address/dashboard/` and sign in with the token; Discord login is unavailable. Use HTTPS and do not share the token or token-bearing login links.
+- **Access:** the first `OWNER_IDS` account is verified at login. If membership is revoked, session read access can persist until logout or expiry (at most 12 hours); changes still require permission checks.
+- **AI Studio:** configure providers and AI features, including `/gambar` and `/terjemahkan`. Content may be sent to providers and incur quota or costs; inform members and avoid sensitive data.
 
-AI is configured in **AI Studio**. To let members generate images, configure an image provider and the AI foundation, then enable **Image Studio → Discord**, select channels and optional roles, and set a cooldown. Members use `/gambar` with consent. This feature is off by default; content filtering depends on the provider and does not guarantee safe results.
-
-Processed content is sent to external providers and may consume quota or incur charges. Inform members before enabling features that read channels. Long-term DM memory is opt-in and managed by each member; do not store sensitive data. Link summaries do not execute JavaScript, and scanned PDFs or videos cannot always be read.
-
-Members can use `/terjemahkan` with text, a target language and consent to post the result in the channel. The command uses the AI provider and daily quota, independently of automatic translation and flag-reaction settings. Do not submit sensitive data.
+[Read the dashboard, privacy and AI guide](DASHBOARD-AI.md#english).
 
 ## Data & backups
 

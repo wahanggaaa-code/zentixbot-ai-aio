@@ -1,9 +1,15 @@
 <p align="center">
-  <img src="assets/zentix-banner.gif" alt="ZentixBot" width="800">
+  <img src="assets/zentix-digital-vortex-animated.gif" alt="Zentix Digital Vortex" width="800">
 </p>
 
-<h1 align="center">ZentixBot</h1>
-<p align="center">Bot Discord self-hosted untuk komunitas, dengan dashboard dan fitur AI.</p>
+<p align="center">An AI-powered Discord bot for your community.</p>
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/zentix-title-dark.svg">
+    <img src="assets/zentix-title-light.svg" alt="ZentixBot" width="210" height="48">
+  </picture>
+</p>
 <p align="center">
   <img alt="discord.js v14" src="https://img.shields.io/badge/discord.js-v14-5865F2?logo=discord&logoColor=white">
   <img alt="Node.js 22.13 atau lebih baru" src="https://img.shields.io/badge/Node.js-%E2%89%A5%2022.13-339933?logo=node.js&logoColor=white">
@@ -56,13 +62,11 @@ Isi setidaknya `DISCORD_TOKEN`, `CLIENT_ID` dan `GUILD_ID`. Untuk login dashboar
 
 ## Dashboard & AI
 
-Buka `https://alamat-dashboard/dashboard/` dan masuk memakai token dashboard. Login Discord dinonaktifkan, termasuk ketika token belum dikonfigurasi. Siapa pun yang mengetahui token dashboard dapat menggunakannya; jangan bagikan tautan login bertoken. HTTP publik tidak mengenkripsi token atau sesi. Sesi token memeriksa keanggotaan `OWNER_IDS` saat login dan memakai identitas tersebut untuk membuka data tanpa pemeriksaan ulang setiap halaman. Jika keanggotaan dicabut, akses baca sesi token tetap berlaku sampai logout atau sesi berakhir (maksimal 12 jam); tindakan yang mengubah data tetap memeriksa anggota dan izin Discord.
+- **Dashboard:** buka `https://alamat-dashboard/dashboard/` dan masuk dengan token; login Discord tidak tersedia. Gunakan HTTPS dan jangan bagikan token atau tautan login bertoken.
+- **Akses:** akun pertama di `OWNER_IDS` diverifikasi saat login. Jika keanggotaan dicabut, akses baca sesi dapat bertahan hingga logout atau kedaluwarsa (maksimal 12 jam); tindakan perubahan tetap memeriksa izin.
+- **AI Studio:** atur provider dan fitur AI, termasuk `/gambar` dan `/terjemahkan`. Konten dapat dikirim ke provider dan dikenai kuota atau biaya; beri tahu anggota dan hindari data sensitif.
 
-AI diatur melalui **AI Studio**. Untuk mengizinkan anggota membuat gambar, konfigurasi provider gambar dan fondasi AI, lalu aktifkan **Image Studio → Discord**, pilih channel dan role bila diperlukan, serta atur cooldown. Anggota memakai `/gambar` dengan persetujuan. Fitur ini nonaktif secara bawaan; filter konten bergantung provider dan tidak menjamin hasil aman.
-
-Konten yang diproses dikirim ke provider eksternal dan dapat memakai kuota atau biaya. Beri tahu anggota sebelum mengaktifkan fitur yang membaca channel. Memori jangka panjang DM hanya aktif atas persetujuan dan dikelola anggota; jangan simpan data sensitif. Ringkasan link tidak menjalankan JavaScript, dan PDF scan atau video tidak selalu dapat dibaca.
-
-Anggota dapat memakai `/terjemahkan` dengan teks, bahasa tujuan dan persetujuan untuk menampilkan hasil di channel. Command ini memakai provider serta kuota AI harian, dan terpisah dari pengaturan terjemahan otomatis dan reaksi bendera. Jangan kirim data sensitif.
+[Lihat panduan dashboard, privasi dan fitur AI](DASHBOARD-AI.md#bahasa-indonesia).
 
 ## Data & backup
 

@@ -8,7 +8,7 @@ import { buildWelcomePayload } from '../services/welcomePayload.js';
 import { assertOnboardingCompatible, assertOnboardingShape } from '../services/config/onboardingConflict.js';
 import { logger } from '../utils/logger.js';
 import { validateBannerUpload } from '../services/selfRoles/manage.js';
-import { readGreetingBanner, saveGreetingBanner, deleteGreetingBanner, attachGreetingBanner, withoutGreetingImage } from '../services/greetingBanner.js';
+import { readGreetingBanner, readStoredGreetingBanner, readGreetingBannerSource, setGreetingBannerSource, saveGreetingBanner, deleteGreetingBanner, attachGreetingBanner, withoutGreetingImage } from '../services/greetingBanner.js';
 
 function persistentPool(client) {
   const db = client.db;
@@ -82,7 +82,7 @@ function validate(body,guild) {
     if (url.protocol!=='https:' || url.username || url.password) throw new Error('URL gambar harus HTTPS.');
   }
   const e=body.welcomeEmbed;
-  if (!e || typeof e!=='object' || Array.isArray(e) || Object.keys(e).some(k=>!['color','footer','title','showUser','showMemberCount'].includes(k)) || ['showUser','showMemberCount'].some(k=>e[k]!==undefined && typeof e[k]!=='boolean') || typeof e.title!=='string' || !e.title.trim() || e.title.length>256 || typeof e.footer!=='string' || e.footer.length>1024 || (e.color!==null && (!Number.isInteger(e.color) || e.color<0 || e.color>0xffffff))) throw new Error('Judul, footer atau warna embed tidak valid.');
+  if (!e || typeof e!=='object' || Array.isArray(e) || Object.keys(e).some(k=>!['color','footer','title','showUser','showMemberCount','showAvatar'].includes(k)) || ['showUser','showMemberCount','showAvatar'].some(k=>e[k]!==undefined && typeof e[k]!=='boolean') || typeof e.title!=='string' || !e.title.trim() || e.title.length>256 || typeof e.footer!=='string' || e.footer.length>1024 || (e.color!==null && (!Number.isInteger(e.color) || e.color<0 || e.color>0xffffff))) throw new Error('Judul, footer atau warna embed tidak valid.');
   return body;
 }
 export function createBotApiRouter(client, {auth, csrf, store = createStore(client)}) {
@@ -97,7 +97,15 @@ export function createBotApiRouter(client, {auth, csrf, store = createStore(clie
   const bannerJson=express.json({limit:'8mb'});
   router.get('/greeting-banner/:kind',auth,async(req,res)=>{
     if(!['welcome','goodbye'].includes(req.params.kind))return res.status(400).json({error:'Jenis banner tidak valid.'});
-    try{const asset=await readGreetingBanner(client,req.guild.id,req.params.kind);if(!asset)return res.status(404).end();res.set('Cache-Control','no-store');res.type(asset.mime).send(asset.buffer);}catch{return res.status(503).json({error:'Banner tidak tersedia.'});}
+    try{const asset=await readStoredGreetingBanner(client,req.guild.id,req.params.kind);if(!asset)return res.status(404).end();res.set('Cache-Control','no-store');res.type(asset.mime).send(asset.buffer);}catch{return res.status(503).json({error:'Banner tidak tersedia.'});}
+  });
+  router.get('/greeting-banner/:kind/source',auth,async(req,res)=>{
+    if(!['welcome','goodbye'].includes(req.params.kind))return res.status(400).json({error:'Jenis banner tidak valid.'});
+    try{const source=await readGreetingBannerSource(client,req.guild.id,req.params.kind);res.set('Cache-Control','no-store').json({source});}catch{return res.status(503).json({error:'Sumber gambar tidak tersedia.'});}
+  });
+  router.put('/greeting-banner/:kind/source',auth,csrf,bannerJson,async(req,res)=>{
+    if(!['welcome','goodbye'].includes(req.params.kind)||!req.body||Object.keys(req.body).join(',')!=='source'||!['url','upload'].includes(req.body.source))return res.status(400).json({error:'Sumber gambar tidak valid.'});
+    try{await setGreetingBannerSource(client,req.guild.id,req.params.kind,req.body.source);res.json({ok:true,source:req.body.source});}catch(e){return res.status(e.status===409?409:503).json({error:e.status===409?e.message:'Sumber gambar gagal disimpan.'});}
   });
   router.put('/greeting-banner/:kind',auth,csrf,bannerJson,async(req,res)=>{
     if(!['welcome','goodbye'].includes(req.params.kind))return res.status(400).json({error:'Jenis banner tidak valid.'});

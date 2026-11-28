@@ -51,7 +51,7 @@ export function resolvePrefixAccessKey(commandData, args) {
   return commandName;
 }
 
-export function createMockInteraction(message, commandData, args) {
+export function createMockInteraction(message, commandData, args, { allowedMentions = null, destination = null } = {}) {
   const options = mapArgumentsToOptions(args, commandData);
   const commandStartTime = Date.now();
 
@@ -63,6 +63,7 @@ export function createMockInteraction(message, commandData, args) {
     },
 
     channel: message.channel,
+    channelId: message.channel?.id ?? null,
     guild: message.guild,
     guildId: message.guild?.id,
 
@@ -158,7 +159,7 @@ export function createMockInteraction(message, commandData, args) {
     webhook: null,
   };
 
-  const coordinator = ResponseCoordinator.attach(mockInteraction, { message });
+  const coordinator = ResponseCoordinator.attach(mockInteraction, { message, allowedMentions, destination });
 
   mockInteraction.reply = (payload) => coordinator.respond(payload);
   mockInteraction.editReply = (payload) => coordinator.edit(payload);
@@ -187,8 +188,8 @@ export function supportsPrefixExecution(command) {
   return !!command.execute;
 }
 
-export async function executePrefixCommand(command, message, args, client, prefixOverride = null, guildConfig = null) {
-  const mockInteraction = createMockInteraction(message, command.data, args);
+export async function executePrefixCommand(command, message, args, client, prefixOverride = null, guildConfig = null, options = {}) {
+  const mockInteraction = createMockInteraction(message, command.data, args, options);
   const coordinator = mockInteraction._responseCoordinator;
   const prefix = prefixOverride || getCommandPrefix();
 

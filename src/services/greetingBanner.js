@@ -14,7 +14,7 @@ function pool(client) {
  return db.db.pool;
 }
 function validKind(kind) { if(!['welcome','goodbye'].includes(kind))throw Error('Jenis banner tidak valid.'); }
-export async function readGreetingBanner(client,guild,kind) {
+export async function readStoredGreetingBanner(client,guild,kind) {
  validKind(kind);const sqlite=sqliteBackend(client);
  if(sqlite)return sqlite.transaction(tx=>{
   const row=tx.get(key(guild,kind));
@@ -25,6 +25,25 @@ export async function readGreetingBanner(client,guild,kind) {
  });
  const result=await pool(client).query(`SELECT value FROM ${pgConfig.tables.cache_data} WHERE key=$1 AND (expires_at IS NULL OR expires_at > NOW())`,[key(guild,kind)]);
  return parseBannerAsset(result.rows[0]?.value);
+}
+// Legacy records have no preference: an uploaded banner wins if it exists.
+const sourceKey=(guild,kind)=>`guild:${guild}:greeting_banner_source:${kind}`;
+export async function readGreetingBannerSource(client,guild,kind){
+ validKind(kind);const sqlite=sqliteBackend(client);let value;
+ if(sqlite)value=sqlite.get(sourceKey(guild,kind));
+ else {const result=await pool(client).query(`SELECT value FROM ${pgConfig.tables.cache_data} WHERE key=$1 AND (expires_at IS NULL OR expires_at > NOW())`,[sourceKey(guild,kind)]);value=result.rows[0]?.value}
+ if(value?.source==='url'||value?.source==='upload')return value.source;
+ return (await readStoredGreetingBanner(client,guild,kind))?'upload':'url';
+}
+export async function setGreetingBannerSource(client,guild,kind,source){
+ validKind(kind);if(!['url','upload'].includes(source))throw Error('Sumber gambar tidak valid.');
+ if(source==='upload'&&!(await readStoredGreetingBanner(client,guild,kind)))throw Object.assign(Error('Unggah banner terlebih dahulu.'),{status:409});
+ const sqlite=sqliteBackend(client),value={source};
+ if(sqlite){sqlite.set(sourceKey(guild,kind),value);return}
+ await pool(client).query(`INSERT INTO ${pgConfig.tables.cache_data} (key,value,expires_at) VALUES ($1,$2::jsonb,NULL) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value,expires_at=NULL`,[sourceKey(guild,kind),JSON.stringify(value)]);
+}
+export async function readGreetingBanner(client,guild,kind){
+ return (await readGreetingBannerSource(client,guild,kind))==='upload'?readStoredGreetingBanner(client,guild,kind):null;
 }
 export async function saveGreetingBanner(client,guild,kind,asset) {
  validKind(kind);const parsed=parseBannerAsset(asset);if(!parsed)throw Error('Banner tidak valid.');

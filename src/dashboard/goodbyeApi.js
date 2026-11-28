@@ -37,7 +37,7 @@ function checked(raw){
   if(!record(embed))throw error(409,'Embed goodbye tersimpan perlu diperiksa.');
   if(embed.title!==undefined&&(typeof embed.title!=='string'||!embed.title.trim()||embed.title.length>256))throw error(409,'Judul goodbye tersimpan perlu diperiksa.');
   if(embed.footer!==undefined&&(typeof embed.footer!=='string'||embed.footer.length>1024))throw error(409,'Footer goodbye tersimpan perlu diperiksa.');
-  for(const key of ['showUser','showMemberCount']) if(embed[key]!==undefined&&typeof embed[key]!=='boolean')throw error(409,'Pengaturan tampilan goodbye perlu diperiksa.');
+  for(const key of ['showUser','showMemberCount','showAvatar']) if(embed[key]!==undefined&&typeof embed[key]!=='boolean')throw error(409,'Pengaturan tampilan goodbye perlu diperiksa.');
   if(embed.color!==undefined&&embed.color!==null&&storedColor(embed.color)===null)throw error(409,'Warna goodbye tersimpan perlu diperiksa.');
   if(embed.image!==undefined&&embed.image!==null&&typeof embed.image!=='string'&&(!record(embed.image)||typeof embed.image.url!=='string'))throw error(409,'Gambar goodbye tersimpan perlu diperiksa.');
  }
@@ -47,10 +47,10 @@ function view(raw){
  const cfg=normalizeWelcomeConfig(checked(raw)),embed=cfg.leaveEmbed;
  const image=typeof embed.image==='string'?embed.image:(embed.image?.url??null);
  return {enabled:cfg.goodbyeEnabled,channelId:cfg.goodbyeChannelId,message:cfg.leaveMessage,ping:cfg.goodbyePing,
-  showUser:embed.showUser!==false,showMemberCount:embed.showMemberCount!==false,title:embed.title??'👋 Goodbye',footer:embed.footer??'Goodbye from {server}!',color:embed.color===undefined?0xed4245:storedColor(embed.color),image};
+  showAvatar:embed.showAvatar!==false,showUser:embed.showUser!==false,showMemberCount:embed.showMemberCount!==false,title:embed.title??'👋 Goodbye',footer:embed.footer??'Goodbye from {server}!',color:embed.color===undefined?0xed4245:storedColor(embed.color),image};
 }
 function validate(body,guild){
- const keys=['revision','enabled','channelId','message','ping','image','title','footer','color'], optional=['showUser','showMemberCount'];
+ const keys=['revision','enabled','channelId','message','ping','image','title','footer','color'], optional=['showUser','showMemberCount','showAvatar'];
  if(!record(body)||keys.some(k=>!Object.hasOwn(body,k))||Object.keys(body).some(k=>!keys.includes(k)&&!optional.includes(k))||optional.some(k=>Object.hasOwn(body,k)&&typeof body[k]!=='boolean'))throw error(400,'Pengaturan goodbye tidak valid.');
  if(typeof body.revision!=='string'||!(/^(missing|[a-f0-9]{64})$/.test(body.revision)))throw error(400,'Versi pengaturan tidak valid.');
  if(typeof body.enabled!=='boolean'||typeof body.ping!=='boolean')throw error(400,'Status dan ping harus boolean.');
@@ -103,7 +103,7 @@ export function createGoodbyeApi(client,{auth,csrf}){
      const stored=tx.botGet(welcomeKey(req.guild.id)),raw=checked(stored??{});
      if(sqliteVersion(stored)!==body.revision)throw error(409,'Pengaturan berubah. Muat ulang sebelum menyimpan.');
      const guildConfig=tx.botGet(configKey(req.guild.id))??{};assertOnboardingShape(guildConfig,raw);assertOnboardingCompatible(guildConfig,raw);
-     const visibility=Object.fromEntries(['showUser','showMemberCount'].filter(k=>Object.hasOwn(body,k)).map(k=>[k,body[k]]));
+     const visibility=Object.fromEntries(['showUser','showMemberCount','showAvatar'].filter(k=>Object.hasOwn(body,k)).map(k=>[k,body[k]]));
      const {image:_oldImage,...oldEmbed}=record(raw.leaveEmbed)?raw.leaveEmbed:normalizeWelcomeConfig({}).leaveEmbed;
      const saved={...raw,goodbyeEnabled:body.enabled,goodbyeChannelId:body.channelId,leaveMessage:body.message,goodbyePing:body.ping,
       leaveEmbed:{...oldEmbed,...visibility,title:body.title,footer:body.footer,color:body.color,...(body.image===null?{}:{image:{url:body.image}})}};
@@ -121,7 +121,7 @@ export function createGoodbyeApi(client,{auth,csrf}){
    assertOnboardingShape(guild.rows[0]?.config,raw);
    assertOnboardingCompatible(guild.rows[0]?.config,raw);
    const fields={goodbyeEnabled:body.enabled,goodbyeChannelId:body.channelId,leaveMessage:body.message,goodbyePing:body.ping};
-   const embedPatch={...Object.fromEntries(['showUser','showMemberCount'].filter(k=>Object.hasOwn(body,k)).map(k=>[k,body[k]])),title:body.title,footer:body.footer,color:body.color,...(body.image===null?{}:{image:{url:body.image}})};
+   const embedPatch={...Object.fromEntries(['showUser','showMemberCount','showAvatar'].filter(k=>Object.hasOwn(body,k)).map(k=>[k,body[k]])),title:body.title,footer:body.footer,color:body.color,...(body.image===null?{}:{image:{url:body.image}})};
    const defaultEmbed=normalizeWelcomeConfig({}).leaveEmbed;
    // Patch JSONB in PostgreSQL so unrelated numeric and unknown fields never
    // pass through JavaScript's potentially lossy JSON number representation.

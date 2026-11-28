@@ -14,6 +14,7 @@ import { createActivityStore, validateActivity, startActivity, saveActivitySetti
 import { sendDMPublicPanel } from '../services/ai/dmPanel.js';
 import { createChatStore, validateChatSettings } from '../services/ai/chat.js';
 import { createInteractive, validateInteractive, cleanReply } from '../services/ai/interactive.js';
+import { createIntentStore, SAFE_INTENT_COMMANDS, SAFE_INTENT_HANDOFFS, PRIVATE_INTENT_COMMANDS } from '../services/ai/naturalIntent.js';
 import { createImageService } from '../services/ai/images.js';
 import { createDiscordImageStore } from '../services/ai/discordImages.js';
 import { createBuilder, PLAN_LIMITS, CHANNEL_TYPES } from '../services/ai/builder.js';
@@ -133,8 +134,12 @@ export function createAIApi(client,{auth,csrf,env=process.env,foundation=client.
  router.patch('/chat',auth,owner,csrf,async(req,res)=>{try{const settings=validateChatSettings(req.body,req.guild);await chatStore.save(req.guild.id,settings);res.json({ok:true,settings})}catch(e){fail(res,e)}});
  // Interactive AI in channels. Saving goes through the running handler so it applies to the next message.
  const interactive=client.aiInteractive||createInteractive({client,foundation});
+ const intentStore=interactive.intentStore || createIntentStore(client);
+ router.get('/intent-exclusions',auth,owner,async(req,res)=>{try{res.json({settings:await intentStore.read(req.guild.id),safeCommands:SAFE_INTENT_COMMANDS,handoffCommands:SAFE_INTENT_HANDOFFS,privateCommands:PRIVATE_INTENT_COMMANDS})}catch(e){fail(res,e)}});
+ router.patch('/intent-exclusions',auth,owner,csrf,async(req,res)=>{try{res.json({ok:true,settings:await intentStore.save(req.guild.id,req.body)})}catch(e){fail(res,e)}});
  router.get('/interactive',auth,owner,async(req,res)=>{try{const [settings,configured]=await Promise.all([interactive.store.read(req.guild.id),searchReady(req.guild.id)]);const channels=[...req.guild.channels.cache.values()].filter(c=>c.type===ChannelType.GuildText).map(({id,name})=>({id,name}));res.json({settings,channels,search:{configured}})}catch(e){fail(res,e)}});
- router.patch('/interactive',auth,owner,csrf,async(req,res)=>{try{const settings=await interactive.saveSettings(validateInteractive(req.body,req.guild));res.json({ok:true,settings})}catch(e){fail(res,e)}});
+ router.patch('/intent-router',auth,owner,csrf,async(req,res)=>{try{if(!req.body||typeof req.body!=='object'||Array.isArray(req.body)||Object.keys(req.body).length!==1||typeof req.body.enabled!=='boolean')throw Object.assign(Error('Pilihan router tidak valid.'),{status:400});const settings=await interactive.saveRouterSettings(req.body.enabled);res.json({ok:true,settings:{enabled:settings.intentRouterEnabled}})}catch(e){fail(res,e)}});
+ router.patch('/interactive',auth,owner,csrf,async(req,res)=>{try{const settings=await interactive.saveInteractiveSettings(validateInteractive(req.body,req.guild));res.json({ok:true,settings})}catch(e){fail(res,e)}});
  router.post('/chat/panel',auth,owner,csrf,async(req,res)=>{try{if(!req.body||Object.keys(req.body).length!==1||req.body.confirmed!==true)throw Object.assign(Error('Konfirmasi diperlukan.'),{status:400});const settings=await chatStore.read(req.guild.id);res.json({ok:true,...await sendDMPublicPanel({client,guild:req.guild,settings,confirmed:true})})}catch(e){fail(res,e)}});
  // Retired document endpoints never access stored documents or invoke a provider.
  router.use('/knowledge',auth,owner,(req,res,next)=>['GET','HEAD'].includes(req.method)?next():csrf(req,res,next),(req,res)=>res.status(410).json({error:'Pengetahuan dokumen sudah dihentikan. FAQ & cache ada di halaman Pengetahuan.'}));

@@ -10,10 +10,12 @@
 import { ChannelType, MessageType, PermissionFlagsBits, SnowflakeUtil } from 'discord.js';
 import { pgConfig } from '../../config/database/postgres.js';
 import { sqliteBackend } from '../storage/sqlite.js';
+import { createKV } from './kv.js';
 import { readDiscordImage } from './attachments.js';
 import { readGalleryVideo, findGalleryAnimation } from './galleryVideo.js';
 import { logger as defaultLogger } from '../../utils/logger.js';
 import { detectTool, firstLink } from './interactiveTools.js';
+import { detectNaturalIntent, createIntentStore, executeNaturalCommand } from './naturalIntent.js';
 import { createChannelBudget } from './channelBudget.js';
 import { fetchPublicText } from './linkSummary.js';
 
@@ -59,6 +61,7 @@ export const DEFAULT_INTERACTIVE = Object.freeze({
     followUpEnabled: false,
     followUpSeconds: 90,
     // What a member can ask for when calling the bot: summarise a link, search the web, recap the channel.
+    intentRouterEnabled: false,
     linkSummaryEnabled: false,
     newsSearchEnabled: false,
     recapEnabled: false,
@@ -71,7 +74,7 @@ const ZONES = { WIB: 'Asia/Jakarta', WITA: 'Asia/Makassar', WIT: 'Asia/Jayapura'
 const SNOWFLAKE = /^\d{17,20}$/;
 const CLOCK = /^([01]\d|2[0-3]):[0-5]\d$/;
 const RANGES = { joinChance: [1, 100], joinCooldownSeconds: [10, 3600], idleMinutes: [10, 720], idleDailyMax: [1, 24], hourlyLimit: [1, 200], followUpSeconds: [30, 300] };
-const BOOLEANS = ['enabled', 'replyEnabled', 'replyAnywhere', 'joinEnabled', 'idleEnabled', 'imagesEnabled', 'galleryVideoEnabled', 'galleryReactionEnabled', 'galleryThreadEnabled', 'useNames', 'etiquetteEnabled', 'nicknameEnabled', 'followUpEnabled', 'linkSummaryEnabled', 'newsSearchEnabled', 'recapEnabled'];
+const BOOLEANS = ['enabled', 'replyEnabled', 'replyAnywhere', 'joinEnabled', 'idleEnabled', 'imagesEnabled', 'galleryVideoEnabled', 'galleryReactionEnabled', 'galleryThreadEnabled', 'useNames', 'etiquetteEnabled', 'nicknameEnabled', 'followUpEnabled', 'intentRouterEnabled', 'linkSummaryEnabled', 'newsSearchEnabled', 'recapEnabled'];
 const NICKNAME = /^[\p{L}\p{N}][\p{L}\p{N} ._-]{0,22}[\p{L}\p{N}]$/u;
 /** Words that tie a question to the member who asks it, or to what was said just before: never served from the reply cache. */
 const NOT_REUSABLE = /(^|[^\p{L}])(aku|saya|gue|gua|gw|ane|aing|abdi|ku|i|me|my|mine|im|tadi|barusan|tersebut|sebelumnya|gitu|begitu|gini|begini|diatas|di atas)(?=$|[^\p{L}])|\p{L}{3,}ku(?=$|[^\p{L}])/iu;
@@ -166,6 +169,16 @@ export function createInteractiveStore(client) {
             if (sqlite) return stored(sqlite.get(key(id)));
             const result = await pool().query(`SELECT value FROM ${table} WHERE key=$1`, [key(id)]);
             return stored(result.rows[0]?.value);
+        },
+        // These updates share the KV row lock, so unrelated dashboard tabs cannot
+        // overwrite the router switch with a stale full-form snapshot.
+        async saveInteractive(id, value) {
+            const settings = validateInteractive(value);
+            return createKV(client).update(key(id), current => ({ ...settings, intentRouterEnabled: stored(current).intentRouterEnabled }));
+        },
+        async saveRouter(id, enabled) {
+            if (typeof enabled !== 'boolean') throw err('Pilihan router tidak valid.');
+            return createKV(client).update(key(id), current => validateInteractive({ ...stored(current), intentRouterEnabled: enabled }));
         },
         async save(id, value) {
             const settings = validateInteractive(value);
@@ -359,6 +372,8 @@ const QUIET_CODES = new Set(['BUSY', 'DISABLED', 'NO_CREDENTIALS', 'PROVIDERS_UN
 export function createInteractive({
     client,
     store = createInteractiveStore(client),
+    intentStore = createIntentStore(client),
+    intentExecutor = executeNaturalCommand,
     foundation = () => client.aiFoundation,
     now = () => Date.now(),
     random = Math.random,
@@ -385,6 +400,7 @@ export function createInteractive({
     let idleDay = { day: '', count: 0 };
     let idleRetryAt = -Infinity;     // after a failed attempt, the next one waits
     let cached = { at: -Infinity, value: null };
+    let settingsGeneration = 0;
     let nextStateSweep = -Infinity;
 
     // Expiry uses the longest possible lifetime of each kind of state so a
@@ -423,8 +439,11 @@ export function createInteractive({
     async function settings() {
         sweepStaleState();
         if (now() - cached.at < SETTINGS_TTL_MS) return cached.value;
+        const generation = settingsGeneration;
         let value = null;
         try { value = await store.read(client.homeGuildId); } catch (error) { warnOnce('SETTINGS', `settings could not be read (${error.message})`); }
+        // A read started before a successful save must not repopulate the cache with stale data.
+        if (generation !== settingsGeneration) return settings();
         cached = { at: now(), value };
         return value;
     }
@@ -432,7 +451,22 @@ export function createInteractive({
     /** Saves and applies at once; the next message already sees the new settings. */
     async function saveSettings(value) {
         const saved = await store.save(client.homeGuildId, value);
+        settingsGeneration++;
         cached = { at: now(), value: saved };
+        return saved;
+    }
+
+    async function saveInteractiveSettings(value) {
+        const saved = await store.saveInteractive(client.homeGuildId, value);
+        settingsGeneration++;
+        cached = { at: -Infinity, value: null };
+        return saved;
+    }
+
+    async function saveRouterSettings(enabled) {
+        const saved = await store.saveRouter(client.homeGuildId, enabled);
+        settingsGeneration++;
+        cached = { at: -Infinity, value: null };
         return saved;
     }
 
@@ -634,6 +668,45 @@ export function createInteractive({
      * answer given to the same question a moment ago. Resolves to null when the chat should answer.
      */
     async function shortcut(message, cfg, text) {
+        // Translation requires the member's explicit consent in the existing slash command.
+        // Do not fetch a replied message, quote private text, or call a provider for this handoff.
+        // Never turn a truncated long message into an apparently complete command.
+        const intent = String(message.content ?? '').length <= MESSAGE_CHARS
+            ? detectNaturalIntent(text, { enabled: cfg.intentRouterEnabled }) : null;
+        // Direct commands require an explicit mention or reply to the bot, not an implicit follow-up.
+        const explicitlyCalled = message.mentions?.users?.has?.(client.user.id) || message.mentions?.repliedUser?.id === client.user.id;
+        if (intent && (intent.action === 'translate-handoff' || explicitlyCalled)) {
+            let exclusions;
+            try { exclusions = (await intentStore.read(message.guild.id)).excludedCommands; }
+            catch { return deliver(message, cfg, 'reply', 'Pengaturan router tidak tersedia; tidak ada command yang dijalankan.'); }
+            const name = intent.action === 'translate-handoff' ? 'terjemahkan' : intent.command;
+            if (exclusions.includes(name) || exclusions.includes(name.split(' ')[0])) return deliver(message, cfg, 'reply', 'Fitur tersebut dikecualikan dari Natural Intent Router di server ini.');
+            if (intent.action === 'slash-handoff') {
+                const notices = {
+                    play: 'Isi lagu atau tautan sendiri; pemutaran dapat mengubah antrean.',
+                    'music pause': 'Perintah mengubah pemutaran; akses dan voice channel diperiksa oleh slash command.',
+                    'music resume': 'Perintah mengubah pemutaran; akses dan voice channel diperiksa oleh slash command.',
+                    'music skip': 'Perintah melewati lagu; akses dan voice channel diperiksa oleh slash command.',
+                    'birthday set': 'Isi tanggal sendiri di slash command untuk menyimpan ulang tahun.',
+                    'play-mood': 'Isi suasana dan berikan persetujuan sendiri; suasana dikirim ke provider AI dan lagu dapat ditambahkan ke antrean.',
+                    gambar: 'Isi deskripsi dan persetujuan sendiri; prompt dikirim ke provider dan hasil dipasang di channel. Pollinations dapat membuat prompt publik.',
+                    drafbug: 'Isi masalah, forum dan persetujuan sendiri; deskripsi dikirim ke provider AI. Tinjau draf sebelum mengirim.',
+                    poll: 'Isi pertanyaan dan opsi sendiri; polling serta reaksi terlihat di channel.',
+                    aichat: 'Pilih mode DM dan ikuti persetujuan di sana sebelum mengirim pesan ke provider AI.',
+                };
+                return deliver(message, cfg, 'reply', `Gunakan \`/${name}\` untuk melanjutkan. Command tersebut tidak dijalankan otomatis; akses dan opsi diperiksa saat kamu memakainya.${notices[name] ? ` ${notices[name]}` : ''}`);
+            }
+            if (intent.action === 'translate-handoff') return deliver(message, cfg, 'reply', 'Untuk menerjemahkan, gunakan `/terjemahkan`: isi teks dan bahasa tujuan, lalu berikan persetujuan. Teks dikirim ke provider AI dan hasil tampil di channel; jangan kirim data sensitif.');
+            let result;
+            try { result = await intentExecutor({client, message, name, args: intent.args ?? [], exclusions}); }
+            catch { result = 'unavailable'; }
+            if (result === 'private-delivered') return deliver(message, cfg, 'reply', 'Hasilnya sudah kukirim lewat DM.');
+            if (result !== 'executed') return deliver(message, cfg, 'reply', result === 'cooldown' ? 'Command sedang dalam masa jeda. Coba lagi nanti.' : result === 'discord-overrides' ? 'Izin command Discord tidak dapat dipastikan aman untuk router. Gunakan slash command langsung agar Discord memeriksa izin.' : result === 'private-unavailable' ? `Tidak dapat mengirim hasil lewat DM. Gunakan \`/${name}\` untuk respons privat.` : 'Command ini tidak tersedia atau tidak diizinkan di sini.');
+            countSent(message.channel.id);
+            if (lastAnswer.size > 5000) lastAnswer.clear();
+            lastAnswer.set(message.author.id, now());
+            return true;
+        }
         const repliesToOther = Boolean(message.reference?.messageId) && message.mentions?.repliedUser?.id !== client.user.id;
         const tool = detectTool(text, cfg, { repliesToOther });
         if (tool) {
@@ -923,5 +996,5 @@ export function createInteractive({
         }
     }
 
-    return { store, settings, saveSettings, handleMessage, runIdle, history: recent };
+    return { store, intentStore, settings, saveSettings, saveInteractiveSettings, saveRouterSettings, handleMessage, runIdle, history: recent };
 }

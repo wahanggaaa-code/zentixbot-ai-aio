@@ -35,7 +35,7 @@ export function buildWelcomePayload({member, config, canEmbed = true, test = fal
     title: formatWelcomeMessage(embedCfg.title || '🎉 Welcome!', data),
     description: pingPrefix + message,
     color: embedCfg.color === undefined ? getColor('success') : embedCfg.color,
-    thumbnail: user.displayAvatarURL(),
+    thumbnail: embedCfg.showAvatar !== false ? user.displayAvatarURL() : null,
     fields: [
       ...(embedCfg.showUser !== false ? [{name: 'User', value: `${user.tag} (${user.id})`}] : []),
       ...(embedCfg.showMemberCount !== false ? [{name: 'Member Count', value: String(guild.memberCount)}] : []),
@@ -62,7 +62,7 @@ export function buildGoodbyePayload({member, config, test = false}) {
     title: formatWelcomeMessage(embedCfg.title || '👋 Goodbye', data),
     description: pingPrefix + message,
     color: embedCfg.color === undefined ? getColor('error') : embedCfg.color,
-    thumbnail: user.displayAvatarURL(),
+    thumbnail: embedCfg.showAvatar !== false ? user.displayAvatarURL() : null,
     fields: [
       ...(embedCfg.showUser !== false ? [{name: 'User', value: `${user.tag} (${user.id})`}] : []),
       ...(embedCfg.showMemberCount !== false ? [{name: 'Member Count', value: String(guild.memberCount)}] : []),
