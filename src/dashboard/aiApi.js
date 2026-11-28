@@ -14,7 +14,7 @@ import { createActivityStore, validateActivity, startActivity, saveActivitySetti
 import { sendDMPublicPanel } from '../services/ai/dmPanel.js';
 import { createChatStore, validateChatSettings } from '../services/ai/chat.js';
 import { createInteractive, validateInteractive, cleanReply } from '../services/ai/interactive.js';
-import { createIntentStore, SAFE_INTENT_COMMANDS, SAFE_INTENT_HANDOFFS, PRIVATE_INTENT_COMMANDS } from '../services/ai/naturalIntent.js';
+import { createIntentStore, detectNaturalIntent, detectMemberIntent, detectTargetHandoff, SAFE_INTENT_COMMANDS, SAFE_INTENT_HANDOFFS, PRIVATE_INTENT_COMMANDS } from '../services/ai/naturalIntent.js';
 import { createImageService } from '../services/ai/images.js';
 import { createDiscordImageStore } from '../services/ai/discordImages.js';
 import { createBuilder, PLAN_LIMITS, CHANNEL_TYPES } from '../services/ai/builder.js';
@@ -135,6 +135,13 @@ export function createAIApi(client,{auth,csrf,env=process.env,foundation=client.
  // Interactive AI in channels. Saving goes through the running handler so it applies to the next message.
  const interactive=client.aiInteractive||createInteractive({client,foundation});
  const intentStore=interactive.intentStore || createIntentStore(client);
+ // Matcher-only preview: never executes a command, calls a provider or saves the input.
+ router.post('/intent-preview',auth,owner,csrf,(req,res)=>{
+  const b=req.body;if(!b||typeof b!=='object'||Array.isArray(b)||Object.keys(b).join(',')!=='text'||typeof b.text!=='string'||!b.text.trim()||b.text.length>800)return res.status(400).json({error:'Masukkan satu contoh teks maksimal 800 karakter.'});
+  const intent=detectMemberIntent(b.text,{enabled:true})??detectTargetHandoff(b.text,{enabled:true})??detectNaturalIntent(b.text,{enabled:true});const name=intent?.action==='translate-handoff'?'terjemahkan':intent?.command;
+  const result=!intent?null:{command:name,mode:intent.action==='command'?(PRIVATE_INTENT_COMMANDS.includes(name)?'private':'direct'):'handoff'};
+  res.set('Cache-Control','no-store');return res.json({result});
+ });
  router.get('/intent-exclusions',auth,owner,async(req,res)=>{try{res.json({settings:await intentStore.read(req.guild.id),safeCommands:SAFE_INTENT_COMMANDS,handoffCommands:SAFE_INTENT_HANDOFFS,privateCommands:PRIVATE_INTENT_COMMANDS})}catch(e){fail(res,e)}});
  router.patch('/intent-exclusions',auth,owner,csrf,async(req,res)=>{try{res.json({ok:true,settings:await intentStore.save(req.guild.id,req.body)})}catch(e){fail(res,e)}});
  router.get('/interactive',auth,owner,async(req,res)=>{try{const [settings,configured]=await Promise.all([interactive.store.read(req.guild.id),searchReady(req.guild.id)]);const channels=[...req.guild.channels.cache.values()].filter(c=>c.type===ChannelType.GuildText).map(({id,name})=>({id,name}));res.json({settings,channels,search:{configured}})}catch(e){fail(res,e)}});

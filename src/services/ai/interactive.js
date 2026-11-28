@@ -15,7 +15,7 @@ import { readDiscordImage } from './attachments.js';
 import { readGalleryVideo, findGalleryAnimation } from './galleryVideo.js';
 import { logger as defaultLogger } from '../../utils/logger.js';
 import { detectTool, firstLink } from './interactiveTools.js';
-import { detectNaturalIntent, createIntentStore, executeNaturalCommand } from './naturalIntent.js';
+import { detectNaturalIntent, detectMemberIntent, detectTargetHandoff, createIntentStore, executeNaturalCommand } from './naturalIntent.js';
 import { createChannelBudget } from './channelBudget.js';
 import { fetchPublicText } from './linkSummary.js';
 
@@ -667,12 +667,16 @@ export function createInteractive({
      * Ways of answering a call without the usual chat request: a tool the member asked for, the FAQ, or the
      * answer given to the same question a moment ago. Resolves to null when the chat should answer.
      */
-    async function shortcut(message, cfg, text) {
+    async function shortcut(message, cfg, text, { routerOnly = false } = {}) {
         // Translation requires the member's explicit consent in the existing slash command.
         // Do not fetch a replied message, quote private text, or call a provider for this handoff.
         // Never turn a truncated long message into an apparently complete command.
-        const intent = String(message.content ?? '').length <= MESSAGE_CHARS
-            ? detectNaturalIntent(text, { enabled: cfg.intentRouterEnabled }) : null;
+        const rawIntentText = String(message.content ?? '');
+        const targetHandoff = !message.attachments?.size && !message.stickers?.size
+            ? detectTargetHandoff(rawIntentText, { enabled: cfg.intentRouterEnabled, botId:client.user.id }) : null;
+        const verifiedHandoff = targetHandoff && message.mentions?.users?.has?.(targetHandoff.targetId) ? targetHandoff : null;
+        const intent = rawIntentText.length <= MESSAGE_CHARS && !/[\r\n\u0000-\u001f\u007f]/u.test(rawIntentText)
+            ? ((!message.attachments?.size && !message.stickers?.size ? detectMemberIntent(rawIntentText, { enabled: cfg.intentRouterEnabled, botId:client.user.id }) : null) ?? verifiedHandoff ?? detectNaturalIntent(text, { enabled: cfg.intentRouterEnabled })) : null;
         // Direct commands require an explicit mention or reply to the bot, not an implicit follow-up.
         const explicitlyCalled = message.mentions?.users?.has?.(client.user.id) || message.mentions?.repliedUser?.id === client.user.id;
         if (intent && (intent.action === 'translate-handoff' || explicitlyCalled)) {
@@ -693,6 +697,24 @@ export function createInteractive({
                     drafbug: 'Isi masalah, forum dan persetujuan sendiri; deskripsi dikirim ke provider AI. Tinjau draf sebelum mengirim.',
                     poll: 'Isi pertanyaan dan opsi sendiri; polling serta reaksi terlihat di channel.',
                     aichat: 'Pilih mode DM dan ikuti persetujuan di sana sebelum mengirim pesan ke provider AI.',
+                    'birthday remove': 'Penghapusan data dilakukan hanya melalui slash command.',
+                    wipedata: 'Penghapusan data sementara tidak tersedia; tidak ada data yang dihapus. Hubungi administrator server untuk bantuan.',
+                    personal: 'Pilih bahasa atau Reset sendiri di slash command; pengaturan pribadi akan berubah.',
+                    gcreate: 'Isi hadiah, durasi dan opsi sendiri; giveaway dapat dipublikasikan di channel.',
+                    gdelete: 'Pilih ID pesan sendiri; command dapat menghapus giveaway dan pesannya.',
+                    gend: 'Pilih ID pesan sendiri; command dapat mengakhiri giveaway dan mengumumkan pemenang.',
+                    greroll: 'Pilih ID pesan sendiri; command dapat mengundi ulang pemenang giveaway.',
+                    dm: 'Pilih penerima dan tulis pesan sendiri di slash command; pesan dapat dikirim lewat DM.',
+                    massban: 'Tindakan moderasi massal berdampak pada banyak anggota; target dan alasan diisi sendiri.',
+                    masskick: 'Tindakan moderasi massal berdampak pada banyak anggota; target dan alasan diisi sendiri.',
+                    'music stop': 'Perintah menghentikan pemutaran dan membersihkan antrean.',
+                    'music clear': 'Perintah membersihkan antrean musik.',
+                    'report file': 'Isi target dan alasan sendiri; laporan dikirim ke staff.',
+                    warnings: 'Pilih target sendiri; data peringatan dan tombol moderasi ditangani oleh slash command.',
+                    'ticket-summary': 'Tinjau persetujuan pengiriman teks tiket ke provider AI di slash command.',
+                    'ticket-priority-ai': 'Tinjau persetujuan pengiriman teks tiket ke provider AI di slash command.',
+                    'ticket-sentiment-ai': 'Tinjau persetujuan pengiriman teks tiket ke provider AI dan penyimpanan hasil di slash command.',
+                    'ticket-faq-draft': 'Isi pertanyaan sendiri dan tinjau draf sebelum digunakan.',
                 };
                 return deliver(message, cfg, 'reply', `Gunakan \`/${name}\` untuk melanjutkan. Command tersebut tidak dijalankan otomatis; akses dan opsi diperiksa saat kamu memakainya.${notices[name] ? ` ${notices[name]}` : ''}`);
             }
@@ -707,6 +729,8 @@ export function createInteractive({
             lastAnswer.set(message.author.id, now());
             return true;
         }
+        // Without a provider, do not fall through to AI tools, FAQ or conversation.
+        if (routerOnly) return null;
         const repliesToOther = Boolean(message.reference?.messageId) && message.mentions?.repliedUser?.id !== client.user.id;
         const tool = detectTool(text, cfg, { repliesToOther });
         if (tool) {
@@ -737,7 +761,7 @@ export function createInteractive({
     async function answer(message, cfg, kind, who) {
         const channel = message.channel;
         const ai = getFoundation();
-        if (!ai || !underHourlyLimit(channel.id, cfg)) return false;
+        if (!underHourlyLimit(channel.id, cfg)) return false;
         if (kind === 'gallery' && cfg.galleryThreadEnabled) {
             const permissions = channel.permissionsFor?.(channel.guild?.members?.me);
             if (!permissions?.has([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.SendMessagesInThreads])) {
@@ -749,6 +773,15 @@ export function createInteractive({
                 return false;
             }
         } else if (!canWrite(channel)) return false;
+
+        // Local router intents do not need an AI provider. Preserve the existing
+        // channel limits and do not inspect replied media without the AI service.
+        if (!ai) {
+            if (kind !== 'reply' || !cfg.intentRouterEnabled || findGalleryAnimation(message)
+                || (cfg.galleryVideoEnabled && message.reference?.messageId && message.mentions?.repliedUser?.id !== client.user.id)) return false;
+            const handled = await shortcut(message, cfg, describeMessage(message, { botId: client.user.id, useNames: cfg.useNames }), { routerOnly: true });
+            return handled === true;
+        }
 
         let mediaMessage=message;
         let animation=cfg.galleryVideoEnabled && (kind==='gallery'||kind==='reply') ? findGalleryAnimation(message) : null;
@@ -852,9 +885,8 @@ export function createInteractive({
             if (!message?.guild || message.guild.id !== client.homeGuildId || !client.user) return null;
             if (!message.author || message.author.bot || message.system || message.webhookId) return null;
             if (message.type !== MessageType.Default && message.type !== MessageType.Reply) return null;
-            if (!getFoundation()) return null;
             const cfg = await settings();
-            if (!cfg?.enabled) return null;
+            if (!cfg?.enabled || (!getFoundation() && !cfg.intentRouterEnabled)) return null;
 
             const channelId = message.channel.id;
             const inChat = cfg.channelIds.includes(channelId);
